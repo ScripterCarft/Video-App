@@ -32,7 +32,7 @@ jobs:
       - name: Locate workspace and scheme
         id: xcode
         run: |
-          WORKSPACE=$(ls ios/*.xcworkspace | head -n1)
+          WORKSPACE=$(ls -d ios/*.xcworkspace | head -n1)
           SCHEME=$(xcodebuild -workspace "$WORKSPACE" -list | awk '/Schemes:/{flag=1; next} flag && NF{print; exit}' | xargs)
           echo "workspace=$WORKSPACE" >> "$GITHUB_OUTPUT"
           echo "scheme=$SCHEME" >> "$GITHUB_OUTPUT"

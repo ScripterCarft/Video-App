@@ -30,6 +30,9 @@ yarn-error.*
 .DS_Store
 *.pem
 
+# IDE
+.idea/
+
 # local env files
 .env*.local
 
@@ -39,3 +42,8 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# local unsigned build output
+/build
+/Payload
+*.ipa

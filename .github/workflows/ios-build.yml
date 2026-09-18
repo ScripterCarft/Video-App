@@ -1,0 +1,69 @@
+name: iOS Dev Client Build (unsigned)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: macos-15
+    env:
+      CI: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install JS dependencies
+        run: npm ci
+
+      - name: Show selected Xcode version
+        run: xcodebuild -version
+
+      - name: Generate native iOS project
+        run: npx expo prebuild -p ios
+
+      - name: Locate workspace and scheme
+        id: xcode
+        run: |
+          WORKSPACE=$(ls ios/*.xcworkspace | head -n1)
+          SCHEME=$(xcodebuild -workspace "$WORKSPACE" -list | awk '/Schemes:/{flag=1; next} flag && NF{print; exit}' | xargs)
+          echo "workspace=$WORKSPACE" >> "$GITHUB_OUTPUT"
+          echo "scheme=$SCHEME" >> "$GITHUB_OUTPUT"
+          echo "Workspace: $WORKSPACE / Scheme: $SCHEME"
+
+      - name: Build unsigned .app
+        run: |
+          xcodebuild \
+            -workspace "${{ steps.xcode.outputs.workspace }}" \
+            -scheme "${{ steps.xcode.outputs.scheme }}" \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination "generic/platform=iOS" \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            PROVISIONING_PROFILE="" \
+            build
+
+      - name: Package unsigned .ipa
+        run: |
+          APP_PATH=$(find build/Build/Products -maxdepth 2 -name "*.app" | head -n1)
+          echo "App bundle: $APP_PATH"
+          mkdir -p Payload
+          cp -r "$APP_PATH" Payload/
+          zip -r VideoApp-unsigned.ipa Payload
+
+      - name: Upload .ipa artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: VideoApp-unsigned-ipa
+          path: VideoApp-unsigned.ipa
+          retention-days: 14

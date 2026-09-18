@@ -1,20 +1,37 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { FlatList, StyleSheet, Text, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import type { SearchBarCommands } from 'react-native-screens';
 import { dummyVideos } from '../data/dummyData';
 import { VideoRow } from '../components/VideoRow';
 
 export function SearchScreen() {
   const navigation = useNavigation();
   const [query, setQuery] = useState('');
+  const searchBarRef = useRef<SearchBarCommands>(null);
 
   useEffect(() => {
     navigation.setOptions({
       headerSearchBarOptions: {
+        ref: searchBarRef,
         placeholder: 'Videos, Kanäle',
         onChangeText: (event: { nativeEvent: { text: string } }) =>
           setQuery(event.nativeEvent.text),
       },
+    });
+  }, [navigation]);
+
+  useEffect(() => {
+    const parent = navigation.getParent();
+    if (!parent) {
+      return;
+    }
+    // getParent() returns the generic core navigation type, which doesn't
+    // know about the tab navigator's 'tabPress' event.
+    return (parent as any).addListener('tabPress', () => {
+      if (navigation.isFocused()) {
+        searchBarRef.current?.focus();
+      }
     });
   }, [navigation]);
 

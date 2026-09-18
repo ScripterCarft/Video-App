@@ -42,35 +42,32 @@ jobs:
           echo "scheme=$SCHEME" >> "$GITHUB_OUTPUT"
           echo "Workspace: $WORKSPACE / Scheme: $SCHEME"
 
-      - name: Build unsigned .app
+      - name: Build unsigned .xcarchive
         run: |
-          xcodebuild \
+          xcodebuild archive \
             -workspace "${{ steps.xcode.outputs.workspace }}" \
             -scheme "${{ steps.xcode.outputs.scheme }}" \
             -configuration Release \
             -sdk iphoneos \
             -destination "generic/platform=iOS" \
-            -derivedDataPath build \
+            -archivePath build/App.xcarchive \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
-            PROVISIONING_PROFILE="" \
-            build
+            PROVISIONING_PROFILE=""
 
       - name: Package unsigned .ipa
         run: |
-          APP_PATH=$(find build -iname "*.app" -not -path "*/Index.noindex/*" | head -n1)
+          APP_PATH=$(find build/App.xcarchive/Products/Applications -maxdepth 1 -iname "*.app" | head -n1)
           if [ -z "$APP_PATH" ]; then
-            echo "No .app bundle found. Full tree under build/Build/Products:"
-            find build/Build/Products 2>/dev/null
-            echo "Full tree under build/Build:"
-            find build/Build -maxdepth 3 2>/dev/null
+            echo "No .app bundle found. Full tree under build/App.xcarchive:"
+            find build/App.xcarchive 2>/dev/null
             exit 1
           fi
           echo "App bundle: $APP_PATH"
           mkdir -p Payload
-          cp -r "$APP_PATH" Payload/
-          zip -r VideoApp-unsigned.ipa Payload
+          cp -R "$APP_PATH" Payload/
+          ditto -c -k --sequesterRsrc --keepParent Payload VideoApp-unsigned.ipa
 
       - name: Upload .ipa artifact
         uses: actions/upload-artifact@v4

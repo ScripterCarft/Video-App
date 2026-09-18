@@ -37,7 +37,7 @@ jobs:
         run: |
           WORKSPACE=$(ls -d ios/*.xcworkspace | head -n1)
           xcodebuild -workspace "$WORKSPACE" -list
-          SCHEME=$(xcodebuild -workspace "$WORKSPACE" -list | awk '/Schemes:/{flag=1; next} flag && NF{print; exit}' | xargs)
+          SCHEME=$(node -e "console.log(require('./app.json').expo.name)")
           echo "workspace=$WORKSPACE" >> "$GITHUB_OUTPUT"
           echo "scheme=$SCHEME" >> "$GITHUB_OUTPUT"
           echo "Workspace: $WORKSPACE / Scheme: $SCHEME"

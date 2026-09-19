@@ -1,0 +1,37 @@
+diff --git a/node_modules/react-native-screens/ios/RNSScreenStackHeaderConfig.mm b/node_modules/react-native-screens/ios/RNSScreenStackHeaderConfig.mm
+index 1c84484..72472af 100644
+--- a/node_modules/react-native-screens/ios/RNSScreenStackHeaderConfig.mm
++++ b/node_modules/react-native-screens/ios/RNSScreenStackHeaderConfig.mm
+@@ -381,7 +381,10 @@ RNS_IGNORE_SUPER_CALL_END
+       appearance.shadowImage = shadowImage;
+     }
+   } else {
+-    [appearance configureWithOpaqueBackground];
++    // Was configureWithOpaqueBackground: that never renders the iOS 26 Liquid
++    // Glass material (see software-mansion/react-native-screens#4021).
++    // configureWithDefaultBackground is the one Apple says actually adopts it.
++    [appearance configureWithDefaultBackground];
+   }
+ 
+   // set background color if specified
+@@ -391,7 +394,10 @@ RNS_IGNORE_SUPER_CALL_END
+ 
+   switch (config.blurEffect) {
+     case RNSBlurEffectStyleNone:
+-      appearance.backgroundEffect = nil;
++      // Was: appearance.backgroundEffect = nil;
++      // That unconditionally wiped out the Liquid Glass material that
++      // configureWithDefaultBackground just set above, since our JS side
++      // defaults headerBlurEffect to 'none'. Leave it alone instead.
+       break;
+ 
+     case RNSBlurEffectStyleSystemDefault:
+@@ -522,7 +528,7 @@ RNS_IGNORE_SUPER_CALL_END
+     navctr.navigationBar.prefersLargeTitles = YES;
+   }
+   navitem.largeTitleDisplayMode =
+-      config.largeTitle ? UINavigationItemLargeTitleDisplayModeAlways : UINavigationItemLargeTitleDisplayModeNever;
++      config.largeTitle ? UINavigationItemLargeTitleDisplayModeInline : UINavigationItemLargeTitleDisplayModeNever;
+ #endif
+ 
+   UINavigationBarAppearance *appearance = [self buildAppearance:vc withConfig:config];

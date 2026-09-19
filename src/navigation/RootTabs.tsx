@@ -17,7 +17,7 @@ export function RootTabs() {
         component={HomeStack}
         options={{
           title: strings.tabs.home,
-          tabBarIcon: () => ({ sfSymbol: 'house' }),
+          tabBarIcon: () => ({ sfSymbol: 'house.fill' }),
         }}
       />
       <Tab.Screen
@@ -33,7 +33,7 @@ export function RootTabs() {
         component={SubscriptionsStack}
         options={{
           title: strings.tabs.subscriptions,
-          tabBarIcon: () => ({ sfSymbol: 'person.2' }),
+          tabBarIcon: () => ({ sfSymbol: 'person.2.fill' }),
         }}
       />
       <Tab.Screen
@@ -41,7 +41,7 @@ export function RootTabs() {
         component={LibraryStack}
         options={{
           title: strings.tabs.library,
-          tabBarIcon: () => ({ sfSymbol: 'books.vertical' }),
+          tabBarIcon: () => ({ sfSymbol: 'rectangle.stack.fill' }),
         }}
       />
     </Tab.Navigator>

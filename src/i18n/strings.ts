@@ -4,7 +4,7 @@ const en = {
   tabs: {
     home: 'Home',
     search: 'Search',
-    subscriptions: 'Subscriptions',
+    subscriptions: 'Following',
     library: 'Library',
   },
   search: {

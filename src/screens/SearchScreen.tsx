@@ -4,9 +4,11 @@ import { useNavigation } from '@react-navigation/native';
 import type { SearchBarCommands } from 'react-native-screens';
 import { dummyVideos } from '../data/dummyData';
 import { VideoRow } from '../components/VideoRow';
+import { useStrings } from '../i18n/strings';
 
 export function SearchScreen() {
   const navigation = useNavigation();
+  const strings = useStrings();
   const [query, setQuery] = useState('');
   const searchBarRef = useRef<SearchBarCommands>(null);
 
@@ -14,12 +16,12 @@ export function SearchScreen() {
     navigation.setOptions({
       headerSearchBarOptions: {
         ref: searchBarRef,
-        placeholder: 'Videos, Kanäle',
+        placeholder: strings.search.placeholder,
         onChangeText: (event: { nativeEvent: { text: string } }) =>
           setQuery(event.nativeEvent.text),
       },
     });
-  }, [navigation]);
+  }, [navigation, strings]);
 
   useEffect(() => {
     const parent = navigation.getParent();
@@ -45,7 +47,7 @@ export function SearchScreen() {
     <View style={styles.container}>
       {query.trim() && results.length === 0 ? (
         <View style={styles.empty}>
-          <Text style={styles.emptyText}>Keine Ergebnisse für „{query}“</Text>
+          <Text style={styles.emptyText}>{strings.search.noResults(query)}</Text>
         </View>
       ) : (
         <FlatList

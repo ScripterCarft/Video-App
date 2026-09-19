@@ -1,11 +1,14 @@
 import { StyleSheet, Text, View } from 'react-native';
 import { Video } from '../types/video';
+import { useStrings } from '../i18n/strings';
 
 interface VideoRowProps {
   video: Video;
 }
 
 export function VideoRow({ video }: VideoRowProps) {
+  const strings = useStrings();
+
   return (
     <View style={styles.row}>
       <View style={[styles.thumbnail, { backgroundColor: video.thumbnailColor }]}>
@@ -19,7 +22,7 @@ export function VideoRow({ video }: VideoRowProps) {
           {video.channel.name}
         </Text>
         <Text style={styles.meta} numberOfLines={1}>
-          {video.viewsLabel} · {video.publishedLabel}
+          {strings.video.views(video.viewsLabel)} · {video.publishedLabel}
         </Text>
       </View>
     </View>

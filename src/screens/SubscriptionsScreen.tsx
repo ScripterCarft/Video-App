@@ -1,11 +1,14 @@
 import { FlatList, StyleSheet, Text, View } from 'react-native';
 import { dummyChannels, subscribedChannelIds, videosForChannel } from '../data/dummyData';
+import { useStrings } from '../i18n/strings';
 
 const subscribedChannels = dummyChannels.filter((channel) =>
   subscribedChannelIds.includes(channel.id)
 );
 
 export function SubscriptionsScreen() {
+  const strings = useStrings();
+
   return (
     <FlatList
       style={styles.list}
@@ -18,7 +21,10 @@ export function SubscriptionsScreen() {
           <View style={styles.textBlock}>
             <Text style={styles.name}>{item.name}</Text>
             <Text style={styles.meta}>
-              {item.subscriberCount} Abonnenten · {videosForChannel(item.id).length} Videos
+              {strings.channel.subscribers(
+                item.subscriberCount,
+                videosForChannel(item.id).length
+              )}
             </Text>
           </View>
         </View>

@@ -6,6 +6,9 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
+    "locales": {
+      "en": "./locales/en.json"
+    },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "de.sudmix.videoapp"
@@ -23,7 +26,8 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "react-native-bottom-tabs"
+      "react-native-bottom-tabs",
+      "expo-localization"
     ]
   }
 }

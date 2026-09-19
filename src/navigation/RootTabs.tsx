@@ -3,17 +3,20 @@ import { HomeStack } from './HomeStack';
 import { SearchStack } from './SearchStack';
 import { SubscriptionsStack } from './SubscriptionsStack';
 import { LibraryStack } from './LibraryStack';
+import { useStrings } from '../i18n/strings';
 
 const Tab = createNativeBottomTabNavigator();
 
 export function RootTabs() {
+  const strings = useStrings();
+
   return (
     <Tab.Navigator>
       <Tab.Screen
         name="HomeTab"
         component={HomeStack}
         options={{
-          title: 'Home',
+          title: strings.tabs.home,
           tabBarIcon: () => ({ sfSymbol: 'house' }),
         }}
       />
@@ -21,7 +24,7 @@ export function RootTabs() {
         name="SearchTab"
         component={SearchStack}
         options={{
-          title: 'Suchen',
+          title: strings.tabs.search,
           tabBarIcon: () => ({ sfSymbol: 'magnifyingglass' }),
         }}
       />
@@ -29,7 +32,7 @@ export function RootTabs() {
         name="SubscriptionsTab"
         component={SubscriptionsStack}
         options={{
-          title: 'Abos',
+          title: strings.tabs.subscriptions,
           tabBarIcon: () => ({ sfSymbol: 'person.2' }),
         }}
       />
@@ -37,7 +40,7 @@ export function RootTabs() {
         name="LibraryTab"
         component={LibraryStack}
         options={{
-          title: 'Mediathek',
+          title: strings.tabs.library,
           tabBarIcon: () => ({ sfSymbol: 'books.vertical' }),
         }}
       />

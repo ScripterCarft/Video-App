@@ -33,6 +33,13 @@ eigenen privaten Gebrauch (Sideloading via Sideloadly, kostenlose Apple-ID).
   React Native (TypeScript) entwickelt. Kleine native Swift-Snippets sind
   nur als letzter Ausweg für sehr spezielle native APIs akzeptabel, nicht
   die Regel.
+- **UI-Sprache: Englisch als Standard, aber mehrsprachig vorbereitet.**
+  Alle sichtbaren UI-Texte laufen über `src/i18n/strings.ts` (aktuell nur
+  `en` befüllt), nicht als hartkodierte Strings in Screens/Navigation.
+  `app.json` registriert `en` unter `expo.locales`, damit iOS die
+  unterstützte Sprache korrekt kennt (`CFBundleLocalizations`). Neue
+  Sprache hinzufügen = neues Objekt (z.B. `de`) in `strings.ts` +
+  passender Eintrag in `app.json`/`locales/`.
 
 ## Tech-Stack
 

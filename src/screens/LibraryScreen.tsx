@@ -2,8 +2,10 @@ import { useState } from 'react';
 import { FlatList, StyleSheet, Switch, Text, View } from 'react-native';
 import { dummyVideos } from '../data/dummyData';
 import { VideoRow } from '../components/VideoRow';
+import { useStrings } from '../i18n/strings';
 
 export function LibraryScreen() {
+  const strings = useStrings();
   const [commentsEnabled, setCommentsEnabled] = useState(true);
 
   return (
@@ -14,7 +16,7 @@ export function LibraryScreen() {
       keyExtractor={(video) => video.id}
       ListHeaderComponent={
         <View style={styles.settingsRow}>
-          <Text style={styles.settingsLabel}>Kommentare anzeigen</Text>
+          <Text style={styles.settingsLabel}>{strings.library.showComments}</Text>
           <Switch value={commentsEnabled} onValueChange={setCommentsEnabled} />
         </View>
       }

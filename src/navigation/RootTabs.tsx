@@ -21,14 +21,6 @@ export function RootTabs() {
         }}
       />
       <Tab.Screen
-        name="SearchTab"
-        component={SearchStack}
-        options={{
-          title: strings.tabs.search,
-          tabBarIcon: () => ({ sfSymbol: 'magnifyingglass' }),
-        }}
-      />
-      <Tab.Screen
         name="SubscriptionsTab"
         component={SubscriptionsStack}
         options={{
@@ -42,6 +34,14 @@ export function RootTabs() {
         options={{
           title: strings.tabs.library,
           tabBarIcon: () => ({ sfSymbol: 'rectangle.stack.fill' }),
+        }}
+      />
+      <Tab.Screen
+        name="SearchTab"
+        component={SearchStack}
+        options={{
+          title: strings.tabs.search,
+          tabBarIcon: () => ({ sfSymbol: 'magnifyingglass' }),
         }}
       />
     </Tab.Navigator>

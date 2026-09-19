@@ -15,7 +15,7 @@ export function SubscriptionsStack() {
         options={{
           title: strings.tabs.subscriptions,
           headerLargeTitleEnabled: true,
-          scrollEdgeEffects: { top: 'soft' },
+          headerTransparent: true,
         }}
       />
     </Stack.Navigator>

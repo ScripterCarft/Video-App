@@ -15,7 +15,7 @@ export function LibraryStack() {
         options={{
           title: strings.tabs.library,
           headerLargeTitleEnabled: true,
-          scrollEdgeEffects: { top: 'soft' },
+          headerTransparent: true,
         }}
       />
     </Stack.Navigator>

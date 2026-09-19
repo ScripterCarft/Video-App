@@ -15,7 +15,7 @@ export function HomeStack() {
         options={{
           title: strings.tabs.home,
           headerLargeTitleEnabled: true,
-          scrollEdgeEffects: { top: 'soft' },
+          headerTransparent: true,
         }}
       />
     </Stack.Navigator>

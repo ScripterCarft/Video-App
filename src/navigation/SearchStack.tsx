@@ -15,7 +15,7 @@ export function SearchStack() {
         options={{
           title: strings.tabs.search,
           headerLargeTitleEnabled: true,
-          scrollEdgeEffects: { top: 'soft' },
+          headerTransparent: true,
         }}
       />
     </Stack.Navigator>

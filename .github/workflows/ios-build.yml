@@ -7,7 +7,7 @@ on:
 
 jobs:
   build:
-    runs-on: macos-26
+    runs-on: xcode-27
     env:
       CI: true
     steps:
@@ -23,8 +23,8 @@ jobs:
       - name: Install JS dependencies
         run: npm ci
 
-      - name: Select Xcode 26
-        run: sudo xcode-select -s /Applications/Xcode_26.6.app
+      - name: Select Xcode 27
+        run: sudo xcode-select -s /Applications/Xcode_27.0.app
 
       - name: Show selected Xcode version
         run: xcodebuild -version

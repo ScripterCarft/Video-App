@@ -1,9 +1,20 @@
 # Expo-Version-Hinweis
 
-Dieses Projekt nutzt **Expo SDK 57**. Bevor du Code schreibst, der Expo-APIs
-benutzt, prüfe die exakt versionierten Docs unter
-https://docs.expo.dev/versions/v57.0.0/ statt dich auf Trainingswissen zu
-verlassen – Expo ändert sich schnell zwischen Versionen.
+Dieses Projekt nutzt **Expo SDK 58 (Preview)** mit **React Native 0.88
+(RC)** und **React Navigation 8 (Alpha)**, um gegen **iOS 27 / Xcode 27**
+zu bauen. Das sind bewusst Pre-Release-Versionen, weil iOS 27 brandneue
+UIKit-APIs mitbringt (native Tab-Bar-Minimize-Behavior, Bottom-Accessory,
+System-Suchtab), die erst in diesen Versionen unterstützt werden.
+
+Für Pre-Release-Versionen gibt es oft **keine** oder nur unvollständige
+Docs unter docs.expo.dev/versions/. Verlass dich nicht auf Trainingswissen
+(das kennt iOS 27 nicht) und nicht blind auf ältere versionierte Docs –
+prüfe stattdessen die exakten Typdefinitionen/Kommentare direkt in
+`node_modules/` (z.B. `node_modules/@react-navigation/bottom-tabs/lib/typescript/src/types.d.ts`),
+das ist hier die verlässlichste Quelle für das tatsächlich installierte
+Verhalten. Bei nativen Build-Problemen: `patches/` enthält bereits einen
+`patch-package`-Fix für einen bekannten `expo-modules-jsi`-Bug beim
+Xcode-27-Archivieren.
 
 # VideoApp
 
@@ -22,10 +33,12 @@ eigenen privaten Gebrauch (Sideloading via Sideloadly, kostenlose Apple-ID).
   Icons (SF Symbols), Gesten – alles soll sich anfühlen wie eine native
   Apple-App, nicht wie eine Cross-Platform-App mit iOS-Skin.
 - **Liquid Glass wo möglich.** System-Komponenten (Tab-Bar, Navigation-Bar)
-  sollen die native Liquid-Glass-Optik von iOS 26 automatisch bekommen
-  (native UIKit-Komponenten, gebaut gegen aktuelles SDK). Eigene
-  Glass-Oberflächen nur, wenn es ohne aufwändige native Bridges sauber
-  machbar ist.
+  sollen die native Liquid-Glass-Optik (seit iOS 26, jetzt iOS 27)
+  automatisch bekommen (native UIKit-Komponenten, gebaut gegen aktuelles
+  SDK). Eigene Glass-Oberflächen nur, wenn es ohne aufwändige native
+  Bridges sauber machbar ist. Farben über `PlatformColor(...)` (z.B.
+  `label`, `secondaryLabel`, `systemBackground`, `separator`) statt
+  hartkodierter Hex-Werte, damit sie sich systemkonform verhalten.
 - **Ruhig, kein Lärm.** Keine Werbung außerhalb der Videos selbst, keine
   Shorts, keine aggressiven Empfehlungs-Popups. Kommentare sind sichtbar,
   aber pro Nutzer ein/ausschaltbar.
@@ -45,9 +58,14 @@ eigenen privaten Gebrauch (Sideloading via Sideloadly, kostenlose Apple-ID).
 
 - **React Native (Expo)**, TypeScript.
 - Navigation: `@react-navigation/native-stack` (echter `UINavigationController`)
-  + `react-native-bottom-tabs` (echter `UITabBarController`) für nativen Look
-  statt gemalter JS-Tab-Bar.
-- Build: GitHub Actions mit macOS-Runner, produziert eine **unsignierte
+  + `@react-navigation/bottom-tabs` mit `implementation="native"` (echter
+  `UITabBarController`, inkl. `tabBarMinimizeBehavior` und
+  `tabBarSystemItem: 'search'` für den abgesetzten Such-Tab auf iOS 26+)
+  für nativen Look statt gemalter JS-Tab-Bar. Kein eigener
+  Profil-Button/Header-Icon mehr – Header sind reine native Large-Title-Bars
+  ohne Custom-Content.
+- Build: GitHub Actions mit macOS-Runner (`xcode-27`-Label, Xcode 27
+  explizit via `xcode-select` gewählt), produziert eine **unsignierte
   .ipa** als Build-Artifact (kein Apple-Developer-Account im CI nötig).
 - Installation aufs iPhone: **Sideloadly** (Windows) mit kostenloser
   Apple-ID. Zertifikat läuft alle 7 Tage ab, dann erneut installieren.

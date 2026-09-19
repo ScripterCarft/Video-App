@@ -18,12 +18,7 @@ export function RootTabs() {
   const strings = useStrings();
 
   return (
-    <Tab.Navigator
-      implementation="native"
-      screenOptions={{
-        tabBarMinimizeBehavior: 'onScrollDown',
-      }}
-    >
+    <Tab.Navigator implementation="native">
       <Tab.Screen
         name="HomeTab"
         component={HomeStack}
@@ -40,9 +35,9 @@ export function RootTabs() {
         component={SubscriptionsStack}
         options={{
           title: strings.tabs.subscriptions,
-          tabBarIcon: ({ focused }) => ({
+          tabBarIcon: () => ({
             type: 'sfSymbol',
-            name: focused ? 'person.2.fill' : 'person.2',
+            name: 'person.2.fill',
           }),
         }}
       />
@@ -51,9 +46,9 @@ export function RootTabs() {
         component={LibraryStack}
         options={{
           title: strings.tabs.library,
-          tabBarIcon: ({ focused }) => ({
+          tabBarIcon: () => ({
             type: 'sfSymbol',
-            name: focused ? 'rectangle.stack.fill' : 'rectangle.stack',
+            name: 'rectangle.stack.fill',
           }),
         }}
       />

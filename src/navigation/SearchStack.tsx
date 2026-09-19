@@ -12,7 +12,7 @@ export function SearchStack() {
       <Stack.Screen
         name="Search"
         component={SearchScreen}
-        options={{ title: strings.tabs.search }}
+        options={{ title: strings.tabs.search, headerLargeTitleEnabled: true }}
       />
     </Stack.Navigator>
   );

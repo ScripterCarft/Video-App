@@ -1,4 +1,4 @@
-name: iOS Dev Client Build (unsigned)
+name: iOS Dev Client Build (unsigned, Debug)
 
 on:
   workflow_dispatch:
@@ -47,7 +47,7 @@ jobs:
           xcodebuild archive \
             -workspace "${{ steps.xcode.outputs.workspace }}" \
             -scheme "${{ steps.xcode.outputs.scheme }}" \
-            -configuration Release \
+            -configuration Debug \
             -sdk iphoneos \
             -destination "generic/platform=iOS" \
             -archivePath build/App.xcarchive \

@@ -17,7 +17,7 @@ export function RootTabs() {
         component={HomeStack}
         options={{
           title: strings.tabs.home,
-          tabBarIcon: () => ({ sfSymbol: 'house.fill' }),
+          tabBarIcon: () => ({ sfSymbol: 'house.circle.fill' }),
         }}
       />
       <Tab.Screen

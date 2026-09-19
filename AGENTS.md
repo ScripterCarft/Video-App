@@ -12,9 +12,51 @@ Docs unter docs.expo.dev/versions/. Verlass dich nicht auf Trainingswissen
 prüfe stattdessen die exakten Typdefinitionen/Kommentare direkt in
 `node_modules/` (z.B. `node_modules/@react-navigation/bottom-tabs/lib/typescript/src/types.d.ts`),
 das ist hier die verlässlichste Quelle für das tatsächlich installierte
-Verhalten. Bei nativen Build-Problemen: `patches/` enthält bereits einen
-`patch-package`-Fix für einen bekannten `expo-modules-jsi`-Bug beim
-Xcode-27-Archivieren.
+Verhalten.
+
+## Native Patches (`patches/`, via `patch-package`)
+
+`postinstall` wendet die Patches bei jedem `npm install`/`npm ci` (auch
+in der CI) automatisch wieder an. Zwei Patches liegen aktuell drin:
+
+- **`expo-modules-jsi`**: Workaround für einen Xcode-27-Bug beim
+  `xcodebuild archive` (die `-quiet`-Flag im Build-Skript hat den Build
+  kaputt gemacht).
+- **`react-native-screens`** (`ios/RNSScreenStackHeaderConfig.mm`, drei
+  Änderungen in `buildAppearance:`/`applyConfig...`):
+  1. `configureWithOpaqueBackground` → `configureWithDefaultBackground` –
+     nur Letzteres adoptiert laut Apple das echte iOS-26/27-Liquid-Glass-
+     Material für die Nav-Bar. Ohne diesen Patch bleibt die Nav-Bar auf
+     altem, solidem Chrome, **egal gegen welches SDK gebaut wird**.
+  2. `appearance.backgroundEffect = nil` für den Default-Blur-Fall
+     entfernt – ohne diese Änderung hätte react-native-screens das gerade
+     gesetzte Glass-Material sofort wieder gelöscht, weil `headerBlurEffect`
+     bei uns nirgends gesetzt ist und auf `'none'` defaultet.
+  3. `largeTitleDisplayMode`: `Always` → `Inline` (neuer iOS-26-Wert,
+     `UINavigationItem.LargeTitleDisplayMode.inline`) für den kompakten,
+     Podcasts-artigen Large-Title-Look statt des klassischen
+     Auf-/Zuklapp-Verhaltens.
+
+  **Wichtige Falle beim Patchen von react-native-screens:** Das Paket
+  enthält *zwei parallele* native Header-Implementierungen – die
+  klassische unter `ios/*.mm` (Fabric-Komponente `RNSScreenStackHeaderConfig`)
+  und eine neuere, komplett separate unter `ios/gamma/`
+  (`RNSStackScreenHeaderCoordinator`). `@react-navigation/native-stack`
+  läuft (Stand jetzt) über die **klassische** Implementierung – verifiziert
+  über die Importkette in `useHeaderConfigProps.js`/`NativeStackView.native.js`
+  bis zum `codegenNativeComponent('RNSScreenStackHeaderConfig')`-Aufruf.
+  Ein erster Patch-Versuch landete fälschlich in `ios/gamma/` und hatte
+  dadurch schlicht keine Wirkung. Vor jedem neuen Patch-Versuch: erst
+  über die Fabric-Komponenten-Namen nachverfolgen, welche `.mm`-Datei
+  wirklich lädt, nicht raten.
+
+  Bekanntes, noch offenes Upstream-Issue dazu:
+  software-mansion/react-native-screens#4021 ("Adopt
+  `UINavigationBarAppearance.configureWithDefaultBackground`"). Bei einem
+  react-native-screens-Update prüfen, ob der Patch noch anwendbar ist
+  (`patch-package` bricht beim `postinstall` laut ab, wenn nicht) und ob
+  das Upstream-Issue inzwischen selbst gefixt wurde – dann kann der
+  Patch weg.
 
 # VideoApp
 

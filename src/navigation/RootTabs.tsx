@@ -4,6 +4,7 @@ import { SearchStack } from './SearchStack';
 import { SubscriptionsStack } from './SubscriptionsStack';
 import { LibraryStack } from './LibraryStack';
 import { useStrings } from '../i18n/strings';
+import { NowPlayingAccessory } from '../components/NowPlayingAccessory';
 
 const Tab = createNativeBottomTabNavigator();
 
@@ -11,7 +12,10 @@ export function RootTabs() {
   const strings = useStrings();
 
   return (
-    <Tab.Navigator>
+    <Tab.Navigator
+      minimizeBehavior="onScrollDown"
+      renderBottomAccessoryView={() => <NowPlayingAccessory />}
+    >
       <Tab.Screen
         name="HomeTab"
         component={HomeStack}

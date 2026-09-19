@@ -12,7 +12,11 @@ export function SubscriptionsStack() {
       <Stack.Screen
         name="Subscriptions"
         component={SubscriptionsScreen}
-        options={{ title: strings.tabs.subscriptions, headerLargeTitleEnabled: true }}
+        options={{
+          title: strings.tabs.subscriptions,
+          headerLargeTitleEnabled: true,
+          scrollEdgeEffects: { top: 'soft' },
+        }}
       />
     </Stack.Navigator>
   );

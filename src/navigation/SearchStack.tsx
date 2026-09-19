@@ -12,7 +12,11 @@ export function SearchStack() {
       <Stack.Screen
         name="Search"
         component={SearchScreen}
-        options={{ title: strings.tabs.search, headerLargeTitleEnabled: true }}
+        options={{
+          title: strings.tabs.search,
+          headerLargeTitleEnabled: true,
+          scrollEdgeEffects: { top: 'soft' },
+        }}
       />
     </Stack.Navigator>
   );

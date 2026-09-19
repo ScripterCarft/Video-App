@@ -26,8 +26,10 @@ jobs:
       - name: Select Xcode 27
         run: sudo xcode-select -s /Applications/Xcode_27.0.app
 
-      - name: Show selected Xcode version
-        run: xcodebuild -version
+      - name: Show selected Xcode version and available SDKs
+        run: |
+          xcodebuild -version
+          xcodebuild -showsdks
 
       - name: Generate native iOS project
         run: npx expo prebuild -p ios
@@ -41,6 +43,20 @@ jobs:
           echo "workspace=$WORKSPACE" >> "$GITHUB_OUTPUT"
           echo "scheme=$SCHEME" >> "$GITHUB_OUTPUT"
           echo "Workspace: $WORKSPACE / Scheme: $SCHEME"
+
+      - name: Show resolved base SDK for this build
+        run: |
+          {
+            echo "## Base SDK actually used for the archive build"
+            echo '```text'
+            xcodebuild -showBuildSettings \
+              -workspace "${{ steps.xcode.outputs.workspace }}" \
+              -scheme "${{ steps.xcode.outputs.scheme }}" \
+              -configuration Debug \
+              -sdk iphoneos \
+              2>&1 | grep -E "^\s*(SDKROOT|SDK_NAME|IPHONEOS_DEPLOYMENT_TARGET|PLATFORM_NAME) ="
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Build unsigned .xcarchive
         id: archive

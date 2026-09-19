@@ -23,7 +23,7 @@ export function HomeStack() {
       <Stack.Screen
         name="Home"
         component={HomeScreen}
-        options={{ title: strings.tabs.home, headerLargeTitle: true }}
+        options={{ title: strings.tabs.home, headerLargeTitleEnabled: true }}
       />
     </Stack.Navigator>
   );

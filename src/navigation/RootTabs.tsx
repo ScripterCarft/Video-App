@@ -1,4 +1,4 @@
-import { createNativeBottomTabNavigator } from '@react-navigation/bottom-tabs/unstable';
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { HomeStack } from './HomeStack';
 import { SearchStack } from './SearchStack';
 import { SubscriptionsStack } from './SubscriptionsStack';
@@ -6,13 +6,21 @@ import { LibraryStack } from './LibraryStack';
 import { useStrings } from '../i18n/strings';
 import { NowPlayingAccessory } from '../components/NowPlayingAccessory';
 
-const Tab = createNativeBottomTabNavigator();
+export type RootTabParamList = {
+  HomeTab: undefined;
+  SubscriptionsTab: undefined;
+  LibraryTab: undefined;
+  SearchTab: undefined;
+};
+
+const Tab = createBottomTabNavigator<RootTabParamList>();
 
 export function RootTabs() {
   const strings = useStrings();
 
   return (
     <Tab.Navigator
+      implementation="native"
       screenOptions={{
         tabBarMinimizeBehavior: 'onScrollDown',
         bottomAccessory: ({ placement }) => (

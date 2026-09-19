@@ -23,7 +23,7 @@ export function SubscriptionsStack() {
       <Stack.Screen
         name="Subscriptions"
         component={SubscriptionsScreen}
-        options={{ title: strings.tabs.subscriptions, headerLargeTitle: true }}
+        options={{ title: strings.tabs.subscriptions, headerLargeTitleEnabled: true }}
       />
     </Stack.Navigator>
   );

@@ -23,7 +23,7 @@ export function LibraryStack() {
       <Stack.Screen
         name="Library"
         component={LibraryScreen}
-        options={{ title: strings.tabs.library, headerLargeTitle: true }}
+        options={{ title: strings.tabs.library, headerLargeTitleEnabled: true }}
       />
     </Stack.Navigator>
   );

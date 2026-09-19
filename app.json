@@ -11,7 +11,8 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "de.sudmix.videoapp"
+      "bundleIdentifier": "de.sudmix.videoapp",
+      "deploymentTarget": "27.0"
     },
     "android": {
       "adaptiveIcon": {
@@ -26,15 +27,9 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      [
-        "expo-build-properties",
-        {
-          "ios": {
-            "enableSceneSupport": true
-          }
-        }
-      ],
-      "expo-localization"
+      "expo-localization",
+      "expo-status-bar",
+      "expo-font"
     ]
   }
 }

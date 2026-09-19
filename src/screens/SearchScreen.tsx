@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { FlatList, StyleSheet, Text, View } from 'react-native';
+import { FlatList, PlatformColor, StyleSheet, Text, View } from 'react-native';
 import { useNavigation, useScrollToTop } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import type { SearchBarCommands } from 'react-native-screens';
@@ -22,7 +22,8 @@ export function SearchScreen() {
       headerSearchBarOptions: {
         ref: searchBarRef,
         placeholder: strings.search.placeholder,
-        onChangeText: (event: { nativeEvent: { text: string } }) =>
+        hideWhenScrolling: false,
+        onChange: (event: { nativeEvent: { text: string } }) =>
           setQuery(event.nativeEvent.text),
         onCancelButtonPress: () => setQuery(''),
       },
@@ -40,7 +41,7 @@ export function SearchScreen() {
         .routes.find((route) => route.name === 'SearchTab');
 
       if (navigation.isFocused() && event.target === searchRoute?.key) {
-        searchBarRef.current?.focus();
+        requestAnimationFrame(() => searchBarRef.current?.focus());
       }
     });
   }, [navigation]);
@@ -77,7 +78,7 @@ export function SearchScreen() {
 const styles = StyleSheet.create({
   list: {
     flex: 1,
-    backgroundColor: 'white',
+    backgroundColor: PlatformColor('systemBackground'),
   },
   emptyContent: {
     flexGrow: 1,
@@ -89,7 +90,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 32,
   },
   emptyText: {
-    color: '#8E8E93',
+    color: PlatformColor('secondaryLabel'),
     fontSize: 15,
     textAlign: 'center',
   },

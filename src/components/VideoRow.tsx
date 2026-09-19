@@ -1,4 +1,4 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { PlatformColor, StyleSheet, Text, View } from 'react-native';
 import { Video } from '../types/video';
 import { useStrings } from '../i18n/strings';
 
@@ -59,12 +59,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   title: {
+    color: PlatformColor('label'),
     fontSize: 15,
     fontWeight: '600',
     marginBottom: 4,
   },
   meta: {
     fontSize: 13,
-    color: '#8E8E93',
+    color: PlatformColor('secondaryLabel'),
   },
 });

@@ -4,7 +4,6 @@ import { SearchStack } from './SearchStack';
 import { SubscriptionsStack } from './SubscriptionsStack';
 import { LibraryStack } from './LibraryStack';
 import { useStrings } from '../i18n/strings';
-import { NowPlayingAccessory } from '../components/NowPlayingAccessory';
 
 export type RootTabParamList = {
   HomeTab: undefined;
@@ -23,9 +22,6 @@ export function RootTabs() {
       implementation="native"
       screenOptions={{
         tabBarMinimizeBehavior: 'onScrollDown',
-        bottomAccessory: ({ placement }) => (
-          <NowPlayingAccessory placement={placement} />
-        ),
       }}
     >
       <Tab.Screen

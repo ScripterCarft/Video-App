@@ -8,18 +8,7 @@ export function SubscriptionsStack() {
   const strings = useStrings();
 
   return (
-    <Stack.Navigator
-      screenOptions={{
-        unstable_headerRightItems: () => [
-          {
-            type: 'button',
-            label: strings.profile.open,
-            icon: { type: 'sfSymbol', name: 'person.crop.circle.fill' },
-            onPress: () => {},
-          },
-        ],
-      }}
-    >
+    <Stack.Navigator>
       <Stack.Screen
         name="Subscriptions"
         component={SubscriptionsScreen}

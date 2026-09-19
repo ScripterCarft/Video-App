@@ -1,5 +1,12 @@
 import { useRef, useState } from 'react';
-import { FlatList, StyleSheet, Switch, Text, View } from 'react-native';
+import {
+  FlatList,
+  PlatformColor,
+  StyleSheet,
+  Switch,
+  Text,
+  View,
+} from 'react-native';
 import { useScrollToTop } from '@react-navigation/native';
 import { dummyVideos } from '../data/dummyData';
 import { VideoRow } from '../components/VideoRow';
@@ -33,7 +40,7 @@ export function LibraryScreen() {
 const styles = StyleSheet.create({
   list: {
     flex: 1,
-    backgroundColor: 'white',
+    backgroundColor: PlatformColor('systemBackground'),
   },
   settingsRow: {
     flexDirection: 'row',
@@ -42,9 +49,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#D1D1D6',
+    borderBottomColor: PlatformColor('separator'),
   },
   settingsLabel: {
+    color: PlatformColor('label'),
     fontSize: 15,
     fontWeight: '500',
   },

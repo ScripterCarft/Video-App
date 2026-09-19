@@ -1,5 +1,5 @@
 import { useRef } from 'react';
-import { FlatList, StyleSheet } from 'react-native';
+import { FlatList, PlatformColor, StyleSheet } from 'react-native';
 import { useScrollToTop } from '@react-navigation/native';
 import { dummyVideos } from '../data/dummyData';
 import { VideoRow } from '../components/VideoRow';
@@ -24,6 +24,6 @@ export function HomeScreen() {
 const styles = StyleSheet.create({
   list: {
     flex: 1,
-    backgroundColor: 'white',
+    backgroundColor: PlatformColor('systemBackground'),
   },
 });

@@ -1,5 +1,5 @@
 import { useRef } from 'react';
-import { FlatList, StyleSheet, Text, View } from 'react-native';
+import { FlatList, PlatformColor, StyleSheet, Text, View } from 'react-native';
 import { useScrollToTop } from '@react-navigation/native';
 import { dummyChannels, subscribedChannelIds, videosForChannel } from '../data/dummyData';
 import { useStrings } from '../i18n/strings';
@@ -42,7 +42,7 @@ export function SubscriptionsScreen() {
 const styles = StyleSheet.create({
   list: {
     flex: 1,
-    backgroundColor: 'white',
+    backgroundColor: PlatformColor('systemBackground'),
   },
   row: {
     flexDirection: 'row',
@@ -60,12 +60,13 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   name: {
+    color: PlatformColor('label'),
     fontSize: 15,
     fontWeight: '600',
     marginBottom: 2,
   },
   meta: {
     fontSize: 13,
-    color: '#8E8E93',
+    color: PlatformColor('secondaryLabel'),
   },
 });

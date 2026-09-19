@@ -8,22 +8,11 @@ export function SearchStack() {
   const strings = useStrings();
 
   return (
-    <Stack.Navigator
-      screenOptions={{
-        unstable_headerRightItems: () => [
-          {
-            type: 'button',
-            label: strings.profile.open,
-            icon: { type: 'sfSymbol', name: 'person.crop.circle.fill' },
-            onPress: () => {},
-          },
-        ],
-      }}
-    >
+    <Stack.Navigator>
       <Stack.Screen
         name="Search"
         component={SearchScreen}
-        options={{ title: strings.tabs.search, headerLargeTitleEnabled: true }}
+        options={{ title: strings.tabs.search }}
       />
     </Stack.Navigator>
   );

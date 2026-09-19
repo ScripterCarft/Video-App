@@ -1,13 +1,30 @@
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { HomeScreen } from '../screens/HomeScreen';
-import { ProfileButton } from '../components/ProfileButton';
+import { useStrings } from '../i18n/strings';
 
 const Stack = createNativeStackNavigator();
 
 export function HomeStack() {
+  const strings = useStrings();
+
   return (
-    <Stack.Navigator screenOptions={{ headerRight: () => <ProfileButton /> }}>
-      <Stack.Screen name="Home" component={HomeScreen} options={{ headerLargeTitle: true }} />
+    <Stack.Navigator
+      screenOptions={{
+        unstable_headerRightItems: () => [
+          {
+            type: 'button',
+            label: strings.profile.open,
+            icon: { type: 'sfSymbol', name: 'person.crop.circle.fill' },
+            onPress: () => {},
+          },
+        ],
+      }}
+    >
+      <Stack.Screen
+        name="Home"
+        component={HomeScreen}
+        options={{ title: strings.tabs.home, headerLargeTitle: true }}
+      />
     </Stack.Navigator>
   );
 }

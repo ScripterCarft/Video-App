@@ -1,4 +1,4 @@
-import { createNativeBottomTabNavigator } from '@bottom-tabs/react-navigation';
+import { createNativeBottomTabNavigator } from '@react-navigation/bottom-tabs/unstable';
 import { HomeStack } from './HomeStack';
 import { SearchStack } from './SearchStack';
 import { SubscriptionsStack } from './SubscriptionsStack';
@@ -13,15 +13,22 @@ export function RootTabs() {
 
   return (
     <Tab.Navigator
-      minimizeBehavior="onScrollDown"
-      renderBottomAccessoryView={() => <NowPlayingAccessory />}
+      screenOptions={{
+        tabBarMinimizeBehavior: 'onScrollDown',
+        bottomAccessory: ({ placement }) => (
+          <NowPlayingAccessory placement={placement} />
+        ),
+      }}
     >
       <Tab.Screen
         name="HomeTab"
         component={HomeStack}
         options={{
           title: strings.tabs.home,
-          tabBarIcon: () => ({ sfSymbol: 'house.fill' }),
+          tabBarIcon: () => ({
+            type: 'sfSymbol',
+            name: 'house.fill',
+          }),
         }}
       />
       <Tab.Screen
@@ -29,7 +36,10 @@ export function RootTabs() {
         component={SubscriptionsStack}
         options={{
           title: strings.tabs.subscriptions,
-          tabBarIcon: () => ({ sfSymbol: 'person.2.fill' }),
+          tabBarIcon: ({ focused }) => ({
+            type: 'sfSymbol',
+            name: focused ? 'person.2.fill' : 'person.2',
+          }),
         }}
       />
       <Tab.Screen
@@ -37,7 +47,10 @@ export function RootTabs() {
         component={LibraryStack}
         options={{
           title: strings.tabs.library,
-          tabBarIcon: () => ({ sfSymbol: 'rectangle.stack.fill' }),
+          tabBarIcon: ({ focused }) => ({
+            type: 'sfSymbol',
+            name: focused ? 'rectangle.stack.fill' : 'rectangle.stack',
+          }),
         }}
       />
       <Tab.Screen
@@ -45,7 +58,7 @@ export function RootTabs() {
         component={SearchStack}
         options={{
           title: strings.tabs.search,
-          tabBarIcon: () => ({ sfSymbol: 'magnifyingglass' }),
+          tabBarSystemItem: 'search',
         }}
       />
     </Tab.Navigator>

@@ -1,10 +1,17 @@
+import { useRef } from 'react';
 import { FlatList, StyleSheet } from 'react-native';
+import { useScrollToTop } from '@react-navigation/native';
 import { dummyVideos } from '../data/dummyData';
 import { VideoRow } from '../components/VideoRow';
+import type { Video } from '../types/video';
 
 export function HomeScreen() {
+  const listRef = useRef<FlatList<Video>>(null);
+  useScrollToTop(listRef);
+
   return (
     <FlatList
+      ref={listRef}
       style={styles.list}
       contentInsetAdjustmentBehavior="automatic"
       data={dummyVideos}

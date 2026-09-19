@@ -1,15 +1,20 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { FlatList, StyleSheet, Switch, Text, View } from 'react-native';
+import { useScrollToTop } from '@react-navigation/native';
 import { dummyVideos } from '../data/dummyData';
 import { VideoRow } from '../components/VideoRow';
 import { useStrings } from '../i18n/strings';
+import type { Video } from '../types/video';
 
 export function LibraryScreen() {
   const strings = useStrings();
   const [commentsEnabled, setCommentsEnabled] = useState(true);
+  const listRef = useRef<FlatList<Video>>(null);
+  useScrollToTop(listRef);
 
   return (
     <FlatList
+      ref={listRef}
       style={styles.list}
       contentInsetAdjustmentBehavior="automatic"
       data={dummyVideos}

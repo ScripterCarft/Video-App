@@ -1,74 +1,65 @@
-import { useEffect, useRef, useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { FlatList, StyleSheet, Text, View } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
-import type { SearchBarCommands } from 'react-native-screens';
+import { useNavigation, useScrollToTop } from '@react-navigation/native';
 import { dummyVideos } from '../data/dummyData';
 import { VideoRow } from '../components/VideoRow';
 import { useStrings } from '../i18n/strings';
+import type { Video } from '../types/video';
 
 export function SearchScreen() {
   const navigation = useNavigation();
   const strings = useStrings();
   const [query, setQuery] = useState('');
-  const searchBarRef = useRef<SearchBarCommands>(null);
+  const listRef = useRef<FlatList<Video>>(null);
+  useScrollToTop(listRef);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     navigation.setOptions({
       headerSearchBarOptions: {
-        ref: searchBarRef,
         placeholder: strings.search.placeholder,
         onChangeText: (event: { nativeEvent: { text: string } }) =>
           setQuery(event.nativeEvent.text),
+        onCancelButtonPress: () => setQuery(''),
       },
     });
   }, [navigation, strings]);
 
-  useEffect(() => {
-    const parent = navigation.getParent();
-    if (!parent) {
-      return;
-    }
-    // getParent() returns the generic core navigation type, which doesn't
-    // know about the tab navigator's 'tabPress' event.
-    return (parent as any).addListener('tabPress', () => {
-      if (navigation.isFocused()) {
-        searchBarRef.current?.focus();
-      }
-    });
-  }, [navigation]);
-
-  const results = query.trim()
+  const normalizedQuery = query.trim();
+  const results = normalizedQuery
     ? dummyVideos.filter((video) =>
-        video.title.toLowerCase().includes(query.trim().toLowerCase())
+        video.title.toLowerCase().includes(normalizedQuery.toLowerCase())
       )
     : [];
 
   return (
-    <View style={styles.container}>
-      {query.trim() && results.length === 0 ? (
-        <View style={styles.empty}>
-          <Text style={styles.emptyText}>{strings.search.noResults(query)}</Text>
-        </View>
-      ) : (
-        <FlatList
-          style={styles.list}
-          contentInsetAdjustmentBehavior="automatic"
-          data={results}
-          keyExtractor={(video) => video.id}
-          renderItem={({ item }) => <VideoRow video={item} />}
-        />
-      )}
-    </View>
+    <FlatList
+      ref={listRef}
+      style={styles.list}
+      contentInsetAdjustmentBehavior="automatic"
+      contentContainerStyle={
+        normalizedQuery && results.length === 0 ? styles.emptyContent : undefined
+      }
+      data={results}
+      keyExtractor={(video) => video.id}
+      ListEmptyComponent={
+        normalizedQuery ? (
+          <View style={styles.empty}>
+            <Text style={styles.emptyText}>{strings.search.noResults(query)}</Text>
+          </View>
+        ) : null
+      }
+      renderItem={({ item }) => <VideoRow video={item} />}
+    />
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  list: {
     flex: 1,
     backgroundColor: 'white',
   },
-  list: {
-    flex: 1,
+  emptyContent: {
+    flexGrow: 1,
   },
   empty: {
     flex: 1,

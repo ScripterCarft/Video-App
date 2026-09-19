@@ -14,6 +14,9 @@ const en = {
   library: {
     showComments: 'Show comments',
   },
+  profile: {
+    open: 'Profile',
+  },
   video: {
     views: (label: string) => `${label} views`,
   },

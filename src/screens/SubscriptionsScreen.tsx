@@ -1,6 +1,9 @@
+import { useRef } from 'react';
 import { FlatList, StyleSheet, Text, View } from 'react-native';
+import { useScrollToTop } from '@react-navigation/native';
 import { dummyChannels, subscribedChannelIds, videosForChannel } from '../data/dummyData';
 import { useStrings } from '../i18n/strings';
+import type { Channel } from '../types/video';
 
 const subscribedChannels = dummyChannels.filter((channel) =>
   subscribedChannelIds.includes(channel.id)
@@ -8,9 +11,12 @@ const subscribedChannels = dummyChannels.filter((channel) =>
 
 export function SubscriptionsScreen() {
   const strings = useStrings();
+  const listRef = useRef<FlatList<Channel>>(null);
+  useScrollToTop(listRef);
 
   return (
     <FlatList
+      ref={listRef}
       style={styles.list}
       contentInsetAdjustmentBehavior="automatic"
       data={subscribedChannels}

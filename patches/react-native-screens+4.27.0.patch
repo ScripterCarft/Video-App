@@ -1,0 +1,16 @@
+diff --git a/node_modules/react-native-screens/ios/gamma/stack/screen/RNSStackScreenHeaderCoordinator.mm b/node_modules/react-native-screens/ios/gamma/stack/screen/RNSStackScreenHeaderCoordinator.mm
+index 790b600..218cbd8 100644
+--- a/node_modules/react-native-screens/ios/gamma/stack/screen/RNSStackScreenHeaderCoordinator.mm
++++ b/node_modules/react-native-screens/ios/gamma/stack/screen/RNSStackScreenHeaderCoordinator.mm
+@@ -386,8 +386,9 @@
+ #endif // RNS_IPHONE_OS_VERSION_AVAILABLE(26_0)
+ 
+ #if !TARGET_OS_TV
+-  navItem.largeTitleDisplayMode = _configDataProvider.largeTitleEnabled ? UINavigationItemLargeTitleDisplayModeAlways
+-                                                                        : UINavigationItemLargeTitleDisplayModeNever;
++  navItem.largeTitleDisplayMode = UINavigationItemLargeTitleDisplayModeInline;
++  // was: _configDataProvider.largeTitleEnabled ? UINavigationItemLargeTitleDisplayModeAlways
++  //                                             : UINavigationItemLargeTitleDisplayModeNever;
+ #endif // !TARGET_OS_TV
+ }
+ 

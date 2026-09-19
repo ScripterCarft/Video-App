@@ -1,5 +1,5 @@
 diff --git a/node_modules/react-native-screens/ios/RNSScreenStackHeaderConfig.mm b/node_modules/react-native-screens/ios/RNSScreenStackHeaderConfig.mm
-index 1c84484..2d5c7a4 100644
+index 1c84484..c81d79c 100644
 --- a/node_modules/react-native-screens/ios/RNSScreenStackHeaderConfig.mm
 +++ b/node_modules/react-native-screens/ios/RNSScreenStackHeaderConfig.mm
 @@ -381,7 +381,10 @@ RNS_IGNORE_SUPER_CALL_END
@@ -35,3 +35,29 @@ index 1c84484..2d5c7a4 100644
  #endif
  
    UINavigationBarAppearance *appearance = [self buildAppearance:vc withConfig:config];
+@@ -647,7 +653,25 @@ RNS_IGNORE_SUPER_CALL_END
+ 
+   // This assignment should be done after `navitem.titleView = ...` assignment (iOS 16.0 bug).
+   // See: https://github.com/software-mansion/react-native-screens/issues/1570 (comments)
++#if RNS_IPHONE_OS_VERSION_AVAILABLE(26_0)
++  if (@available(iOS 26.0, *)) {
++    if (config.largeTitle) {
++      // Put the text on the dedicated iOS 26 `largeTitle` property and leave the
++      // compact `.title` empty, instead of both sharing the same string (the old
++      // classic-API way). Otherwise the compact bar keeps showing e.g. "Home"
++      // once the large title has scrolled away, instead of going blank.
++      navitem.largeTitle = config.title;
++      navitem.title = @"";
++    } else {
++      navitem.largeTitle = nil;
++      navitem.title = config.title;
++    }
++  } else {
++    navitem.title = config.title;
++  }
++#else
+   navitem.title = config.title;
++#endif // RNS_IPHONE_OS_VERSION_AVAILABLE(26_0)
+   navitem.leftBarButtonItems = [config barButtonItemsFromConfigs:config.headerLeftBarButtonItems
+                                                 withCurrentItems:navitem.leftBarButtonItems];
+   navitem.rightBarButtonItems = [config barButtonItemsFromConfigs:config.headerRightBarButtonItems

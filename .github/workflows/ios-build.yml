@@ -12,10 +12,10 @@ jobs:
       CI: true
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
@@ -43,7 +43,11 @@ jobs:
           echo "Workspace: $WORKSPACE / Scheme: $SCHEME"
 
       - name: Build unsigned .xcarchive
+        id: archive
+        continue-on-error: true
         run: |
+          set -o pipefail
+          mkdir -p build
           xcodebuild archive \
             -workspace "${{ steps.xcode.outputs.workspace }}" \
             -scheme "${{ steps.xcode.outputs.scheme }}" \
@@ -54,7 +58,34 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
-            PROVISIONING_PROFILE=""
+            PROVISIONING_PROFILE="" \
+            2>&1 | tee build/xcodebuild.log
+
+      - name: Report Xcode archive errors
+        if: steps.archive.outcome == 'failure'
+        run: |
+          ERROR_PATTERN='(^|[[:space:]])(error:|fatal error:)|Command .* failed|Undefined symbols|ld:'
+          {
+            echo "## Xcode archive errors"
+            echo '```text'
+            grep -E "$ERROR_PATTERN" build/xcodebuild.log | tail -n 100 || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          grep -E "$ERROR_PATTERN" build/xcodebuild.log \
+            | tail -n 20 \
+            | while IFS= read -r line; do echo "::error::$line"; done
+
+          exit 1
+
+      - name: Upload Xcode build log
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: xcodebuild-log
+          path: build/xcodebuild.log
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Package unsigned .ipa
         run: |
@@ -70,7 +101,7 @@ jobs:
           ditto -c -k --sequesterRsrc --keepParent Payload VideoApp-unsigned.ipa
 
       - name: Upload .ipa artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: VideoApp-unsigned-ipa
           path: VideoApp-unsigned.ipa

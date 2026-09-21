@@ -9,7 +9,7 @@ struct VideoCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            VideoArtwork(video: video, cornerRadius: compact ? 12 : 16)
+            VideoArtwork(video: video, cornerRadius: compact ? 12 : 14)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(video.title)
@@ -30,6 +30,7 @@ struct VideoCard: View {
                 }
             }
         }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
         .contentShape(Rectangle())
         .contextMenu {
             Button {
@@ -66,4 +67,3 @@ struct VideoCard: View {
         .accessibilityHint("Opens video details")
     }
 }
-

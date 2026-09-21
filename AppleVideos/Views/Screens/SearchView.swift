@@ -2,24 +2,50 @@ import SwiftUI
 
 struct SearchView: View {
     @State private var query = ""
+    @State private var submittedQuery = ""
+
+    private let suggestions = [
+        "Kurzgesagt",
+        "Veritasium",
+        "Physics",
+        "Space documentaries",
+        "Technology"
+    ]
 
     var body: some View {
         NavigationStack {
             Group {
-                if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                if submittedQuery.isEmpty {
                     ContentUnavailableView {
                         Label("Search YouTube", systemImage: "play.rectangle.on.rectangle")
                     } description: {
-                        Text("Find videos without leaving Apple Videos.")
+                        Text("Search for videos, topics, or creators.")
                     }
                 } else {
-                    SearchResultsView(query: query)
-                        .id(query)
+                    SearchResultsView(query: submittedQuery)
                 }
             }
             .navigationTitle("Search")
             .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "Videos, topics, or creators")
+            .searchSuggestions {
+                ForEach(suggestions, id: \.self) { suggestion in
+                    Label(suggestion, systemImage: "magnifyingglass")
+                        .searchCompletion(suggestion)
+                }
+            }
+            .onSubmit(of: .search) {
+                submitSearch()
+            }
+            .onChange(of: query) { _, newValue in
+                if newValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    submittedQuery = ""
+                }
+            }
         }
+    }
+
+    private func submitSearch() {
+        submittedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
 
@@ -67,8 +93,6 @@ struct SearchResultsView: View {
             VideoDetailView(video: video, transition: transition)
         }
         .task(id: query) {
-            try? await Task.sleep(for: .milliseconds(450))
-            guard !Task.isCancelled else { return }
             await load()
         }
         .refreshable {
@@ -89,4 +113,3 @@ struct SearchResultsView: View {
         isLoading = false
     }
 }
-

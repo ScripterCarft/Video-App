@@ -5,10 +5,17 @@ import WebKit
 struct VideoDetailView: View {
     let video: Video
     let transition: Namespace.ID
+    let transitionID: String
 
     @Environment(LibraryStore.self) private var library
     @State private var showPlayer = false
     @State private var feedback = 0
+
+    init(video: Video, transition: Namespace.ID, transitionID: String? = nil) {
+        self.video = video
+        self.transition = transition
+        self.transitionID = transitionID ?? video.id
+    }
 
     var body: some View {
         ScrollView {
@@ -92,7 +99,7 @@ struct VideoDetailView: View {
         }
         .ignoresSafeArea(edges: .top)
         .toolbarBackground(.hidden, for: .navigationBar)
-        .navigationTransition(.zoom(sourceID: video.id, in: transition))
+        .navigationTransition(.zoom(sourceID: transitionID, in: transition))
         .fullScreenCover(isPresented: $showPlayer) {
             PlayerScreen(video: video)
         }
@@ -146,6 +153,8 @@ private struct YouTubePlayerView: UIViewRepresentable {
     func makeUIView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
         configuration.allowsInlineMediaPlayback = true
+        configuration.allowsAirPlayForMediaPlayback = true
+        configuration.allowsPictureInPictureMediaPlayback = true
         configuration.mediaTypesRequiringUserActionForPlayback = []
         configuration.defaultWebpagePreferences.allowsContentJavaScript = true
 
@@ -154,6 +163,7 @@ private struct YouTubePlayerView: UIViewRepresentable {
         view.scrollView.isScrollEnabled = false
         view.isOpaque = false
         view.backgroundColor = .black
+        view.customUserAgent = "Mozilla/5.0 (iPhone; CPU iPhone OS 27_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.0 Mobile/15E148 Safari/604.1"
         return view
     }
 
@@ -161,31 +171,24 @@ private struct YouTubePlayerView: UIViewRepresentable {
         guard context.coordinator.loadedVideoID != videoID else { return }
         context.coordinator.loadedVideoID = videoID
 
-        let html = """
-        <!doctype html>
-        <html>
-        <head>
-          <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-          <style>
-            html, body, iframe { width:100%; height:100%; margin:0; padding:0; background:#000; overflow:hidden; }
-          </style>
-        </head>
-        <body>
-          <iframe
-            src="https://www.youtube.com/embed/\(videoID)?playsinline=1&autoplay=1&rel=0&modestbranding=1"
-            title="YouTube video player"
-            frameborder="0"
-            allow="autoplay; encrypted-media; picture-in-picture"
-            allowfullscreen>
-          </iframe>
-        </body>
-        </html>
-        """
-        webView.loadHTMLString(html, baseURL: URL(string: "https://www.youtube.com"))
+        let referrer = "https://github.com/ScripterCarft/Video-App/"
+        var components = URLComponents(string: "https://www.youtube.com/embed/\(videoID)")!
+        components.queryItems = [
+            URLQueryItem(name: "playsinline", value: "1"),
+            URLQueryItem(name: "autoplay", value: "1"),
+            URLQueryItem(name: "rel", value: "0"),
+            URLQueryItem(name: "origin", value: "https://github.com"),
+            URLQueryItem(name: "widget_referrer", value: referrer)
+        ]
+        guard let url = components.url else { return }
+
+        var request = URLRequest(url: url)
+        request.setValue(referrer, forHTTPHeaderField: "Referer")
+        request.setValue("https://github.com", forHTTPHeaderField: "Origin")
+        webView.load(request)
     }
 
     final class Coordinator: NSObject, WKNavigationDelegate {
         var loadedVideoID: String?
     }
 }
-

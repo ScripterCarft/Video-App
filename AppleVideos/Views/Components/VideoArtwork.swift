@@ -24,8 +24,7 @@ struct VideoArtwork: View {
                     placeholder
                 }
             }
-            .frame(maxWidth: .infinity)
-            .aspectRatio(16 / 9, contentMode: .fit)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .clipped()
 
             if let duration = video.duration {
@@ -38,6 +37,8 @@ struct VideoArtwork: View {
                     .padding(8)
             }
         }
+        .aspectRatio(16 / 9, contentMode: .fit)
+        .background(.quaternary)
         .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
         .contentShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
     }
@@ -52,4 +53,3 @@ struct VideoArtwork: View {
             }
     }
 }
-

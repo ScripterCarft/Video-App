@@ -7,38 +7,45 @@ struct HomeView: View {
     private let featured = Video.curated[0]
     private let picks = Array(Video.curated.dropFirst())
 
+    private struct HomeRoute: Hashable {
+        let video: Video
+        let transitionID: String
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 30) {
-                    NavigationLink(value: featured) {
+                    NavigationLink(value: HomeRoute(video: featured, transitionID: "featured-\(featured.id)")) {
                         featuredHero
                     }
                     .buttonStyle(.plain)
-                    .matchedTransitionSource(id: featured.id, in: transition)
+                    .matchedTransitionSource(id: "featured-\(featured.id)", in: transition)
 
                     if !library.recentlyWatched.isEmpty {
                         videoRow(
                             title: "Continue Watching",
                             subtitle: "Pick up where you left off",
-                            videos: library.recentlyWatched
+                            videos: library.recentlyWatched,
+                            sectionID: "continue"
                         )
                     }
 
                     videoRow(
                         title: "Made for Tonight",
-                        subtitle: "A few hand-picked videos to get started",
-                        videos: picks
+                        subtitle: "Kurzgesagt, Veritasium, and more",
+                        videos: picks,
+                        sectionID: "picks"
                     )
 
                     editorialCollection
                 }
-                .padding(.bottom, 28)
+                .padding(.vertical, 12)
             }
-            .background(Color(uiColor: .systemGroupedBackground))
+            .background(Color(uiColor: .systemBackground))
             .navigationTitle("Home")
-            .navigationDestination(for: Video.self) { video in
-                VideoDetailView(video: video, transition: transition)
+            .navigationDestination(for: HomeRoute.self) { route in
+                VideoDetailView(video: route.video, transition: transition, transitionID: route.transitionID)
             }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -54,7 +61,7 @@ struct HomeView: View {
 
     private var featuredHero: some View {
         ZStack(alignment: .bottomLeading) {
-            VideoArtwork(video: featured, cornerRadius: 26)
+            VideoArtwork(video: featured, cornerRadius: 22)
                 .overlay {
                     LinearGradient(
                         colors: [.clear, .black.opacity(0.15), .black.opacity(0.88)],
@@ -81,27 +88,28 @@ struct HomeView: View {
             }
             .padding(22)
         }
-        .padding(.horizontal)
+        .padding(.horizontal, 16)
     }
 
-    private func videoRow(title: String, subtitle: String, videos: [Video]) -> some View {
+    private func videoRow(title: String, subtitle: String, videos: [Video], sectionID: String) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             SectionHeader(title: title, subtitle: subtitle)
-                .padding(.horizontal)
+                .padding(.horizontal, 16)
 
             ScrollView(.horizontal) {
                 LazyHStack(alignment: .top, spacing: 14) {
                     ForEach(videos) { video in
-                        NavigationLink(value: video) {
+                        let sourceID = "\(sectionID)-\(video.id)"
+                        NavigationLink(value: HomeRoute(video: video, transitionID: sourceID)) {
                             VideoCard(video: video, compact: true)
-                                .frame(width: 260)
+                                .frame(width: 272, alignment: .top)
                         }
                         .buttonStyle(.plain)
-                        .matchedTransitionSource(id: video.id, in: transition)
+                        .matchedTransitionSource(id: sourceID, in: transition)
                     }
                 }
-                .padding(.horizontal)
             }
+            .contentMargins(.horizontal, 16, for: .scrollContent)
             .scrollIndicators(.hidden)
         }
     }
@@ -112,7 +120,7 @@ struct HomeView: View {
                 title: "Apple Videos Spotlight",
                 subtitle: "Beautiful stories, selected by hand"
             )
-            .padding(.horizontal)
+            .padding(.horizontal, 16)
 
             VStack(alignment: .leading, spacing: 8) {
                 Image(systemName: "sparkles.tv.fill")
@@ -127,8 +135,7 @@ struct HomeView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(22)
             .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-            .padding(.horizontal)
+            .padding(.horizontal, 16)
         }
     }
 }
-

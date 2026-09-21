@@ -32,36 +32,36 @@ struct Video: Identifiable, Hashable, Codable, Sendable {
 extension Video {
     static let curated: [Video] = [
         .youtube(
-            id: "aqz-KE-bpKQ",
-            title: "Big Buck Bunny — an open movie",
-            channel: "Blender Foundation",
-            duration: "9:56",
+            id: "UebSfjmQNvs",
+            title: "Do You Have a Free Will?",
+            channel: "Kurzgesagt – In a Nutshell",
+            duration: "12:44",
             published: "Featured",
-            views: "A cinematic short"
+            views: "Science & ideas"
         ),
         .youtube(
-            id: "M7lc1UVf-VE",
-            title: "YouTube Developers Live: Embedded Player",
-            channel: "Google for Developers",
-            duration: "1:12",
-            published: "Developer showcase",
-            views: "Official sample"
+            id: "d6iQrh2TK98",
+            title: "Why Is This Number Everywhere?",
+            channel: "Veritasium",
+            duration: "22:08",
+            published: "Editor’s pick",
+            views: "Mathematics"
         ),
         .youtube(
-            id: "ScMzIvxBSi4",
-            title: "A quiet moment in nature",
-            channel: "Apple Videos Editorial",
-            duration: "0:30",
-            published: "Today",
-            views: "Recommended"
+            id: "h6fcK_fRYaI",
+            title: "The Egg — A Short Story",
+            channel: "Kurzgesagt – In a Nutshell",
+            duration: "7:55",
+            published: "Essential",
+            views: "Animated story"
         ),
         .youtube(
-            id: "ysz5S6PUM-U",
-            title: "Sintel — open movie trailer",
-            channel: "Blender Foundation",
-            duration: "0:52",
+            id: "pTn6Ewhb27k",
+            title: "The Simplest Math Problem No One Can Solve",
+            channel: "Veritasium",
+            duration: "22:09",
             published: "Staff pick",
-            views: "Animation"
+            views: "Mathematics"
         )
     ]
 
@@ -99,4 +99,3 @@ struct VideoPlaylist: Identifiable, Hashable, Codable, Sendable {
         self.videoIDs = videoIDs
     }
 }
-

@@ -23,10 +23,13 @@ actor YouTubeService {
     }
 
     private var cachedConfiguration: WebConfiguration?
+    private var cachedSearches: [String: [Video]] = [:]
 
     func search(_ query: String) async throws -> [Video] {
         let normalized = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalized.isEmpty else { return [] }
+        let cacheKey = normalized.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+        if let cached = cachedSearches[cacheKey] { return cached }
 
         let configuration = try await webConfiguration()
         guard let endpoint = URL(string: "https://www.youtube.com/youtubei/v1/search?key=\(configuration.apiKey)&prettyPrint=false") else {
@@ -57,7 +60,14 @@ actor YouTubeService {
 
         let root = try JSONSerialization.jsonObject(with: data)
         let renderers = Self.collectVideoRenderers(in: root)
-        return renderers.compactMap(Self.video(from:))
+        var seen = Set<String>()
+        let videos = renderers
+            .compactMap(Self.video(from:))
+            .filter { seen.insert($0.id).inserted }
+            .prefix(30)
+        let results = Array(videos)
+        cachedSearches[cacheKey] = results
+        return results
     }
 
     private func webConfiguration() async throws -> WebConfiguration {
@@ -147,4 +157,3 @@ actor YouTubeService {
         return URL(string: url.hasPrefix("//") ? "https:\(url)" : url)
     }
 }
-

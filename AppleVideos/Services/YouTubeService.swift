@@ -24,6 +24,7 @@ actor YouTubeService {
 
     private var cachedConfiguration: WebConfiguration?
     private var cachedSearches: [String: [Video]] = [:]
+    private var cachedDescriptions: [String: String] = [:]
 
     func search(_ query: String) async throws -> [Video] {
         let normalized = query.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -69,6 +70,44 @@ actor YouTubeService {
         let results = Array(videos)
         cachedSearches[cacheKey] = results
         return results
+    }
+
+    func description(for videoID: String) async throws -> String? {
+        if let cached = cachedDescriptions[videoID] { return cached }
+
+        let configuration = try await webConfiguration()
+        guard let endpoint = URL(string: "https://www.youtube.com/youtubei/v1/player?key=\(configuration.apiKey)&prettyPrint=false") else {
+            throw SearchError.configurationUnavailable
+        }
+
+        var request = URLRequest(url: endpoint)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("https://www.youtube.com", forHTTPHeaderField: "Origin")
+        request.setValue("https://www.youtube.com/", forHTTPHeaderField: "Referer")
+        request.httpBody = try JSONSerialization.data(withJSONObject: [
+            "context": [
+                "client": [
+                    "clientName": "WEB",
+                    "clientVersion": configuration.clientVersion,
+                    "hl": Locale.current.language.languageCode?.identifier ?? "en",
+                    "gl": Locale.current.region?.identifier ?? "US"
+                ]
+            ],
+            "videoId": videoID
+        ])
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse, 200..<300 ~= http.statusCode,
+              let root = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let details = root["videoDetails"] as? [String: Any],
+              let description = details["shortDescription"] as? String
+        else { return nil }
+
+        let trimmed = description.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        cachedDescriptions[videoID] = trimmed
+        return trimmed
     }
 
     private func webConfiguration() async throws -> WebConfiguration {

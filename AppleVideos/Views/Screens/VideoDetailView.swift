@@ -11,6 +11,7 @@ struct VideoDetailView: View {
     @State private var showPlayer = false
     @State private var feedback = 0
     @State private var showDescription = false
+    @State private var loadedDescription: String?
 
     init(video: Video, transition: Namespace.ID, transitionID: String? = nil) {
         self.video = video
@@ -68,11 +69,29 @@ struct VideoDetailView: View {
             PlayerScreen(video: video)
         }
         .sheet(isPresented: $showDescription) {
-            DescriptionSheet(video: video)
+            DescriptionSheet(video: video, description: visibleDescription)
                 .presentationDetents([.fraction(0.55), .fraction(0.8)])
                 .presentationDragIndicator(.visible)
         }
+        .task(id: video.id) {
+            guard video.descriptionText?.isEmpty != false else { return }
+            loadedDescription = try? await YouTubeService.shared.description(for: video.id)
+        }
         .sensoryFeedback(.selection, trigger: feedback)
+    }
+
+    private var visibleDescription: String? {
+        let candidate = video.descriptionText ?? loadedDescription
+        guard let candidate, !candidate.isEmpty else { return nil }
+        return candidate
+    }
+
+    private var textMetadata: [String] {
+        [video.formattedDuration, video.viewCountText, video.publishedText]
+            .compactMap { value in
+                guard let value, !value.isEmpty else { return nil }
+                return value
+            }
     }
 
     private var detailStage: some View {
@@ -153,7 +172,7 @@ struct VideoDetailView: View {
                     Spacer(minLength: 0)
                 }
 
-                if let description = video.descriptionText, !description.isEmpty {
+                if let description = visibleDescription {
                     ZStack(alignment: .bottomTrailing) {
                         Text(description)
                             .font(.subheadline)
@@ -162,54 +181,50 @@ struct VideoDetailView: View {
                             .truncationMode(.tail)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .shadow(color: .black.opacity(0.58), radius: 8, y: 2)
-
-                        HStack(spacing: 0) {
-                            LinearGradient(
-                                colors: [.clear, .black.opacity(0.34)],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
-                            .frame(width: 26, height: 24)
-                            .blur(radius: 2)
-
-                            Button("MORE") {
-                                showDescription = true
+                            .mask {
+                                VStack(spacing: 0) {
+                                    Color.white
+                                    HStack(spacing: 0) {
+                                        Color.white
+                                        LinearGradient(
+                                            colors: [.white, .clear],
+                                            startPoint: .leading,
+                                            endPoint: .trailing
+                                        )
+                                        .frame(width: 84)
+                                    }
+                                }
                             }
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.white.opacity(0.88))
-                            .buttonStyle(.plain)
-                            .padding(.horizontal, 7)
-                            .padding(.vertical, 3)
-                            .background(.ultraThinMaterial, in: Capsule())
+
+                        Button("MORE") {
+                            showDescription = true
                         }
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.white.opacity(0.88))
+                        .buttonStyle(.plain)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(.ultraThinMaterial, in: Capsule())
                     }
                 }
 
                 HStack(spacing: 7) {
+                    ForEach(Array(textMetadata.enumerated()), id: \.offset) { index, item in
+                        if index > 0 {
+                            Text("·")
+                                .foregroundStyle(.white.opacity(0.42))
+                        }
+                        Text(item)
+                            .foregroundStyle(.white.opacity(0.7))
+                            .lineLimit(1)
+                    }
+
                     ForEach(video.badges ?? [], id: \.self) { badge in
                         MetadataBadge(text: badge)
                     }
-
-                    if let duration = video.formattedDuration {
-                        Text(duration)
-                            .font(.caption.weight(.semibold).monospacedDigit())
-                            .foregroundStyle(.white.opacity(0.72))
-                    }
-
-                    if let context = video.viewCountText, !context.isEmpty {
-                        Text(context)
-                            .font(.caption)
-                            .foregroundStyle(.white.opacity(0.68))
-                            .lineLimit(1)
-                    }
-
-                    if let published = video.publishedText {
-                        Text(published)
-                            .font(.caption)
-                            .foregroundStyle(.white.opacity(0.6))
-                            .lineLimit(1)
-                    }
                 }
+                .font(.footnote)
+                .minimumScaleFactor(0.86)
                 .shadow(color: .black.opacity(0.56), radius: 7, y: 2)
         }
         .foregroundStyle(.white)
@@ -220,6 +235,7 @@ struct VideoDetailView: View {
 
 private struct DescriptionSheet: View {
     let video: Video
+    let description: String?
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -231,7 +247,7 @@ private struct DescriptionSheet: View {
                     Text(video.channelName)
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.secondary)
-                    Text(video.descriptionText ?? "No description is available for this video.")
+                    Text(description ?? "No description is available for this video.")
                         .font(.body)
                         .textSelection(.enabled)
                 }
@@ -254,8 +270,7 @@ private struct MetadataBadge: View {
 
     var body: some View {
         Text(text)
-            .font(.caption2.weight(.bold))
-            .tracking(0.2)
+            .font(.footnote)
             .foregroundStyle(.white.opacity(0.82))
             .padding(.horizontal, 6)
             .padding(.vertical, 3)

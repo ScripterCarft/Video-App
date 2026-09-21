@@ -25,7 +25,7 @@ struct VideoDetailView: View {
             VStack(alignment: .leading, spacing: 22) {
                 detailStage
 
-                if dynamicTypeSize.isAccessibility {
+                if dynamicTypeSize >= .accessibility1 {
                     accessibilityDetails
                 }
 
@@ -189,7 +189,7 @@ struct VideoDetailView: View {
                     Spacer(minLength: 0)
                 }
 
-                if !dynamicTypeSize.isAccessibility {
+                if dynamicTypeSize < .accessibility1 {
                     descriptionPreview
                     metadataRow
                 }

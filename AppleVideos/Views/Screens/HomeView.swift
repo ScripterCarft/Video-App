@@ -116,7 +116,9 @@ struct HomeView: View {
                         NavigationLink(value: HomeRoute(video: video, transitionID: sourceID)) {
                             VideoCard(video: video, compact: true)
                                 .frame(width: 272, alignment: .top)
+                                .clipped()
                         }
+                        .frame(width: 272)
                         .buttonStyle(.plain)
                         .matchedTransitionSource(id: sourceID, in: transition)
                     }

@@ -16,6 +16,9 @@ struct VideoCard: View {
                     .font(.headline)
                     .foregroundStyle(.primary)
                     .lineLimit(2)
+                    .truncationMode(.tail)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .frame(minHeight: 22, alignment: .topLeading)
 
                 Text(video.channelName)
@@ -31,6 +34,7 @@ struct VideoCard: View {
                 }
             }
         }
+        .clipped()
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .contentShape(Rectangle())
         .contextMenu {

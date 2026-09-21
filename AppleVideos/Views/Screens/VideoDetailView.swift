@@ -10,8 +10,7 @@ struct VideoDetailView: View {
     @Environment(LibraryStore.self) private var library
     @State private var showPlayer = false
     @State private var feedback = 0
-    @State private var descriptionExpanded = false
-    @State private var showDownloadNotice = false
+    @State private var showDescription = false
 
     init(video: Video, transition: Namespace.ID, transitionID: String? = nil) {
         self.video = video
@@ -35,7 +34,6 @@ struct VideoDetailView: View {
             }
             .padding(.bottom, 30)
         }
-        .coordinateSpace(name: "videoDetailScroll")
         .background(.black)
         .foregroundStyle(.white)
         .ignoresSafeArea(edges: .top)
@@ -44,12 +42,19 @@ struct VideoDetailView: View {
         .toolbar {
             if let url = video.youtubeURL {
                 ToolbarItemGroup(placement: .topBarTrailing) {
-                    Button {
-                        showDownloadNotice = true
+                    Menu {
+                        Section("Add to Playlist") {
+                            ForEach(library.playlists) { playlist in
+                                Button(playlist.name) {
+                                    library.add(video, to: playlist.id)
+                                    feedback += 1
+                                }
+                            }
+                        }
                     } label: {
-                        Image(systemName: "arrow.down")
+                        Image(systemName: "ellipsis")
                     }
-                    .accessibilityLabel("Download")
+                    .accessibilityLabel("More options")
 
                     ShareLink(item: url) {
                         Image(systemName: "square.and.arrow.up")
@@ -62,47 +67,26 @@ struct VideoDetailView: View {
         .fullScreenCover(isPresented: $showPlayer) {
             PlayerScreen(video: video)
         }
-        .alert("Download Unavailable", isPresented: $showDownloadNotice) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text("YouTube does not provide an offline download to Apple Videos. Direct video sources can support downloads later.")
+        .sheet(isPresented: $showDescription) {
+            DescriptionSheet(video: video)
+                .presentationDetents([.fraction(0.55), .fraction(0.8)])
+                .presentationDragIndicator(.visible)
         }
         .sensoryFeedback(.selection, trigger: feedback)
     }
 
     private var detailStage: some View {
         GeometryReader { geometry in
-            let minY = geometry.frame(in: .named("videoDetailScroll")).minY
-            let scrollUp = max(0, -minY)
-            let pullDown = max(0, minY)
             let stageHeight = geometry.size.height
 
             ZStack(alignment: .bottomLeading) {
                 VideoHeroArtwork(video: video, stageAspectRatio: 2.0 / 3.0)
                     .frame(width: geometry.size.width, height: stageHeight)
-                    .scaleEffect(1 + (pullDown / max(stageHeight, 1)) * 0.55, anchor: .bottom)
-                    .offset(y: scrollUp * 0.76 - pullDown * 0.36)
+                    .offset(y: -stageHeight * 0.155)
 
                 Color.black
-                    .opacity(min(0.26, scrollUp / max(stageHeight, 1)))
-
-                Rectangle()
-                    .fill(.black.opacity(0.72))
-                    .frame(height: stageHeight * 0.48)
-                    .blur(radius: 44)
-                    .offset(y: stageHeight * 0.2)
-
-                LinearGradient(
-                    stops: [
-                        .init(color: .clear, location: 0.2),
-                        .init(color: .black.opacity(0.12), location: 0.4),
-                        .init(color: .black.opacity(0.58), location: 0.66),
-                        .init(color: .black.opacity(0.94), location: 0.88),
-                        .init(color: .black, location: 1)
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
+                    .frame(height: stageHeight * 0.47)
+                    .shadow(color: .black.opacity(0.72), radius: 18, y: -10)
 
                 detailInformation
             }
@@ -130,9 +114,12 @@ struct VideoDetailView: View {
                     } label: {
                         Label("Play", systemImage: "play.fill")
                             .font(.headline)
-                            .frame(maxWidth: .infinity, minHeight: 32)
+                            .foregroundStyle(.black)
+                            .padding(.horizontal, 26)
+                            .frame(minHeight: 50)
+                            .background(.white, in: Capsule())
                     }
-                    .buttonStyle(.glassProminent)
+                    .buttonStyle(.plain)
 
                     Button {
                         library.toggleSaved(video)
@@ -140,42 +127,37 @@ struct VideoDetailView: View {
                     } label: {
                         Image(systemName: library.isSaved(video) ? "checkmark" : "plus")
                             .font(.headline)
-                            .frame(width: 32, height: 32)
-                    }
-                    .buttonStyle(.glass)
-                    .accessibilityLabel(library.isSaved(video) ? "Remove from Saved" : "Add to Saved")
-
-                    Menu {
-                        ForEach(library.playlists) { playlist in
-                            Button(playlist.name) {
-                                library.add(video, to: playlist.id)
-                                feedback += 1
+                            .foregroundStyle(.white)
+                            .frame(width: 50, height: 50)
+                            .background(.ultraThinMaterial, in: Circle())
+                            .overlay {
+                                Circle()
+                                    .strokeBorder(.white.opacity(0.16), lineWidth: 0.5)
                             }
-                        }
-                    } label: {
-                        Image(systemName: "ellipsis")
-                            .font(.headline)
-                            .frame(width: 32, height: 32)
                     }
-                    .buttonStyle(.glass)
-                    .accessibilityLabel("More options")
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(library.isSaved(video) ? "Remove from Saved" : "Add to Saved")
                 }
 
                 if let description = video.descriptionText, !description.isEmpty {
-                    VStack(alignment: .leading, spacing: 5) {
+                    ZStack(alignment: .bottomTrailing) {
                         Text(description)
                             .font(.subheadline)
                             .foregroundStyle(.white.opacity(0.88))
-                            .lineLimit(descriptionExpanded ? nil : 3)
+                            .lineLimit(2)
+                            .truncationMode(.tail)
+                            .padding(.trailing, 62)
+                            .frame(maxWidth: .infinity, alignment: .leading)
 
-                        Button(descriptionExpanded ? "LESS" : "MORE") {
-                            withAnimation(.snappy) {
-                                descriptionExpanded.toggle()
-                            }
+                        Button("MORE") {
+                            showDescription = true
                         }
                         .font(.caption.weight(.bold))
-                        .foregroundStyle(.white.opacity(0.7))
+                        .foregroundStyle(.white.opacity(0.82))
                         .buttonStyle(.plain)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(.ultraThinMaterial, in: Capsule())
                     }
                 }
 
@@ -201,6 +183,37 @@ struct VideoDetailView: View {
         .foregroundStyle(.white)
         .padding(.horizontal, 18)
         .padding(.bottom, 24)
+    }
+}
+
+private struct DescriptionSheet: View {
+    let video: Video
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text(video.title)
+                        .font(.title2.bold())
+                    Text(video.channelName)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    Text(video.descriptionText ?? "No description is available for this video.")
+                        .font(.body)
+                        .textSelection(.enabled)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding()
+            }
+            .navigationTitle("About")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
     }
 }
 

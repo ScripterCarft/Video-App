@@ -65,6 +65,7 @@ struct VideoArtwork: View {
 struct VideoHeroArtwork: View {
     let video: Video
     var cornerRadius: CGFloat = 0
+    var stageAspectRatio: CGFloat = 4.0 / 5.0
 
     var body: some View {
         AsyncImage(url: video.artworkURL) { phase in
@@ -113,7 +114,7 @@ struct VideoHeroArtwork: View {
                 }
             }
         }
-        .aspectRatio(4 / 3, contentMode: .fit)
+        .aspectRatio(stageAspectRatio, contentMode: .fit)
         .background(.quaternary)
         .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
         .overlay {

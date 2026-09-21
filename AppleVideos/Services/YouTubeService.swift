@@ -136,8 +136,30 @@ actor YouTubeService {
             duration: text(from: renderer["lengthText"]),
             published: text(from: renderer["publishedTimeText"]),
             views: text(from: renderer["viewCountText"]),
-            thumbnailURL: thumbnailURL
+            thumbnailURL: thumbnailURL,
+            description: text(from: renderer["descriptionSnippet"]),
+            badges: badges(from: renderer)
         )
+    }
+
+    private static func badges(from renderer: [String: Any]) -> [String]? {
+        guard let source = renderer["badges"] as? [[String: Any]] else { return nil }
+        let allowed = Set(["4K", "HD", "HDR", "CC", "SDH"])
+        let values = source.compactMap { badge -> String? in
+            guard let metadata = badge["metadataBadgeRenderer"] as? [String: Any] else { return nil }
+            let candidate = (metadata["label"] as? String) ?? (metadata["tooltip"] as? String)
+            guard let candidate else { return nil }
+            let normalized = candidate.uppercased()
+            if normalized.contains("4K") { return "4K" }
+            if normalized.contains("HDR") { return "HDR" }
+            if normalized.contains("SDH") { return "SDH" }
+            if normalized.contains("CC") || normalized.contains("CAPTION") { return "CC" }
+            if normalized == "HD" { return "HD" }
+            return nil
+        }
+        let unique = Array(NSOrderedSet(array: values)) as? [String] ?? values
+        let filtered = unique.filter { allowed.contains($0) }
+        return filtered.isEmpty ? nil : filtered
     }
 
     private static func isShort(_ renderer: [String: Any]) -> Bool {

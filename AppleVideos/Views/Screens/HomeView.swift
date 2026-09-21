@@ -61,7 +61,7 @@ struct HomeView: View {
 
     private var featuredHero: some View {
         ZStack(alignment: .bottomLeading) {
-            VideoHeroArtwork(video: featured, cornerRadius: 22)
+            VideoHeroArtwork(video: featured, cornerRadius: 22, stageAspectRatio: 2.0 / 3.0)
                 .overlay {
                     LinearGradient(
                         colors: [.clear, .black.opacity(0.15), .black.opacity(0.88)],

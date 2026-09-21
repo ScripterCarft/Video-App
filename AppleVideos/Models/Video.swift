@@ -13,6 +13,8 @@ struct Video: Identifiable, Hashable, Codable, Sendable {
     let duration: String?
     let publishedText: String?
     let viewCountText: String?
+    let descriptionText: String?
+    let badges: [String]?
     let source: Source
     let playbackURL: URL?
 
@@ -34,6 +36,21 @@ struct Video: Identifiable, Hashable, Codable, Sendable {
             .filter { !$0.isEmpty }
             .joined(separator: " · ")
     }
+
+    var formattedDuration: String? {
+        guard let duration else { return nil }
+        let values = duration.split(separator: ":").compactMap { Int($0) }
+        switch values.count {
+        case 3:
+            let hours = values[0]
+            let minutes = values[1]
+            return minutes == 0 ? "\(hours)h" : "\(hours)h \(minutes)m"
+        case 2:
+            return "\(values[0])m"
+        default:
+            return duration
+        }
+    }
 }
 
 extension Video {
@@ -44,7 +61,9 @@ extension Video {
             channel: "Kurzgesagt – In a Nutshell",
             duration: "12:44",
             published: "Featured",
-            views: "Science & ideas"
+            views: "Science & ideas",
+            description: "What if every decision you make is the inevitable result of everything that came before? Kurzgesagt explores one of philosophy’s oldest questions through science and animation.",
+            badges: ["HD", "CC"]
         ),
         .youtube(
             id: "d6iQrh2TK98",
@@ -52,7 +71,9 @@ extension Video {
             channel: "Veritasium",
             duration: "22:08",
             published: "Editor’s pick",
-            views: "Mathematics"
+            views: "Mathematics",
+            description: "Veritasium follows a surprising mathematical constant through geometry, probability, and the patterns hidden in the world around us.",
+            badges: ["HD", "CC"]
         ),
         .youtube(
             id: "h6fcK_fRYaI",
@@ -60,7 +81,9 @@ extension Video {
             channel: "Kurzgesagt – In a Nutshell",
             duration: "7:55",
             published: "Essential",
-            views: "Animated story"
+            views: "Animated story",
+            description: "A short animated story about life, identity, and the connections between people, adapted by Kurzgesagt.",
+            badges: ["HD", "CC"]
         ),
         .youtube(
             id: "pTn6Ewhb27k",
@@ -68,7 +91,9 @@ extension Video {
             channel: "Veritasium",
             duration: "22:09",
             published: "Staff pick",
-            views: "Mathematics"
+            views: "Mathematics",
+            description: "A deceptively simple mathematical problem leads to patterns that have resisted a complete explanation for decades.",
+            badges: ["HD", "CC"]
         )
     ]
 
@@ -79,7 +104,9 @@ extension Video {
         duration: String? = nil,
         published: String? = nil,
         views: String? = nil,
-        thumbnailURL: URL? = nil
+        thumbnailURL: URL? = nil,
+        description: String? = nil,
+        badges: [String]? = nil
     ) -> Video {
         Video(
             id: id,
@@ -89,6 +116,8 @@ extension Video {
             duration: duration,
             publishedText: published,
             viewCountText: views,
+            descriptionText: description,
+            badges: badges,
             source: .youtube,
             playbackURL: nil
         )

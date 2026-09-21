@@ -10,6 +10,7 @@ struct VideoDetailView: View {
     @Environment(LibraryStore.self) private var library
     @State private var showPlayer = false
     @State private var feedback = 0
+    @State private var descriptionExpanded = false
 
     init(video: Video, transition: Namespace.ID, transitionID: String? = nil) {
         self.video = video
@@ -20,68 +21,7 @@ struct VideoDetailView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
-                VideoHeroArtwork(video: video)
-                    .overlay {
-                        Button {
-                            library.markWatched(video)
-                            showPlayer = true
-                            feedback += 1
-                        } label: {
-                            Image(systemName: "play.fill")
-                                .font(.title2.weight(.bold))
-                                .foregroundStyle(.black)
-                                .frame(width: 64, height: 64)
-                                .background(.white, in: Circle())
-                                .shadow(color: .black.opacity(0.25), radius: 18, y: 8)
-                        }
-                        .accessibilityLabel("Play \(video.title)")
-                    }
-
-                VStack(alignment: .leading, spacing: 12) {
-                    Text(video.title)
-                        .font(.title2.bold())
-
-                    Text(video.channelName)
-                        .font(.headline)
-                        .foregroundStyle(.secondary)
-
-                    if !video.metadataLine.isEmpty {
-                        Text(video.metadataLine)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    HStack(spacing: 12) {
-                        Button {
-                            library.toggleSaved(video)
-                            feedback += 1
-                        } label: {
-                            Label(library.isSaved(video) ? "Saved" : "Save", systemImage: library.isSaved(video) ? "bookmark.fill" : "bookmark")
-                        }
-                        .buttonStyle(.borderedProminent)
-
-                        Menu {
-                            ForEach(library.playlists) { playlist in
-                                Button(playlist.name) {
-                                    library.add(video, to: playlist.id)
-                                    feedback += 1
-                                }
-                            }
-                        } label: {
-                            Label("Playlist", systemImage: "text.badge.plus")
-                        }
-                        .buttonStyle(.bordered)
-
-                        if let url = video.youtubeURL {
-                            ShareLink(item: url) {
-                                Image(systemName: "square.and.arrow.up")
-                            }
-                            .buttonStyle(.bordered)
-                            .accessibilityLabel("Share")
-                        }
-                    }
-                }
-                .padding(.horizontal)
+                detailStage
 
                 Divider()
                     .padding(.horizontal)
@@ -99,11 +39,146 @@ struct VideoDetailView: View {
         }
         .ignoresSafeArea(edges: .top)
         .toolbarBackground(.hidden, for: .navigationBar)
+        .toolbar {
+            if let url = video.youtubeURL {
+                ToolbarItem(placement: .topBarLeading) {
+                    ShareLink(item: url) {
+                        Image(systemName: "square.and.arrow.up")
+                    }
+                    .accessibilityLabel("Share")
+                }
+            }
+        }
         .navigationTransition(.zoom(sourceID: transitionID, in: transition))
         .fullScreenCover(isPresented: $showPlayer) {
             PlayerScreen(video: video)
         }
         .sensoryFeedback(.selection, trigger: feedback)
+    }
+
+    private var detailStage: some View {
+        ZStack(alignment: .bottomLeading) {
+            VideoHeroArtwork(video: video, stageAspectRatio: 4.0 / 5.0)
+
+            LinearGradient(
+                stops: [
+                    .init(color: .clear, location: 0.24),
+                    .init(color: .black.opacity(0.28), location: 0.48),
+                    .init(color: .black.opacity(0.9), location: 0.78),
+                    .init(color: .black, location: 1)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+
+            VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(video.title)
+                        .font(.title.bold())
+                        .lineLimit(3)
+                    Text(video.channelName)
+                        .font(.headline)
+                        .foregroundStyle(.white.opacity(0.72))
+                }
+
+                HStack(spacing: 10) {
+                    Button {
+                        library.markWatched(video)
+                        showPlayer = true
+                        feedback += 1
+                    } label: {
+                        Label("Play", systemImage: "play.fill")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity, minHeight: 32)
+                    }
+                    .buttonStyle(.glassProminent)
+
+                    Button {
+                        library.toggleSaved(video)
+                        feedback += 1
+                    } label: {
+                        Image(systemName: library.isSaved(video) ? "checkmark" : "plus")
+                            .font(.headline)
+                            .frame(width: 32, height: 32)
+                    }
+                    .buttonStyle(.glass)
+                    .accessibilityLabel(library.isSaved(video) ? "Remove from Saved" : "Add to Saved")
+
+                    Menu {
+                        ForEach(library.playlists) { playlist in
+                            Button(playlist.name) {
+                                library.add(video, to: playlist.id)
+                                feedback += 1
+                            }
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis")
+                            .font(.headline)
+                            .frame(width: 32, height: 32)
+                    }
+                    .buttonStyle(.glass)
+                    .accessibilityLabel("More options")
+                }
+
+                if let description = video.descriptionText, !description.isEmpty {
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(description)
+                            .font(.subheadline)
+                            .foregroundStyle(.white.opacity(0.88))
+                            .lineLimit(descriptionExpanded ? nil : 3)
+
+                        Button(descriptionExpanded ? "LESS" : "MORE") {
+                            withAnimation(.snappy) {
+                                descriptionExpanded.toggle()
+                            }
+                        }
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.white.opacity(0.7))
+                        .buttonStyle(.plain)
+                    }
+                }
+
+                HStack(spacing: 7) {
+                    ForEach(video.badges ?? [], id: \.self) { badge in
+                        MetadataBadge(text: badge)
+                    }
+
+                    if let duration = video.formattedDuration {
+                        Text(duration)
+                            .font(.caption.weight(.semibold).monospacedDigit())
+                            .foregroundStyle(.white.opacity(0.72))
+                    }
+
+                    if let published = video.publishedText {
+                        Text(published)
+                            .font(.caption)
+                            .foregroundStyle(.white.opacity(0.6))
+                            .lineLimit(1)
+                    }
+                }
+            }
+            .foregroundStyle(.white)
+            .padding(.horizontal, 18)
+            .padding(.bottom, 24)
+        }
+    }
+}
+
+private struct MetadataBadge: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(.caption2.weight(.bold))
+            .tracking(0.2)
+            .foregroundStyle(.white.opacity(0.82))
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .background(.white.opacity(0.12), in: RoundedRectangle(cornerRadius: 4, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    .strokeBorder(.white.opacity(0.22), lineWidth: 0.5)
+            }
     }
 }
 

@@ -45,12 +45,35 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             build | tee xcodebuild.log
 
+      - name: Build unsigned iPhone app
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project AppleVideos.xcodeproj \
+            -scheme AppleVideos \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath DeviceDerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            build | tee xcodebuild-device.log
+
       - name: Package simulator app
         if: success()
         run: |
           ditto -c -k --sequesterRsrc --keepParent \
             DerivedData/Build/Products/Debug-iphonesimulator/Apple\ Videos.app \
             AppleVideos-simulator.zip
+
+      - name: Package unsigned IPA
+        if: success()
+        run: |
+          mkdir -p Payload
+          ditto \
+            DeviceDerivedData/Build/Products/Release-iphoneos/Apple\ Videos.app \
+            Payload/Apple\ Videos.app
+          zip -qry AppleVideos-unsigned.ipa Payload
 
       - name: Upload build output
         if: always()
@@ -59,6 +82,8 @@ jobs:
           name: AppleVideos-simulator
           path: |
             AppleVideos-simulator.zip
+            AppleVideos-unsigned.ipa
             xcodebuild.log
+            xcodebuild-device.log
           if-no-files-found: warn
           retention-days: 14

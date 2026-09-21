@@ -82,11 +82,17 @@ struct VideoDetailView: View {
             ZStack(alignment: .bottomLeading) {
                 VideoHeroArtwork(video: video, stageAspectRatio: 2.0 / 3.0)
                     .frame(width: geometry.size.width, height: stageHeight)
-                    .offset(y: -stageHeight * 0.155)
 
-                Color.black
-                    .frame(height: stageHeight * 0.47)
-                    .shadow(color: .black.opacity(0.72), radius: 18, y: -10)
+                LinearGradient(
+                    stops: [
+                        .init(color: .clear, location: 0.38),
+                        .init(color: .black.opacity(0.08), location: 0.55),
+                        .init(color: .black.opacity(0.3), location: 0.72),
+                        .init(color: .black.opacity(0.62), location: 1)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
 
                 detailInformation
             }
@@ -107,6 +113,8 @@ struct VideoDetailView: View {
                 }
 
                 HStack(spacing: 10) {
+                    Spacer(minLength: 0)
+
                     Button {
                         library.markWatched(video)
                         showPlayer = true
@@ -116,7 +124,7 @@ struct VideoDetailView: View {
                             .font(.headline)
                             .foregroundStyle(.black)
                             .padding(.horizontal, 26)
-                            .frame(minHeight: 50)
+                            .frame(minWidth: 210, minHeight: 50)
                             .background(.white, in: Capsule())
                     }
                     .buttonStyle(.plain)
@@ -137,6 +145,8 @@ struct VideoDetailView: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(library.isSaved(video) ? "Remove from Saved" : "Add to Saved")
+
+                    Spacer(minLength: 0)
                 }
 
                 if let description = video.descriptionText, !description.isEmpty {
@@ -146,18 +156,25 @@ struct VideoDetailView: View {
                             .foregroundStyle(.white.opacity(0.88))
                             .lineLimit(2)
                             .truncationMode(.tail)
-                            .padding(.trailing, 62)
                             .frame(maxWidth: .infinity, alignment: .leading)
 
                         Button("MORE") {
                             showDescription = true
                         }
                         .font(.caption.weight(.bold))
-                        .foregroundStyle(.white.opacity(0.82))
+                        .foregroundStyle(.white.opacity(0.9))
                         .buttonStyle(.plain)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(.ultraThinMaterial, in: Capsule())
+                        .padding(.leading, 18)
+                        .padding(.trailing, 3)
+                        .padding(.vertical, 2)
+                        .background {
+                            LinearGradient(
+                                colors: [.clear, .black.opacity(0.34), .black.opacity(0.5)],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                            .blur(radius: 4)
+                        }
                     }
                 }
 
@@ -181,8 +198,9 @@ struct VideoDetailView: View {
                 }
         }
         .foregroundStyle(.white)
+        .shadow(color: .black.opacity(0.72), radius: 12, y: 3)
         .padding(.horizontal, 18)
-        .padding(.bottom, 24)
+        .padding(.bottom, 18)
     }
 }
 

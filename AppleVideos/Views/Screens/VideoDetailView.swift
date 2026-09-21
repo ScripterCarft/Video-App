@@ -20,7 +20,7 @@ struct VideoDetailView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
-                VideoArtwork(video: video, cornerRadius: 0)
+                VideoHeroArtwork(video: video)
                     .overlay {
                         Button {
                             library.markWatched(video)

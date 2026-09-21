@@ -9,13 +9,14 @@ struct VideoCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            VideoArtwork(video: video, cornerRadius: compact ? 12 : 14)
+            VideoArtwork(video: video, cornerRadius: 14)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(video.title)
-                    .font(compact ? .subheadline.weight(.semibold) : .headline)
+                    .font(.headline)
                     .foregroundStyle(.primary)
                     .lineLimit(2)
+                    .frame(minHeight: 22, alignment: .topLeading)
 
                 Text(video.channelName)
                     .font(.subheadline)

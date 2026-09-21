@@ -62,6 +62,7 @@ actor YouTubeService {
         let renderers = Self.collectVideoRenderers(in: root)
         var seen = Set<String>()
         let videos = renderers
+            .filter { !Self.isShort($0) }
             .compactMap(Self.video(from:))
             .filter { seen.insert($0.id).inserted }
             .prefix(30)
@@ -137,6 +138,39 @@ actor YouTubeService {
             views: text(from: renderer["viewCountText"]),
             thumbnailURL: thumbnailURL
         )
+    }
+
+    private static func isShort(_ renderer: [String: Any]) -> Bool {
+        if containsShortsMarker(renderer) { return true }
+
+        if let thumbnail = renderer["thumbnail"] as? [String: Any],
+           let thumbnails = thumbnail["thumbnails"] as? [[String: Any]],
+           let largest = thumbnails.last,
+           let width = largest["width"] as? Int,
+           let height = largest["height"] as? Int,
+           height > width {
+            return true
+        }
+
+        return false
+    }
+
+    private static func containsShortsMarker(_ value: Any) -> Bool {
+        if let dictionary = value as? [String: Any] {
+            for (key, child) in dictionary {
+                if let text = child as? String {
+                    let normalized = text.lowercased()
+                    if normalized.contains("/shorts/") ||
+                        ((key == "style" || key == "iconType") && normalized.contains("shorts")) {
+                        return true
+                    }
+                }
+                if containsShortsMarker(child) { return true }
+            }
+        } else if let array = value as? [Any] {
+            return array.contains(where: containsShortsMarker)
+        }
+        return false
     }
 
     private static func text(from value: Any?) -> String? {

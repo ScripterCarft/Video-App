@@ -21,6 +21,13 @@ struct Video: Identifiable, Hashable, Codable, Sendable {
         return URL(string: "https://www.youtube.com/watch?v=\(id)")
     }
 
+    /// A predictable 16:9 image keeps curated, searched, and previously saved
+    /// YouTube videos on the exact same card geometry.
+    var artworkURL: URL? {
+        guard source == .youtube else { return thumbnailURL }
+        return URL(string: "https://i.ytimg.com/vi/\(id)/mqdefault.jpg")
+    }
+
     var metadataLine: String {
         [viewCountText, publishedText]
             .compactMap { $0 }

@@ -61,7 +61,7 @@ struct HomeView: View {
 
     private var featuredHero: some View {
         ZStack(alignment: .bottomLeading) {
-            VideoArtwork(video: featured, cornerRadius: 22)
+            VideoArtwork(video: featured, cornerRadius: 22, showsDuration: false)
                 .overlay {
                     LinearGradient(
                         colors: [.clear, .black.opacity(0.15), .black.opacity(0.88)],
@@ -79,12 +79,25 @@ struct HomeView: View {
                     .font(.title2.bold())
                     .foregroundStyle(.white)
                     .lineLimit(2)
-                Label("Play", systemImage: "play.fill")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.black)
-                    .padding(.horizontal, 15)
-                    .padding(.vertical, 9)
-                    .background(.white, in: Capsule())
+                HStack(alignment: .center) {
+                    Label("Play", systemImage: "play.fill")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.black)
+                        .padding(.horizontal, 15)
+                        .padding(.vertical, 9)
+                        .background(.white, in: Capsule())
+
+                    Spacer()
+
+                    if let duration = featured.duration {
+                        Text(duration)
+                            .font(.caption.weight(.semibold).monospacedDigit())
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 5)
+                            .background(.black.opacity(0.68), in: Capsule())
+                    }
+                }
             }
             .padding(22)
         }

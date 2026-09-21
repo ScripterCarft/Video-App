@@ -2,11 +2,12 @@ import SwiftUI
 
 struct VideoArtwork: View {
     let video: Video
-    var cornerRadius: CGFloat = 16
+    var cornerRadius: CGFloat = 14
+    var showsDuration = true
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
-            AsyncImage(url: video.thumbnailURL) { phase in
+            AsyncImage(url: video.artworkURL) { phase in
                 switch phase {
                 case .success(let image):
                     image
@@ -27,7 +28,7 @@ struct VideoArtwork: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .clipped()
 
-            if let duration = video.duration {
+            if showsDuration, let duration = video.duration {
                 Text(duration)
                     .font(.caption2.weight(.semibold).monospacedDigit())
                     .foregroundStyle(.white)
@@ -40,6 +41,10 @@ struct VideoArtwork: View {
         .aspectRatio(16 / 9, contentMode: .fit)
         .background(.quaternary)
         .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .strokeBorder(.primary.opacity(0.06), lineWidth: 0.5)
+        }
         .contentShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
     }
 

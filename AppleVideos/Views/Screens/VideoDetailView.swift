@@ -111,6 +111,9 @@ struct VideoDetailView: View {
                         .font(.headline)
                         .foregroundStyle(.white.opacity(0.72))
                 }
+                .frame(maxWidth: .infinity, alignment: .center)
+                .multilineTextAlignment(.center)
+                .shadow(color: .black.opacity(0.62), radius: 9, y: 2)
 
                 HStack(spacing: 10) {
                     Spacer(minLength: 0)
@@ -124,7 +127,7 @@ struct VideoDetailView: View {
                             .font(.headline)
                             .foregroundStyle(.black)
                             .padding(.horizontal, 26)
-                            .frame(minWidth: 210, minHeight: 50)
+                            .frame(minWidth: 190, minHeight: 50)
                             .background(.white, in: Capsule())
                     }
                     .buttonStyle(.plain)
@@ -157,6 +160,7 @@ struct VideoDetailView: View {
                             .lineLimit(2)
                             .truncationMode(.tail)
                             .frame(maxWidth: .infinity, alignment: .leading)
+                            .shadow(color: .black.opacity(0.58), radius: 8, y: 2)
 
                         Button("MORE") {
                             showDescription = true
@@ -164,16 +168,12 @@ struct VideoDetailView: View {
                         .font(.caption.weight(.bold))
                         .foregroundStyle(.white.opacity(0.9))
                         .buttonStyle(.plain)
-                        .padding(.leading, 18)
-                        .padding(.trailing, 3)
-                        .padding(.vertical, 2)
-                        .background {
-                            LinearGradient(
-                                colors: [.clear, .black.opacity(0.34), .black.opacity(0.5)],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
-                            .blur(radius: 4)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(.ultraThinMaterial, in: Capsule())
+                        .overlay {
+                            Capsule()
+                                .strokeBorder(.white.opacity(0.1), lineWidth: 0.5)
                         }
                     }
                 }
@@ -196,9 +196,9 @@ struct VideoDetailView: View {
                             .lineLimit(1)
                     }
                 }
+                .shadow(color: .black.opacity(0.56), radius: 7, y: 2)
         }
         .foregroundStyle(.white)
-        .shadow(color: .black.opacity(0.72), radius: 12, y: 3)
         .padding(.horizontal, 18)
         .padding(.bottom, 18)
     }

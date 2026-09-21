@@ -1,6 +1,4 @@
-import AVKit
 import SwiftUI
-import WebKit
 
 struct VideoDetailView: View {
     let video: Video
@@ -8,8 +6,8 @@ struct VideoDetailView: View {
     let transitionID: String
 
     @Environment(LibraryStore.self) private var library
+    @Environment(PlaybackStore.self) private var playback
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @State private var showPlayer = false
     @State private var feedback = 0
     @State private var showDescription = false
     @State private var loadedDetails: YouTubeService.VideoDetails?
@@ -70,9 +68,6 @@ struct VideoDetailView: View {
             }
         }
         .navigationTransition(.zoom(sourceID: transitionID, in: transition))
-        .fullScreenCover(isPresented: $showPlayer) {
-            PlayerScreen(video: video)
-        }
         .sheet(isPresented: $showDescription) {
             DescriptionSheet(video: video, description: fullDescription)
                 .presentationDetents([.fraction(0.55), .fraction(0.8)])
@@ -157,7 +152,7 @@ struct VideoDetailView: View {
 
                     Button {
                         library.markWatched(video)
-                        showPlayer = true
+                        playback.play(video)
                         feedback += 1
                     } label: {
                         Label("Play", systemImage: "play.fill")
@@ -321,91 +316,5 @@ private struct MetadataBadge: View {
                 RoundedRectangle(cornerRadius: 4, style: .continuous)
                     .strokeBorder(.white.opacity(0.22), lineWidth: 0.5)
             }
-    }
-}
-
-private struct PlayerScreen: View {
-    let video: Video
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        ZStack(alignment: .topTrailing) {
-            Color.black.ignoresSafeArea()
-
-            Group {
-                switch video.source {
-                case .youtube:
-                    YouTubePlayerView(videoID: video.id)
-                case .direct:
-                    if let url = video.playbackURL {
-                        VideoPlayer(player: AVPlayer(url: url))
-                    }
-                }
-            }
-            .ignoresSafeArea()
-
-            Button {
-                dismiss()
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.headline)
-                    .foregroundStyle(.white)
-                    .frame(width: 40, height: 40)
-                    .background(.ultraThinMaterial, in: Circle())
-            }
-            .padding()
-            .accessibilityLabel("Close player")
-        }
-        .statusBarHidden()
-    }
-}
-
-private struct YouTubePlayerView: UIViewRepresentable {
-    let videoID: String
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator()
-    }
-
-    func makeUIView(context: Context) -> WKWebView {
-        let configuration = WKWebViewConfiguration()
-        configuration.allowsInlineMediaPlayback = true
-        configuration.allowsAirPlayForMediaPlayback = true
-        configuration.allowsPictureInPictureMediaPlayback = true
-        configuration.mediaTypesRequiringUserActionForPlayback = []
-        configuration.defaultWebpagePreferences.allowsContentJavaScript = true
-
-        let view = WKWebView(frame: .zero, configuration: configuration)
-        view.navigationDelegate = context.coordinator
-        view.scrollView.isScrollEnabled = false
-        view.isOpaque = false
-        view.backgroundColor = .black
-        view.customUserAgent = "Mozilla/5.0 (iPhone; CPU iPhone OS 27_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.0 Mobile/15E148 Safari/604.1"
-        return view
-    }
-
-    func updateUIView(_ webView: WKWebView, context: Context) {
-        guard context.coordinator.loadedVideoID != videoID else { return }
-        context.coordinator.loadedVideoID = videoID
-
-        let referrer = "https://github.com/ScripterCarft/Video-App/"
-        var components = URLComponents(string: "https://www.youtube.com/embed/\(videoID)")!
-        components.queryItems = [
-            URLQueryItem(name: "playsinline", value: "1"),
-            URLQueryItem(name: "autoplay", value: "1"),
-            URLQueryItem(name: "rel", value: "0"),
-            URLQueryItem(name: "origin", value: "https://github.com"),
-            URLQueryItem(name: "widget_referrer", value: referrer)
-        ]
-        guard let url = components.url else { return }
-
-        var request = URLRequest(url: url)
-        request.setValue(referrer, forHTTPHeaderField: "Referer")
-        request.setValue("https://github.com", forHTTPHeaderField: "Origin")
-        webView.load(request)
-    }
-
-    final class Coordinator: NSObject, WKNavigationDelegate {
-        var loadedVideoID: String?
     }
 }

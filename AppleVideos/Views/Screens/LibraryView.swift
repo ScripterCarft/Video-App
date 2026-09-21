@@ -1,0 +1,182 @@
+import SwiftUI
+
+struct LibraryView: View {
+    @Environment(LibraryStore.self) private var library
+    @State private var isCreatingPlaylist = false
+    @State private var playlistName = ""
+    @Namespace private var transition
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    NavigationLink {
+                        SavedVideosView(transition: transition)
+                    } label: {
+                        LibraryRow(title: "Saved", subtitle: "\(library.savedVideos.count) videos", icon: "bookmark.fill", color: .red)
+                    }
+
+                    NavigationLink {
+                        DownloadsView()
+                    } label: {
+                        LibraryRow(title: "Downloads", subtitle: "Available for supported sources", icon: "arrow.down.circle.fill", color: .blue)
+                    }
+
+                    NavigationLink {
+                        HistoryView(transition: transition)
+                    } label: {
+                        LibraryRow(title: "History", subtitle: "\(library.recentlyWatched.count) recently watched", icon: "clock.fill", color: .gray)
+                    }
+                }
+
+                Section("Playlists") {
+                    ForEach(library.playlists) { playlist in
+                        NavigationLink {
+                            PlaylistView(playlist: playlist, transition: transition)
+                        } label: {
+                            LibraryRow(
+                                title: playlist.name,
+                                subtitle: "\(playlist.videoIDs.count) videos",
+                                icon: "text.badge.checkmark",
+                                color: .purple
+                            )
+                        }
+                    }
+
+                    Button {
+                        isCreatingPlaylist = true
+                    } label: {
+                        Label("New Playlist", systemImage: "plus")
+                    }
+                }
+            }
+            .navigationTitle("Library")
+            .alert("New Playlist", isPresented: $isCreatingPlaylist) {
+                TextField("Playlist name", text: $playlistName)
+                Button("Cancel", role: .cancel) { playlistName = "" }
+                Button("Create") {
+                    library.createPlaylist(named: playlistName)
+                    playlistName = ""
+                }
+            } message: {
+                Text("Create a collection for videos you want to keep together.")
+            }
+        }
+    }
+}
+
+private struct LibraryRow: View {
+    let title: String
+    let subtitle: String
+    let icon: String
+    let color: Color
+
+    var body: some View {
+        HStack(spacing: 14) {
+            Image(systemName: icon)
+                .font(.title3)
+                .foregroundStyle(.white)
+                .frame(width: 38, height: 38)
+                .background(color.gradient, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.body.weight(.medium))
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.vertical, 3)
+    }
+}
+
+private struct SavedVideosView: View {
+    @Environment(LibraryStore.self) private var library
+    let transition: Namespace.ID
+
+    var body: some View {
+        VideoCollectionView(
+            title: "Saved",
+            emptyTitle: "No Saved Videos",
+            emptyDescription: "Use the bookmark button or a video's context menu to save it.",
+            videos: library.savedVideos,
+            transition: transition
+        )
+    }
+}
+
+private struct HistoryView: View {
+    @Environment(LibraryStore.self) private var library
+    let transition: Namespace.ID
+
+    var body: some View {
+        VideoCollectionView(
+            title: "History",
+            emptyTitle: "No Watch History",
+            emptyDescription: "Videos you play will appear here.",
+            videos: library.recentlyWatched,
+            transition: transition
+        )
+    }
+}
+
+private struct PlaylistView: View {
+    @Environment(LibraryStore.self) private var library
+    let playlist: VideoPlaylist
+    let transition: Namespace.ID
+
+    var body: some View {
+        VideoCollectionView(
+            title: playlist.name,
+            emptyTitle: "Playlist is Empty",
+            emptyDescription: "Add a video from its context menu.",
+            videos: library.videos(in: playlist),
+            transition: transition
+        )
+    }
+}
+
+private struct VideoCollectionView: View {
+    let title: String
+    let emptyTitle: String
+    let emptyDescription: String
+    let videos: [Video]
+    let transition: Namespace.ID
+
+    var body: some View {
+        Group {
+            if videos.isEmpty {
+                ContentUnavailableView(emptyTitle, systemImage: "rectangle.stack.badge.plus", description: Text(emptyDescription))
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 22) {
+                        ForEach(videos) { video in
+                            NavigationLink(value: video) {
+                                VideoCard(video: video)
+                            }
+                            .buttonStyle(.plain)
+                            .matchedTransitionSource(id: video.id, in: transition)
+                        }
+                    }
+                    .padding()
+                }
+            }
+        }
+        .navigationTitle(title)
+        .navigationDestination(for: Video.self) { video in
+            VideoDetailView(video: video, transition: transition)
+        }
+    }
+}
+
+private struct DownloadsView: View {
+    var body: some View {
+        ContentUnavailableView {
+            Label("No Downloads", systemImage: "arrow.down.circle")
+        } description: {
+            Text("Native downloads will be available for direct MP4 and HLS sources. YouTube playback stays inside the official player in this first version.")
+        }
+        .navigationTitle("Downloads")
+    }
+}
+

@@ -103,13 +103,14 @@ struct VideoDetailView: View {
 
     private var detailInformation: some View {
         VStack(alignment: .leading, spacing: 14) {
-                VStack(alignment: .leading, spacing: 5) {
+                VStack(alignment: .center, spacing: 5) {
                     Text(video.title)
                         .font(.title.bold())
                         .lineLimit(3)
                     Text(video.channelName)
                         .font(.headline)
                         .foregroundStyle(.white.opacity(0.72))
+                        .multilineTextAlignment(.center)
                 }
                 .frame(maxWidth: .infinity, alignment: .center)
                 .multilineTextAlignment(.center)
@@ -162,18 +163,24 @@ struct VideoDetailView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .shadow(color: .black.opacity(0.58), radius: 8, y: 2)
 
-                        Button("MORE") {
-                            showDescription = true
-                        }
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(.white.opacity(0.9))
-                        .buttonStyle(.plain)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(.ultraThinMaterial, in: Capsule())
-                        .overlay {
-                            Capsule()
-                                .strokeBorder(.white.opacity(0.1), lineWidth: 0.5)
+                        HStack(spacing: 0) {
+                            LinearGradient(
+                                colors: [.clear, .black.opacity(0.34)],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                            .frame(width: 26, height: 24)
+                            .blur(radius: 2)
+
+                            Button("MORE") {
+                                showDescription = true
+                            }
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.white.opacity(0.88))
+                            .buttonStyle(.plain)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 3)
+                            .background(.ultraThinMaterial, in: Capsule())
                         }
                     }
                 }
@@ -187,6 +194,13 @@ struct VideoDetailView: View {
                         Text(duration)
                             .font(.caption.weight(.semibold).monospacedDigit())
                             .foregroundStyle(.white.opacity(0.72))
+                    }
+
+                    if let context = video.viewCountText, !context.isEmpty {
+                        Text(context)
+                            .font(.caption)
+                            .foregroundStyle(.white.opacity(0.68))
+                            .lineLimit(1)
                     }
 
                     if let published = video.publishedText {

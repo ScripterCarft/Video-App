@@ -26,8 +26,20 @@ struct Video: Identifiable, Hashable, Codable, Sendable {
     /// A predictable 16:9 image keeps curated, searched, and previously saved
     /// YouTube videos on the exact same card geometry.
     var artworkURL: URL? {
-        guard source == .youtube else { return thumbnailURL }
-        return URL(string: "https://i.ytimg.com/vi/\(id)/mqdefault.jpg")
+        artworkURLs.first
+    }
+
+    var artworkURLs: [URL] {
+        guard source == .youtube else { return thumbnailURL.map { [$0] } ?? [] }
+        let candidates = [
+            URL(string: "https://i.ytimg.com/vi/\(id)/maxresdefault.jpg"),
+            thumbnailURL,
+            URL(string: "https://i.ytimg.com/vi/\(id)/hq720.jpg"),
+            URL(string: "https://i.ytimg.com/vi/\(id)/mqdefault.jpg")
+        ].compactMap { $0 }
+        return candidates.reduce(into: []) { result, url in
+            if !result.contains(url) { result.append(url) }
+        }
     }
 
     var metadataLine: String {
@@ -50,6 +62,14 @@ struct Video: Identifiable, Hashable, Codable, Sendable {
         default:
             return duration
         }
+    }
+
+    var normalizedDescription: String? {
+        guard let descriptionText else { return nil }
+        let value = descriptionText
+            .split(whereSeparator: { $0.isWhitespace })
+            .joined(separator: " ")
+        return value.isEmpty ? nil : value
     }
 }
 

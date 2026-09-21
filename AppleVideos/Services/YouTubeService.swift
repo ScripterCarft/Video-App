@@ -3,6 +3,11 @@ import Foundation
 actor YouTubeService {
     static let shared = YouTubeService()
 
+    struct VideoDetails: Sendable {
+        let description: String?
+        let badges: [String]
+    }
+
     enum SearchError: LocalizedError {
         case invalidResponse
         case configurationUnavailable
@@ -24,7 +29,7 @@ actor YouTubeService {
 
     private var cachedConfiguration: WebConfiguration?
     private var cachedSearches: [String: [Video]] = [:]
-    private var cachedDescriptions: [String: String] = [:]
+    private var cachedDetails: [String: VideoDetails] = [:]
 
     func search(_ query: String) async throws -> [Video] {
         let normalized = query.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -72,8 +77,8 @@ actor YouTubeService {
         return results
     }
 
-    func description(for videoID: String) async throws -> String? {
-        if let cached = cachedDescriptions[videoID] { return cached }
+    func details(for videoID: String) async throws -> VideoDetails? {
+        if let cached = cachedDetails[videoID] { return cached }
 
         let configuration = try await webConfiguration()
         guard let endpoint = URL(string: "https://www.youtube.com/youtubei/v1/player?key=\(configuration.apiKey)&prettyPrint=false") else {
@@ -99,15 +104,18 @@ actor YouTubeService {
 
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse, 200..<300 ~= http.statusCode,
-              let root = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let details = root["videoDetails"] as? [String: Any],
-              let description = details["shortDescription"] as? String
+              let root = try JSONSerialization.jsonObject(with: data) as? [String: Any]
         else { return nil }
 
-        let trimmed = description.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return nil }
-        cachedDescriptions[videoID] = trimmed
-        return trimmed
+        let videoDetails = root["videoDetails"] as? [String: Any]
+        let rawDescription = videoDetails?["shortDescription"] as? String
+        let description = rawDescription?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let result = VideoDetails(
+            description: description?.isEmpty == false ? description : nil,
+            badges: Self.playerBadges(from: root)
+        )
+        cachedDetails[videoID] = result
+        return result
     }
 
     private func webConfiguration() async throws -> WebConfiguration {
@@ -183,22 +191,65 @@ actor YouTubeService {
 
     private static func badges(from renderer: [String: Any]) -> [String]? {
         guard let source = renderer["badges"] as? [[String: Any]] else { return nil }
-        let allowed = Set(["4K", "HD", "HDR", "CC", "SDH"])
+        let allowed = Set(["8K", "4K", "HD", "HDR", "CC", "SDH", "360°"])
         let values = source.compactMap { badge -> String? in
             guard let metadata = badge["metadataBadgeRenderer"] as? [String: Any] else { return nil }
             let candidate = (metadata["label"] as? String) ?? (metadata["tooltip"] as? String)
             guard let candidate else { return nil }
             let normalized = candidate.uppercased()
+            if normalized.contains("8K") { return "8K" }
             if normalized.contains("4K") { return "4K" }
             if normalized.contains("HDR") { return "HDR" }
             if normalized.contains("SDH") { return "SDH" }
             if normalized.contains("CC") || normalized.contains("CAPTION") { return "CC" }
             if normalized == "HD" { return "HD" }
+            if normalized.contains("360") { return "360°" }
             return nil
         }
         let unique = Array(NSOrderedSet(array: values)) as? [String] ?? values
         let filtered = unique.filter { allowed.contains($0) }
         return filtered.isEmpty ? nil : filtered
+    }
+
+    private static func playerBadges(from root: [String: Any]) -> [String] {
+        var result: [String] = []
+        let streamingData = root["streamingData"] as? [String: Any]
+        let formats = ((streamingData?["formats"] as? [[String: Any]]) ?? [])
+            + ((streamingData?["adaptiveFormats"] as? [[String: Any]]) ?? [])
+        let labels = formats.compactMap { $0["qualityLabel"] as? String }
+        let heights = formats.compactMap { $0["height"] as? Int }
+
+        if labels.contains(where: { $0.localizedCaseInsensitiveContains("8K") }) || heights.contains(where: { $0 >= 4320 }) {
+            result.append("8K")
+        } else if labels.contains(where: { $0.localizedCaseInsensitiveContains("4K") }) || heights.contains(where: { $0 >= 2160 }) {
+            result.append("4K")
+        } else if heights.contains(where: { $0 >= 720 }) {
+            result.append("HD")
+        }
+
+        let serialized = (try? JSONSerialization.data(withJSONObject: formats))
+            .flatMap { String(data: $0, encoding: .utf8) }?
+            .uppercased() ?? ""
+        if labels.contains(where: { $0.localizedCaseInsensitiveContains("HDR") }) ||
+            serialized.contains("ST2084") || serialized.contains("HLG") {
+            result.append("HDR")
+        }
+
+        if let captions = root["captions"] as? [String: Any],
+           let renderer = captions["playerCaptionsTracklistRenderer"] as? [String: Any],
+           let tracks = renderer["captionTracks"] as? [[String: Any]],
+           !tracks.isEmpty {
+            result.append("CC")
+        }
+
+        if formats.contains(where: {
+            (($0["projectionType"] as? String) ?? "").uppercased().contains("360") ||
+            (($0["projectionType"] as? String) ?? "").uppercased().contains("EQUIRECTANGULAR")
+        }) {
+            result.append("360°")
+        }
+
+        return result
     }
 
     private static func isShort(_ renderer: [String: Any]) -> Bool {

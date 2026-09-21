@@ -7,7 +7,7 @@ struct VideoArtwork: View {
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
-            AsyncImage(url: video.artworkURL) { phase in
+            FallbackAsyncImage(urls: video.artworkURLs) { phase in
                 switch phase {
                 case .success(let image):
                     image
@@ -68,7 +68,7 @@ struct VideoHeroArtwork: View {
     var stageAspectRatio: CGFloat = 4.0 / 5.0
 
     var body: some View {
-        AsyncImage(url: video.artworkURL) { phase in
+        FallbackAsyncImage(urls: video.artworkURLs) { phase in
             GeometryReader { proxy in
                 let imageFraction = min(1, stageAspectRatio / (16.0 / 9.0))
                 let imageEdge = (1 - imageFraction) / 2
@@ -155,5 +155,33 @@ struct VideoHeroArtwork: View {
                     .font(.largeTitle)
                     .foregroundStyle(.tertiary)
             }
+    }
+}
+
+private struct FallbackAsyncImage<Content: View>: View {
+    let urls: [URL]
+    let content: (AsyncImagePhase) -> Content
+
+    @State private var index = 0
+
+    init(urls: [URL], @ViewBuilder content: @escaping (AsyncImagePhase) -> Content) {
+        self.urls = urls
+        self.content = content
+    }
+
+    var body: some View {
+        if urls.indices.contains(index) {
+            AsyncImage(url: urls[index]) { phase in
+                if case .failure = phase, index < urls.count - 1 {
+                    Color.clear
+                        .task { index += 1 }
+                } else {
+                    content(phase)
+                }
+            }
+            .id(urls[index])
+        } else {
+            content(.empty)
+        }
     }
 }

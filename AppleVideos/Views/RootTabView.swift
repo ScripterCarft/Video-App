@@ -24,10 +24,9 @@ struct RootTabView: View {
                 LibraryView()
             }
 
-            Tab("Search", systemImage: "magnifyingglass", value: .search) {
+            Tab("Search", systemImage: "magnifyingglass", value: .search, role: .search) {
                 SearchView()
             }
         }
     }
 }
-

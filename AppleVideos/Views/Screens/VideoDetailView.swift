@@ -8,10 +8,11 @@ struct VideoDetailView: View {
     let transitionID: String
 
     @Environment(LibraryStore.self) private var library
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var showPlayer = false
     @State private var feedback = 0
     @State private var showDescription = false
-    @State private var loadedDescription: String?
+    @State private var loadedDetails: YouTubeService.VideoDetails?
 
     init(video: Video, transition: Namespace.ID, transitionID: String? = nil) {
         self.video = video
@@ -23,6 +24,10 @@ struct VideoDetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
                 detailStage
+
+                if dynamicTypeSize.isAccessibility {
+                    accessibilityDetails
+                }
 
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Up Next")
@@ -69,21 +74,33 @@ struct VideoDetailView: View {
             PlayerScreen(video: video)
         }
         .sheet(isPresented: $showDescription) {
-            DescriptionSheet(video: video, description: visibleDescription)
+            DescriptionSheet(video: video, description: fullDescription)
                 .presentationDetents([.fraction(0.55), .fraction(0.8)])
                 .presentationDragIndicator(.visible)
         }
         .task(id: video.id) {
-            guard video.descriptionText?.isEmpty != false else { return }
-            loadedDescription = try? await YouTubeService.shared.description(for: video.id)
+            guard video.source == .youtube else { return }
+            loadedDetails = try? await YouTubeService.shared.details(for: video.id)
         }
         .sensoryFeedback(.selection, trigger: feedback)
     }
 
     private var visibleDescription: String? {
-        let candidate = video.descriptionText ?? loadedDescription
+        let candidate = video.descriptionText ?? loadedDetails?.description
         guard let candidate, !candidate.isEmpty else { return nil }
-        return candidate
+        let normalized = candidate
+            .split(whereSeparator: { $0.isWhitespace })
+            .joined(separator: " ")
+        return normalized.isEmpty ? nil : normalized
+    }
+
+    private var fullDescription: String? {
+        video.descriptionText ?? loadedDetails?.description
+    }
+
+    private var visibleBadges: [String] {
+        let loaded = loadedDetails?.badges ?? []
+        return loaded.isEmpty ? (video.badges ?? []) : loaded
     }
 
     private var textMetadata: [String] {
@@ -172,64 +189,88 @@ struct VideoDetailView: View {
                     Spacer(minLength: 0)
                 }
 
-                if let description = visibleDescription {
-                    ZStack(alignment: .bottomTrailing) {
-                        Text(description)
-                            .font(.subheadline)
-                            .foregroundStyle(.white.opacity(0.88))
-                            .lineLimit(2)
-                            .truncationMode(.tail)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .shadow(color: .black.opacity(0.58), radius: 8, y: 2)
-                            .mask {
-                                VStack(spacing: 0) {
-                                    Color.white
-                                    HStack(spacing: 0) {
-                                        Color.white
-                                        LinearGradient(
-                                            colors: [.white, .clear],
-                                            startPoint: .leading,
-                                            endPoint: .trailing
-                                        )
-                                        .frame(width: 84)
-                                    }
-                                }
-                            }
-
-                        Button("MORE") {
-                            showDescription = true
-                        }
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.white.opacity(0.88))
-                        .buttonStyle(.plain)
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 3)
-                        .background(.ultraThinMaterial, in: Capsule())
-                    }
+                if !dynamicTypeSize.isAccessibility {
+                    descriptionPreview
+                    metadataRow
                 }
-
-                HStack(spacing: 7) {
-                    ForEach(Array(textMetadata.enumerated()), id: \.offset) { index, item in
-                        if index > 0 {
-                            Text("·")
-                                .foregroundStyle(.white.opacity(0.42))
-                        }
-                        Text(item)
-                            .foregroundStyle(.white.opacity(0.7))
-                            .lineLimit(1)
-                    }
-
-                    ForEach(video.badges ?? [], id: \.self) { badge in
-                        MetadataBadge(text: badge)
-                    }
-                }
-                .font(.footnote)
-                .minimumScaleFactor(0.86)
-                .shadow(color: .black.opacity(0.56), radius: 7, y: 2)
         }
         .foregroundStyle(.white)
         .padding(.horizontal, 18)
         .padding(.bottom, 18)
+    }
+
+    @ViewBuilder
+    private var descriptionPreview: some View {
+        if let description = visibleDescription {
+            ZStack(alignment: .bottomTrailing) {
+                Text(description)
+                    .font(.subheadline)
+                    .foregroundStyle(.white.opacity(0.88))
+                    .lineLimit(2)
+                    .truncationMode(.tail)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .shadow(color: .black.opacity(0.58), radius: 8, y: 2)
+                    .mask {
+                        VStack(spacing: 0) {
+                            Color.white
+                            HStack(spacing: 0) {
+                                Color.white
+                                LinearGradient(
+                                    colors: [.white, .clear],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                                .frame(width: 84)
+                            }
+                        }
+                    }
+
+                Button("MORE") { showDescription = true }
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.white.opacity(0.88))
+                    .buttonStyle(.plain)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .frame(minHeight: 44)
+                    .background(.ultraThinMaterial, in: Capsule())
+            }
+        }
+    }
+
+    private var metadataRow: some View {
+        HStack(spacing: 7) {
+            ForEach(Array(textMetadata.enumerated()), id: \.offset) { index, item in
+                if index > 0 {
+                    Text("·")
+                        .foregroundStyle(.white.opacity(0.42))
+                }
+                Text(item)
+                    .foregroundStyle(.white.opacity(0.7))
+                    .lineLimit(1)
+            }
+
+            ForEach(visibleBadges, id: \.self) { badge in
+                MetadataBadge(text: badge)
+            }
+        }
+        .font(.footnote)
+        .minimumScaleFactor(0.86)
+        .shadow(color: .black.opacity(0.56), radius: 7, y: 2)
+    }
+
+    private var accessibilityDetails: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if let description = visibleDescription {
+                Text(description)
+                    .lineLimit(4)
+                Button("More") { showDescription = true }
+            }
+            ScrollView(.horizontal) {
+                metadataRow
+            }
+            .scrollIndicators(.hidden)
+        }
+        .padding(.horizontal, 18)
     }
 }
 
@@ -270,7 +311,8 @@ private struct MetadataBadge: View {
 
     var body: some View {
         Text(text)
-            .font(.footnote)
+            .font(.caption2.weight(.bold))
+            .tracking(0.2)
             .foregroundStyle(.white.opacity(0.82))
             .padding(.horizontal, 6)
             .padding(.vertical, 3)

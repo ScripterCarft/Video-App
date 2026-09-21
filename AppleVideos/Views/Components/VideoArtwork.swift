@@ -70,6 +70,9 @@ struct VideoHeroArtwork: View {
     var body: some View {
         AsyncImage(url: video.artworkURL) { phase in
             GeometryReader { proxy in
+                let imageFraction = min(1, stageAspectRatio / (16.0 / 9.0))
+                let imageEdge = (1 - imageFraction) / 2
+
                 switch phase {
                 case .success(let image):
                     ZStack {
@@ -88,13 +91,33 @@ struct VideoHeroArtwork: View {
                             .resizable()
                             .scaledToFit()
                             .frame(width: proxy.size.width, height: proxy.size.height)
+                            .scaleEffect(1.08)
+                            .blur(radius: 11)
+                            .opacity(0.78)
                             .mask {
                                 LinearGradient(
                                     stops: [
-                                        .init(color: .clear, location: 0.06),
-                                        .init(color: .black, location: 0.22),
-                                        .init(color: .black, location: 0.78),
-                                        .init(color: .clear, location: 0.94)
+                                        .init(color: .clear, location: max(0, imageEdge - 0.12)),
+                                        .init(color: .black, location: min(0.5, imageEdge + 0.07)),
+                                        .init(color: .black, location: max(0.5, 1 - imageEdge - 0.07)),
+                                        .init(color: .clear, location: min(1, 1 - imageEdge + 0.12))
+                                    ],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                )
+                            }
+
+                        image
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: proxy.size.width, height: proxy.size.height)
+                            .mask {
+                                LinearGradient(
+                                    stops: [
+                                        .init(color: .clear, location: max(0, imageEdge - 0.035)),
+                                        .init(color: .black, location: min(0.5, imageEdge + 0.115)),
+                                        .init(color: .black, location: max(0.5, 1 - imageEdge - 0.115)),
+                                        .init(color: .clear, location: min(1, 1 - imageEdge + 0.035))
                                     ],
                                     startPoint: .top,
                                     endPoint: .bottom

@@ -11,6 +11,7 @@ struct VideoDetailView: View {
     @State private var showPlayer = false
     @State private var feedback = 0
     @State private var descriptionExpanded = false
+    @State private var showDownloadNotice = false
 
     init(video: Video, transition: Namespace.ID, transitionID: String? = nil) {
         self.video = video
@@ -23,9 +24,6 @@ struct VideoDetailView: View {
             VStack(alignment: .leading, spacing: 22) {
                 detailStage
 
-                Divider()
-                    .padding(.horizontal)
-
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Up Next")
                         .font(.title2.bold())
@@ -37,11 +35,22 @@ struct VideoDetailView: View {
             }
             .padding(.bottom, 30)
         }
+        .coordinateSpace(name: "videoDetailScroll")
+        .background(.black)
+        .foregroundStyle(.white)
         .ignoresSafeArea(edges: .top)
         .toolbarBackground(.hidden, for: .navigationBar)
+        .toolbarColorScheme(.dark, for: .navigationBar)
         .toolbar {
             if let url = video.youtubeURL {
-                ToolbarItem(placement: .topBarLeading) {
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    Button {
+                        showDownloadNotice = true
+                    } label: {
+                        Image(systemName: "arrow.down")
+                    }
+                    .accessibilityLabel("Download")
+
                     ShareLink(item: url) {
                         Image(systemName: "square.and.arrow.up")
                     }
@@ -53,25 +62,57 @@ struct VideoDetailView: View {
         .fullScreenCover(isPresented: $showPlayer) {
             PlayerScreen(video: video)
         }
+        .alert("Download Unavailable", isPresented: $showDownloadNotice) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("YouTube does not provide an offline download to Apple Videos. Direct video sources can support downloads later.")
+        }
         .sensoryFeedback(.selection, trigger: feedback)
     }
 
     private var detailStage: some View {
-        ZStack(alignment: .bottomLeading) {
-            VideoHeroArtwork(video: video, stageAspectRatio: 4.0 / 5.0)
+        GeometryReader { geometry in
+            let minY = geometry.frame(in: .named("videoDetailScroll")).minY
+            let scrollUp = max(0, -minY)
+            let pullDown = max(0, minY)
+            let stageHeight = geometry.size.height
 
-            LinearGradient(
-                stops: [
-                    .init(color: .clear, location: 0.24),
-                    .init(color: .black.opacity(0.28), location: 0.48),
-                    .init(color: .black.opacity(0.9), location: 0.78),
-                    .init(color: .black, location: 1)
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
+            ZStack(alignment: .bottomLeading) {
+                VideoHeroArtwork(video: video, stageAspectRatio: 2.0 / 3.0)
+                    .frame(width: geometry.size.width, height: stageHeight)
+                    .scaleEffect(1 + (pullDown / max(stageHeight, 1)) * 0.55, anchor: .bottom)
+                    .offset(y: scrollUp * 0.76 - pullDown * 0.36)
 
-            VStack(alignment: .leading, spacing: 14) {
+                Color.black
+                    .opacity(min(0.26, scrollUp / max(stageHeight, 1)))
+
+                Rectangle()
+                    .fill(.black.opacity(0.72))
+                    .frame(height: stageHeight * 0.48)
+                    .blur(radius: 44)
+                    .offset(y: stageHeight * 0.2)
+
+                LinearGradient(
+                    stops: [
+                        .init(color: .clear, location: 0.2),
+                        .init(color: .black.opacity(0.12), location: 0.4),
+                        .init(color: .black.opacity(0.58), location: 0.66),
+                        .init(color: .black.opacity(0.94), location: 0.88),
+                        .init(color: .black, location: 1)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+
+                detailInformation
+            }
+            .clipped()
+        }
+        .aspectRatio(2.0 / 3.0, contentMode: .fit)
+    }
+
+    private var detailInformation: some View {
+        VStack(alignment: .leading, spacing: 14) {
                 VStack(alignment: .leading, spacing: 5) {
                     Text(video.title)
                         .font(.title.bold())
@@ -156,11 +197,10 @@ struct VideoDetailView: View {
                             .lineLimit(1)
                     }
                 }
-            }
-            .foregroundStyle(.white)
-            .padding(.horizontal, 18)
-            .padding(.bottom, 24)
         }
+        .foregroundStyle(.white)
+        .padding(.horizontal, 18)
+        .padding(.bottom, 24)
     }
 }
 

@@ -180,6 +180,9 @@ private struct FallbackAsyncImage<Content: View>: View {
                 }
             }
             .id(urls[index])
+            .onChange(of: urls) { _, _ in
+                index = 0
+            }
         } else {
             content(.empty)
         }

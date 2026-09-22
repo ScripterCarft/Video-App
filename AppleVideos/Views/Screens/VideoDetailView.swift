@@ -457,6 +457,12 @@ private struct PlayerScreen: View {
                 }
 
                 let item = AVPlayerItem(asset: asset)
+                if variant.transport == .hls {
+                    item.preferredMaximumResolutionForExpensiveNetworks = CGSize(
+                        width: 1_280,
+                        height: 720
+                    )
+                }
                 let player = makePlayer(item: item)
                 nativePlayer = player
                 isResolving = false

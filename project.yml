@@ -31,7 +31,8 @@ targets:
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: true
         INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: true
         INFOPLIST_KEY_UILaunchScreen_Generation: true
-        INFOPLIST_KEY_UIBackgroundModes: audio
+        INFOPLIST_KEY_UIBackgroundModes:
+          - audio
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
         GENERATE_INFOPLIST_FILE: true
         TARGETED_DEVICE_FAMILY: "1"

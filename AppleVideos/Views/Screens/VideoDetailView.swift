@@ -1,4 +1,5 @@
 import AVKit
+import CoreMedia
 import SwiftUI
 import WebKit
 
@@ -363,6 +364,7 @@ private struct PlayerScreen: View {
     @State private var isResolving = true
     @State private var playbackStarted = false
     @State private var diagnosticMessage: String?
+    @State private var isPictureInPictureActive = false
 
     var body: some View {
         ZStack {
@@ -370,7 +372,10 @@ private struct PlayerScreen: View {
 
             Group {
                 if let nativePlayer {
-                    NativePlayerView(player: nativePlayer)
+                    NativePlayerView(
+                        player: nativePlayer,
+                        isPictureInPictureActive: $isPictureInPictureActive
+                    )
                 } else if usesEmbeddedFallback, video.source == .youtube {
                     YouTubePlayerView(videoID: video.id)
                 } else if isResolving {
@@ -403,6 +408,7 @@ private struct PlayerScreen: View {
             Text(diagnosticMessage ?? "")
         }
         .onDisappear {
+            guard !isPictureInPictureActive else { return }
             nativePlayer?.pause()
         }
     }
@@ -415,10 +421,12 @@ private struct PlayerScreen: View {
                 isResolving = false
                 return
             }
-            let player = makePlayer(item: AVPlayerItem(url: url))
+            let item = AVPlayerItem(url: url)
+            let player = makePlayer(item: item)
             nativePlayer = player
             isResolving = false
             startPlayback(player)
+            await installArtwork(on: item)
 
         case .youtube:
             do {
@@ -441,10 +449,12 @@ private struct PlayerScreen: View {
                     return
                 }
 
-                let player = makePlayer(item: AVPlayerItem(asset: asset))
+                let item = AVPlayerItem(asset: asset)
+                let player = makePlayer(item: item)
                 nativePlayer = player
                 isResolving = false
                 startPlayback(player)
+                await installArtwork(on: item)
             } catch is CancellationError {
                 return
             } catch {
@@ -488,6 +498,86 @@ private struct PlayerScreen: View {
     }
 
     @MainActor
+    private func installArtwork(on playerItem: AVPlayerItem) async {
+        for url in video.artworkURLs(for: .hero) {
+            guard !Task.isCancelled else { return }
+
+            var request = URLRequest(
+                url: url,
+                cachePolicy: .returnCacheDataElseLoad,
+                timeoutInterval: 20
+            )
+            request.setValue(
+                "image/avif,image/webp,image/*,*/*;q=0.8",
+                forHTTPHeaderField: "Accept"
+            )
+
+            guard let (data, response) = try? await URLSession.shared.data(for: request),
+                  let httpResponse = response as? HTTPURLResponse,
+                  200..<300 ~= httpResponse.statusCode,
+                  let image = UIImage(data: data),
+                  video.source != .youtube || Self.isSixteenByNine(image.size),
+                  let artworkData = Self.squareArtworkData(from: image)
+            else {
+                continue
+            }
+
+            var metadata = playerMetadata
+            metadata.append(artworkMetadataItem(data: artworkData))
+            playerItem.externalMetadata = metadata
+            return
+        }
+    }
+
+    private func artworkMetadataItem(data: Data) -> AVMetadataItem {
+        let item = AVMutableMetadataItem()
+        item.identifier = .commonIdentifierArtwork
+        item.value = data as NSData
+        item.dataType = kCMMetadataBaseDataType_JPEG as String
+        return item
+    }
+
+    private static func isSixteenByNine(_ size: CGSize) -> Bool {
+        guard size.width > 0, size.height > 0 else { return false }
+        return abs((size.width / size.height) - (16.0 / 9.0)) < 0.04
+    }
+
+    private static func squareArtworkData(
+        from image: UIImage,
+        pixelSize: CGFloat = 720
+    ) -> Data? {
+        guard image.size.width > 0, image.size.height > 0 else { return nil }
+
+        let targetSize = CGSize(width: pixelSize, height: pixelSize)
+        let scale = max(
+            targetSize.width / image.size.width,
+            targetSize.height / image.size.height
+        )
+        let drawSize = CGSize(
+            width: image.size.width * scale,
+            height: image.size.height * scale
+        )
+        let drawRect = CGRect(
+            x: (targetSize.width - drawSize.width) / 2,
+            y: (targetSize.height - drawSize.height) / 2,
+            width: drawSize.width,
+            height: drawSize.height
+        )
+
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = true
+
+        let renderer = UIGraphicsImageRenderer(size: targetSize, format: format)
+        let squareImage = renderer.image { context in
+            UIColor.black.setFill()
+            context.fill(CGRect(origin: .zero, size: targetSize))
+            image.draw(in: drawRect)
+        }
+        return squareImage.jpegData(compressionQuality: 0.9)
+    }
+
+    @MainActor
     private func startPlayback(_ player: AVPlayer) {
         let audioSession = AVAudioSession.sharedInstance()
         try? audioSession.setCategory(.playback, mode: .moviePlayback)
@@ -509,9 +599,10 @@ private struct PlayerScreen: View {
 
 private struct NativePlayerView: UIViewControllerRepresentable {
     let player: AVPlayer
+    @Binding var isPictureInPictureActive: Bool
 
     func makeCoordinator() -> Coordinator {
-        Coordinator()
+        Coordinator(isPictureInPictureActive: $isPictureInPictureActive)
     }
 
     func makeUIViewController(context: Context) -> AVPlayerViewController {
@@ -533,7 +624,34 @@ private struct NativePlayerView: UIViewControllerRepresentable {
         }
     }
 
+    @MainActor
     final class Coordinator: NSObject, AVPlayerViewControllerDelegate {
+        private var isPictureInPictureActive: Binding<Bool>
+
+        init(isPictureInPictureActive: Binding<Bool>) {
+            self.isPictureInPictureActive = isPictureInPictureActive
+        }
+
+        func playerViewControllerWillStartPictureInPicture(
+            _ playerViewController: AVPlayerViewController
+        ) {
+            isPictureInPictureActive.wrappedValue = true
+        }
+
+        func playerViewControllerDidStopPictureInPicture(
+            _ playerViewController: AVPlayerViewController
+        ) {
+            isPictureInPictureActive.wrappedValue = false
+        }
+
+        func playerViewController(
+            _ playerViewController: AVPlayerViewController,
+            failedToStartPictureInPictureWithError error: Error
+        ) {
+            isPictureInPictureActive.wrappedValue = false
+            print("Picture in Picture failed: \(error.localizedDescription)")
+        }
+
         func playerViewController(
             _ playerViewController: AVPlayerViewController,
             restoreUserInterfaceForPictureInPictureStopWithCompletionHandler completionHandler: @escaping (Bool) -> Void

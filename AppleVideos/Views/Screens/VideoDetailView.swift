@@ -339,7 +339,6 @@ private struct MetadataBadge: View {
 
 private struct PlayerScreen: View {
     let video: Video
-    @Environment(\.dismiss) private var dismiss
     @Environment(LibraryStore.self) private var library
     @State private var nativePlayer: AVPlayer?
     @State private var usesEmbeddedFallback = false
@@ -364,7 +363,6 @@ private struct PlayerScreen: View {
             }
             .ignoresSafeArea()
 
-            playerChrome
         }
         .statusBarHidden()
         .task(id: video.id) {
@@ -392,85 +390,6 @@ private struct PlayerScreen: View {
         }
     }
 
-    private var shareURL: URL? {
-        video.youtubeURL ?? video.playbackURL
-    }
-
-    private var playerChrome: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 10) {
-                GlassEffectContainer(spacing: 10) {
-                    HStack(spacing: 10) {
-                        Button {
-                            dismiss()
-                        } label: {
-                            Image(systemName: "xmark")
-                                .font(.headline)
-                                .frame(width: 44, height: 44)
-                        }
-                        .buttonStyle(.glass)
-                        .accessibilityLabel("Close player")
-
-                        if nativePlayer != nil {
-                            AirPlayRoutePicker()
-                                .frame(width: 44, height: 44)
-                                .glassEffect(.regular.interactive(), in: Circle())
-                                .accessibilityLabel("AirPlay")
-                        }
-
-                        if let shareURL {
-                            ShareLink(item: shareURL) {
-                                Image(systemName: "square.and.arrow.up")
-                                    .font(.headline)
-                                    .frame(width: 44, height: 44)
-                            }
-                            .buttonStyle(.glass)
-                            .accessibilityLabel("Share")
-                        }
-                    }
-                }
-
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, 16)
-            .padding(.top, 8)
-
-            Spacer(minLength: 0)
-
-            HStack {
-                GlassEffectContainer {
-                    Menu {
-                        Button {
-                            library.toggleSaved(video)
-                        } label: {
-                            Label(
-                                library.isSaved(video) ? "Remove from Saved" : "Add to Saved",
-                                systemImage: library.isSaved(video) ? "bookmark.slash" : "bookmark"
-                            )
-                        }
-
-                        if let shareURL {
-                            Link(destination: shareURL) {
-                                Label("Open Source", systemImage: "safari")
-                            }
-                        }
-                    } label: {
-                        Image(systemName: "ellipsis")
-                            .font(.headline)
-                            .frame(width: 44, height: 44)
-                    }
-                    .buttonStyle(.glass)
-                    .accessibilityLabel("More playback options")
-                }
-
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, 16)
-            .padding(.bottom, 82)
-        }
-        .foregroundStyle(.white)
-    }
-
     @MainActor
     private func preparePlayback() async {
         switch video.source {
@@ -482,8 +401,7 @@ private struct PlayerScreen: View {
             let player = makePlayer(item: AVPlayerItem(url: url))
             nativePlayer = player
             isResolving = false
-            player.play()
-            playbackStarted = true
+            startPlayback(player)
 
         case .youtube:
             do {
@@ -509,8 +427,7 @@ private struct PlayerScreen: View {
                 let player = makePlayer(item: AVPlayerItem(asset: asset))
                 nativePlayer = player
                 isResolving = false
-                player.play()
-                playbackStarted = true
+                startPlayback(player)
             } catch is CancellationError {
                 return
             } catch {
@@ -530,6 +447,15 @@ private struct PlayerScreen: View {
     }
 
     @MainActor
+    private func startPlayback(_ player: AVPlayer) {
+        let audioSession = AVAudioSession.sharedInstance()
+        try? audioSession.setCategory(.playback, mode: .moviePlayback)
+        try? audioSession.setActive(true)
+        player.play()
+        playbackStarted = true
+    }
+
+    @MainActor
     private func showEmbeddedFallback(_ diagnostic: String) {
         nativePlayer?.pause()
         nativePlayer = nil
@@ -543,8 +469,13 @@ private struct PlayerScreen: View {
 private struct NativePlayerView: UIViewControllerRepresentable {
     let player: AVPlayer
 
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
     func makeUIViewController(context: Context) -> AVPlayerViewController {
         let controller = AVPlayerViewController()
+        controller.delegate = context.coordinator
         controller.player = player
         controller.showsPlaybackControls = true
         controller.allowsPictureInPicturePlayback = true
@@ -560,19 +491,15 @@ private struct NativePlayerView: UIViewControllerRepresentable {
             controller.player = player
         }
     }
-}
 
-private struct AirPlayRoutePicker: UIViewRepresentable {
-    func makeUIView(context: Context) -> AVRoutePickerView {
-        let picker = AVRoutePickerView()
-        picker.prioritizesVideoDevices = true
-        picker.tintColor = .white
-        picker.activeTintColor = .systemBlue
-        picker.backgroundColor = .clear
-        return picker
+    final class Coordinator: NSObject, AVPlayerViewControllerDelegate {
+        func playerViewController(
+            _ playerViewController: AVPlayerViewController,
+            restoreUserInterfaceForPictureInPictureStopWithCompletionHandler completionHandler: @escaping (Bool) -> Void
+        ) {
+            completionHandler(true)
+        }
     }
-
-    func updateUIView(_ picker: AVRoutePickerView, context: Context) {}
 }
 
 private struct YouTubePlayerView: UIViewRepresentable {

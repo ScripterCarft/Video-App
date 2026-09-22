@@ -433,7 +433,7 @@ private struct PlayerScreen: View {
             nativePlayer = player
             isResolving = false
             startPlayback(player)
-            await installArtwork(on: item)
+            await installSupplementalMetadata(on: item)
 
         case .youtube:
             do {
@@ -467,7 +467,7 @@ private struct PlayerScreen: View {
                 nativePlayer = player
                 isResolving = false
                 startPlayback(player)
-                await installArtwork(on: item)
+                await installSupplementalMetadata(on: item)
             } catch is CancellationError {
                 return
             } catch {
@@ -481,22 +481,36 @@ private struct PlayerScreen: View {
 
     @MainActor
     private func makePlayer(item: AVPlayerItem) -> AVPlayer {
-        item.externalMetadata = playerMetadata
+        item.externalMetadata = playerMetadata(description: normalizedMetadataText(description))
         let player = AVPlayer(playerItem: item)
         player.allowsExternalPlayback = true
         return player
     }
 
-    private var playerMetadata: [AVMetadataItem] {
+    private func playerMetadata(
+        description: String?,
+        artworkData: Data? = nil
+    ) -> [AVMetadataItem] {
         var metadata = [
-            metadataItem(identifier: .commonIdentifierTitle, value: video.title)
+            metadataItem(identifier: .commonIdentifierTitle, value: video.title),
+            metadataItem(identifier: .iTunesMetadataTrackSubTitle, value: video.channelName),
+            metadataItem(identifier: .commonIdentifierArtist, value: video.channelName)
         ]
-        if let description, !description.isEmpty {
+        if let description {
             metadata.append(
                 metadataItem(identifier: .commonIdentifierDescription, value: description)
             )
         }
+        if let artworkData {
+            metadata.append(artworkMetadataItem(data: artworkData))
+        }
         return metadata
+    }
+
+    private func normalizedMetadataText(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let normalized = value.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        return normalized.isEmpty ? nil : normalized
     }
 
     private func metadataItem(
@@ -511,9 +525,40 @@ private struct PlayerScreen: View {
     }
 
     @MainActor
-    private func installArtwork(on playerItem: AVPlayerItem) async {
+    private func installSupplementalMetadata(on playerItem: AVPlayerItem) async {
+        let resolvedDescription = await resolvedPlayerDescription()
+        guard !Task.isCancelled else { return }
+
+        playerItem.externalMetadata = playerMetadata(description: resolvedDescription)
+
+        guard let artworkData = await loadArtworkData(),
+              !Task.isCancelled
+        else {
+            return
+        }
+
+        playerItem.externalMetadata = playerMetadata(
+            description: resolvedDescription,
+            artworkData: artworkData
+        )
+    }
+
+    private func resolvedPlayerDescription() async -> String? {
+        if let description = normalizedMetadataText(description) {
+            return description
+        }
+        guard video.source == .youtube,
+              let details = try? await YouTubeService.shared.details(for: video.id)
+        else {
+            return nil
+        }
+        return normalizedMetadataText(details.description)
+    }
+
+    @MainActor
+    private func loadArtworkData() async -> Data? {
         for url in video.artworkURLs(for: .hero) {
-            guard !Task.isCancelled else { return }
+            guard !Task.isCancelled else { return nil }
 
             var request = URLRequest(
                 url: url,
@@ -534,12 +579,9 @@ private struct PlayerScreen: View {
             else {
                 continue
             }
-
-            var metadata = playerMetadata
-            metadata.append(artworkMetadataItem(data: artworkData))
-            playerItem.externalMetadata = metadata
-            return
+            return artworkData
         }
+        return nil
     }
 
     private func artworkMetadataItem(data: Data) -> AVMetadataItem {

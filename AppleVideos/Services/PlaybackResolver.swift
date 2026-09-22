@@ -107,8 +107,13 @@ enum PlaybackResolverError: LocalizedError, Sendable {
             reason ?? "This video is unavailable."
         case .unsupportedLiveContent:
             "Live and upcoming videos are not supported by native playback yet."
-        case .noCompatibleSource:
-            "No combined HLS or MP4 source compatible with native playback was returned."
+        case let .noCompatibleSource(capabilities):
+            let all = capabilities.allQualityLabels.joined(separator: ", ")
+            let native = capabilities.nativeQualityLabels.joined(separator: ", ")
+            let separate = capabilities.separateTrackQualityLabels.joined(separator: ", ")
+            return """
+            NO_COMPATIBLE_SOURCE · Available: \(all.isEmpty ? "none" : all) ·             Native combined: \(native.isEmpty ? "none" : native) ·             Separate only: \(separate.isEmpty ? "none" : separate) ·             HLS: \(capabilities.hasAdaptiveHLS ? "yes" : "no") ·             Ciphered: \(capabilities.cipheredFormatCount)
+            """
         }
     }
 }

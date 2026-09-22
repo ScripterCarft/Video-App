@@ -156,7 +156,6 @@ struct VideoDetailView: View {
                     Spacer(minLength: 0)
 
                     Button {
-                        library.markWatched(video)
                         showPlayer = true
                         feedback += 1
                     } label: {
@@ -341,9 +340,12 @@ private struct MetadataBadge: View {
 private struct PlayerScreen: View {
     let video: Video
     @Environment(\.dismiss) private var dismiss
+    @Environment(LibraryStore.self) private var library
     @State private var nativePlayer: AVPlayer?
     @State private var usesEmbeddedFallback = false
     @State private var isResolving = true
+    @State private var playbackStarted = false
+    @State private var diagnosticMessage: String?
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
@@ -378,6 +380,23 @@ private struct PlayerScreen: View {
         .task(id: video.id) {
             await preparePlayback()
         }
+        .task(id: playbackStarted) {
+            guard playbackStarted else { return }
+            try? await Task.sleep(for: .seconds(10))
+            guard !Task.isCancelled else { return }
+            library.markWatched(video)
+        }
+        .alert(
+            "Native Playback Debug",
+            isPresented: Binding(
+                get: { diagnosticMessage != nil },
+                set: { if !$0 { diagnosticMessage = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(diagnosticMessage ?? "")
+        }
         .onDisappear {
             nativePlayer?.pause()
         }
@@ -395,6 +414,7 @@ private struct PlayerScreen: View {
             nativePlayer = player
             isResolving = false
             player.play()
+            playbackStarted = true
 
         case .youtube:
             do {
@@ -403,7 +423,7 @@ private struct PlayerScreen: View {
                 )
                 try Task.checkCancellation()
                 guard let variant = source.preferredVariant else {
-                    showEmbeddedFallback()
+                    showEmbeddedFallback("NO_VARIANT · The resolver returned no preferred source.")
                     return
                 }
 
@@ -411,7 +431,9 @@ private struct PlayerScreen: View {
                 let isPlayable = try await asset.load(.isPlayable)
                 try Task.checkCancellation()
                 guard isPlayable else {
-                    showEmbeddedFallback()
+                    showEmbeddedFallback(
+                        "AVPLAYER_REJECTED · \(variant.qualityLabel ?? "Unknown quality") · \(variant.mimeType)"
+                    )
                     return
                 }
 
@@ -419,20 +441,26 @@ private struct PlayerScreen: View {
                 nativePlayer = player
                 isResolving = false
                 player.play()
+                playbackStarted = true
             } catch is CancellationError {
                 return
             } catch {
-                showEmbeddedFallback()
+                let nsError = error as NSError
+                showEmbeddedFallback(
+                    "\(error.localizedDescription)\nCode: \(nsError.domain)/\(nsError.code)"
+                )
             }
         }
     }
 
     @MainActor
-    private func showEmbeddedFallback() {
+    private func showEmbeddedFallback(_ diagnostic: String) {
         nativePlayer?.pause()
         nativePlayer = nil
         isResolving = false
+        diagnosticMessage = diagnostic
         usesEmbeddedFallback = true
+        playbackStarted = true
     }
 }
 

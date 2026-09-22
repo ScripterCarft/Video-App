@@ -833,7 +833,6 @@ private final class PlayerPresentationHostViewController: UIViewController {
         playerController.canStartPictureInPictureAutomaticallyFromInline = true
         playerController.entersFullScreenWhenPlaybackBegins = false
         playerController.exitsFullScreenWhenPlaybackEnds = false
-        playerController.transportBarIncludesTitleView = true
         playerController.videoGravity = .resizeAspect
         playerController.modalPresentationStyle = .fullScreen
     }

@@ -77,7 +77,14 @@ struct VideoDetailView: View {
                 .presentationDragIndicator(.visible)
         }
         .task(id: video.id) {
-            guard video.source == .youtube else { return }
+            loadedDescription = nil
+            loadedBadges = nil
+            detailsLoadFinished = false
+
+            guard video.source == .youtube else {
+                detailsLoadFinished = true
+                return
+            }
             defer { detailsLoadFinished = true }
 
             guard let details = try? await YouTubeService.shared.details(for: video.id) else {

@@ -690,6 +690,7 @@ private struct NativePlayerPresenter: UIViewControllerRepresentable {
         controller.dismissPresentedPlayer()
     }
 
+    @MainActor
     final class Coordinator:
         NSObject,
         AVPlayerViewControllerDelegate,

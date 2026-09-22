@@ -376,13 +376,11 @@ private struct PlayerScreen: View {
 
     var body: some View {
         ZStack {
-            Color.black
-                .opacity(nativePlayer == nil ? 1 : 0)
-                .ignoresSafeArea()
+            Color.black.ignoresSafeArea()
 
             Group {
                 if let nativePlayer {
-                    NativePlayerView(
+                    NativePlayerPresenter(
                         player: nativePlayer,
                         isPictureInPictureActive: $isPictureInPictureActive,
                         onDismiss: { dismiss() }
@@ -397,7 +395,6 @@ private struct PlayerScreen: View {
             }
             .ignoresSafeArea()
         }
-        .presentationBackground(.clear)
         .statusBarHidden()
         .task(id: video.id) {
             await preparePlayback()
@@ -657,54 +654,97 @@ private struct PlayerScreen: View {
     }
 }
 
-private struct NativePlayerView: UIViewControllerRepresentable {
+private struct NativePlayerPresenter: UIViewControllerRepresentable {
     let player: AVPlayer
     @Binding var isPictureInPictureActive: Bool
     let onDismiss: () -> Void
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(isPictureInPictureActive: $isPictureInPictureActive)
-    }
-
-    func makeUIViewController(context: Context) -> InteractivePlayerContainerViewController {
-        InteractivePlayerContainerViewController(
-            player: player,
-            playerDelegate: context.coordinator,
+        Coordinator(
+            isPictureInPictureActive: $isPictureInPictureActive,
             onDismiss: onDismiss
         )
     }
 
-    func updateUIViewController(
-        _ controller: InteractivePlayerContainerViewController,
-        context: Context
-    ) {
-        controller.update(player: player, onDismiss: onDismiss)
+    func makeUIViewController(context: Context) -> PlayerPresentationHostViewController {
+        let controller = PlayerPresentationHostViewController(
+            player: player,
+            coordinator: context.coordinator
+        )
+        context.coordinator.host = controller
+        return controller
     }
 
-    final class Coordinator: NSObject, AVPlayerViewControllerDelegate {
-        private var isPictureInPictureActive: Binding<Bool>
+    func updateUIViewController(
+        _ controller: PlayerPresentationHostViewController,
+        context: Context
+    ) {
+        context.coordinator.update(onDismiss: onDismiss)
+        controller.update(player: player)
+    }
 
-        init(isPictureInPictureActive: Binding<Bool>) {
-            self.isPictureInPictureActive = isPictureInPictureActive
+    static func dismantleUIViewController(
+        _ controller: PlayerPresentationHostViewController,
+        coordinator: Coordinator
+    ) {
+        controller.dismissPresentedPlayer()
+    }
+
+    final class Coordinator:
+        NSObject,
+        AVPlayerViewControllerDelegate,
+        UIAdaptivePresentationControllerDelegate
+    {
+        private var isPictureInPictureActiveBinding: Binding<Bool>
+        private var onDismiss: () -> Void
+        private var hasFinished = false
+        weak var host: PlayerPresentationHostViewController?
+
+        var isPictureInPictureActive: Bool {
+            isPictureInPictureActiveBinding.wrappedValue
+        }
+
+        init(
+            isPictureInPictureActive: Binding<Bool>,
+            onDismiss: @escaping () -> Void
+        ) {
+            isPictureInPictureActiveBinding = isPictureInPictureActive
+            self.onDismiss = onDismiss
+        }
+
+        func update(onDismiss: @escaping () -> Void) {
+            self.onDismiss = onDismiss
+        }
+
+        func playerDidDismiss() {
+            guard !hasFinished, !isPictureInPictureActive else { return }
+            hasFinished = true
+            onDismiss()
+        }
+
+        func presentationControllerDidDismiss(
+            _ presentationController: UIPresentationController
+        ) {
+            playerDidDismiss()
         }
 
         func playerViewControllerWillStartPictureInPicture(
             _ playerViewController: AVPlayerViewController
         ) {
-            isPictureInPictureActive.wrappedValue = true
+            isPictureInPictureActiveBinding.wrappedValue = true
         }
 
         func playerViewControllerDidStopPictureInPicture(
             _ playerViewController: AVPlayerViewController
         ) {
-            isPictureInPictureActive.wrappedValue = false
+            isPictureInPictureActiveBinding.wrappedValue = false
         }
 
         func playerViewController(
             _ playerViewController: AVPlayerViewController,
             failedToStartPictureInPictureWithError error: Error
         ) {
-            isPictureInPictureActive.wrappedValue = false
+            isPictureInPictureActiveBinding.wrappedValue = false
             print("Picture in Picture failed: \(error.localizedDescription)")
         }
 
@@ -712,29 +752,28 @@ private struct NativePlayerView: UIViewControllerRepresentable {
             _ playerViewController: AVPlayerViewController,
             restoreUserInterfaceForPictureInPictureStopWithCompletionHandler completionHandler: @escaping (Bool) -> Void
         ) {
-            completionHandler(true)
+            guard let host else {
+                completionHandler(false)
+                return
+            }
+            host.restorePlayerInterface(completionHandler: completionHandler)
         }
     }
 }
 
-private final class InteractivePlayerContainerViewController:
-    UIViewController,
-    UIGestureRecognizerDelegate
-{
+private final class PlayerPresentationHostViewController: UIViewController {
     private let playerController = AVPlayerViewController()
-    private var onDismiss: () -> Void
-    private var isDraggingVideo = false
+    private weak var playerCoordinator: NativePlayerPresenter.Coordinator?
+    private var hasPresentedPlayer = false
+    private var isBeingTornDown = false
 
     init(
         player: AVPlayer,
-        playerDelegate: AVPlayerViewControllerDelegate,
-        onDismiss: @escaping () -> Void
+        coordinator: NativePlayerPresenter.Coordinator
     ) {
-        self.onDismiss = onDismiss
+        playerCoordinator = coordinator
         super.init(nibName: nil, bundle: nil)
-
-        playerController.delegate = playerDelegate
-        configurePlayer(player)
+        configurePlayerController(with: player, delegate: coordinator)
     }
 
     @available(*, unavailable)
@@ -745,158 +784,70 @@ private final class InteractivePlayerContainerViewController:
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .black
-
-        addChild(playerController)
-        view.addSubview(playerController.view)
-        playerController.didMove(toParent: self)
-
-        let panGesture = UIPanGestureRecognizer(target: self, action: #selector(handlePan(_:)))
-        panGesture.delegate = self
-        panGesture.cancelsTouchesInView = false
-        playerController.view.addGestureRecognizer(panGesture)
     }
 
-    override func viewDidLayoutSubviews() {
-        super.viewDidLayoutSubviews()
-        guard !isDraggingVideo else { return }
-        playerController.view.transform = .identity
-        playerController.view.frame = view.bounds
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+
+        if !hasPresentedPlayer {
+            presentPlayer(animated: false)
+        } else if presentedViewController == nil,
+                  playerCoordinator?.isPictureInPictureActive != true,
+                  !isBeingTornDown {
+            playerCoordinator?.playerDidDismiss()
+        }
     }
 
-    func update(player: AVPlayer, onDismiss: @escaping () -> Void) {
-        self.onDismiss = onDismiss
+    func update(player: AVPlayer) {
         if playerController.player !== player {
             playerController.player = player
         }
     }
 
-    private func configurePlayer(_ player: AVPlayer) {
+    func restorePlayerInterface(
+        completionHandler: @escaping (Bool) -> Void
+    ) {
+        guard presentedViewController == nil else {
+            completionHandler(true)
+            return
+        }
+
+        presentPlayer(animated: true) {
+            completionHandler(true)
+        }
+    }
+
+    func dismissPresentedPlayer() {
+        isBeingTornDown = true
+        playerController.dismiss(animated: false)
+    }
+
+    private func configurePlayerController(
+        with player: AVPlayer,
+        delegate: AVPlayerViewControllerDelegate
+    ) {
+        playerController.delegate = delegate
         playerController.player = player
         playerController.showsPlaybackControls = true
         playerController.allowsPictureInPicturePlayback = true
         playerController.canStartPictureInPictureAutomaticallyFromInline = true
         playerController.entersFullScreenWhenPlaybackBegins = false
         playerController.exitsFullScreenWhenPlaybackEnds = false
+        playerController.transportBarIncludesTitleView = true
         playerController.videoGravity = .resizeAspect
+        playerController.modalPresentationStyle = .fullScreen
     }
 
-    func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
-        guard let panGesture = gestureRecognizer as? UIPanGestureRecognizer else {
-            return true
+    private func presentPlayer(
+        animated: Bool,
+        completion: (() -> Void)? = nil
+    ) {
+        playerController.presentationController?.delegate = playerCoordinator
+        present(playerController, animated: animated) {
+            self.playerController.presentationController?.delegate = self.playerCoordinator
+            self.hasPresentedPlayer = true
+            completion?()
         }
-        let velocity = panGesture.velocity(in: view)
-        return abs(velocity.y) > abs(velocity.x) * 1.2
-    }
-
-    func gestureRecognizer(
-        _ gestureRecognizer: UIGestureRecognizer,
-        shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
-    ) -> Bool {
-        true
-    }
-
-    @objc
-    private func handlePan(_ gesture: UIPanGestureRecognizer) {
-        let translation = gesture.translation(in: view)
-        let velocity = gesture.velocity(in: view)
-
-        switch gesture.state {
-        case .began:
-            beginVideoDrag()
-        case .changed:
-            updateVideoDrag(translationY: translation.y)
-        case .ended:
-            finishVideoDrag(translationY: translation.y, velocityY: velocity.y)
-        case .cancelled, .failed:
-            restorePlayer()
-        default:
-            break
-        }
-    }
-
-    private func beginVideoDrag() {
-        guard !isDraggingVideo else { return }
-        isDraggingVideo = true
-        playerController.showsPlaybackControls = false
-        playerController.view.transform = .identity
-        playerController.view.frame = sixteenByNineFrame(in: view.bounds)
-    }
-
-    private func updateVideoDrag(translationY: CGFloat) {
-        guard isDraggingVideo else { return }
-
-        let downwardDistance = max(0, translationY)
-        let resistedUpwardDistance = min(0, translationY) * 0.12
-        let offset = downwardDistance + resistedUpwardDistance
-        let progress = min(1, downwardDistance / max(view.bounds.height * 0.5, 1))
-        let scale = 1 - (0.08 * progress)
-
-        playerController.view.transform = CGAffineTransform(
-            translationX: 0,
-            y: offset
-        )
-        .scaledBy(x: scale, y: scale)
-        view.backgroundColor = UIColor.black.withAlphaComponent(1 - (0.94 * progress))
-    }
-
-    private func finishVideoDrag(translationY: CGFloat, velocityY: CGFloat) {
-        guard isDraggingVideo else { return }
-
-        let projectedDistance = translationY + max(0, velocityY) * 0.18
-        let dismissalDistance = max(120, view.bounds.height * 0.22)
-
-        if projectedDistance > dismissalDistance {
-            dismissPlayer(velocityY: velocityY)
-        } else {
-            restorePlayer()
-        }
-    }
-
-    private func dismissPlayer(velocityY: CGFloat) {
-        let remainingDistance = view.bounds.maxY - playerController.view.frame.minY
-        let duration = min(
-            0.32,
-            max(0.16, remainingDistance / max(abs(velocityY), 900))
-        )
-
-        UIView.animate(
-            withDuration: duration,
-            delay: 0,
-            options: [.curveEaseIn, .beginFromCurrentState]
-        ) {
-            self.playerController.view.transform = self.playerController.view.transform
-                .translatedBy(x: 0, y: self.view.bounds.height)
-            self.view.backgroundColor = .clear
-        } completion: { _ in
-            self.onDismiss()
-        }
-    }
-
-    private func restorePlayer() {
-        guard isDraggingVideo else { return }
-
-        UIView.animate(
-            withDuration: 0.42,
-            delay: 0,
-            usingSpringWithDamping: 0.86,
-            initialSpringVelocity: 0,
-            options: [.allowUserInteraction, .beginFromCurrentState]
-        ) {
-            self.playerController.view.transform = .identity
-            self.playerController.view.frame = self.view.bounds
-            self.view.backgroundColor = .black
-        } completion: { _ in
-            self.isDraggingVideo = false
-            self.playerController.showsPlaybackControls = true
-            self.view.setNeedsLayout()
-        }
-    }
-
-    private func sixteenByNineFrame(in bounds: CGRect) -> CGRect {
-        AVMakeRect(
-            aspectRatio: CGSize(width: 16, height: 9),
-            insideRect: bounds
-        )
     }
 }
 

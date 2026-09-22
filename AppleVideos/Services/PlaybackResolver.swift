@@ -98,15 +98,15 @@ enum PlaybackResolverError: LocalizedError, Sendable {
     var errorDescription: String? {
         switch self {
         case .invalidVideoID:
-            "The video ID is invalid."
+            return "The video ID is invalid."
         case .configurationUnavailable:
-            "Playback configuration is temporarily unavailable."
+            return "Playback configuration is temporarily unavailable."
         case .invalidResponse:
-            "The playback service returned an unreadable response."
+            return "The playback service returned an unreadable response."
         case let .videoUnavailable(reason):
-            reason ?? "This video is unavailable."
+            return reason ?? "This video is unavailable."
         case .unsupportedLiveContent:
-            "Live and upcoming videos are not supported by native playback yet."
+            return "Live and upcoming videos are not supported by native playback yet."
         case let .noCompatibleSource(capabilities):
             let all = capabilities.allQualityLabels.joined(separator: ", ")
             let native = capabilities.nativeQualityLabels.joined(separator: ", ")

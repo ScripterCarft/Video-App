@@ -8,9 +8,8 @@ import Foundation
 actor YouTubeInnertubePlaybackResolver: PlaybackResolving {
     static let shared = YouTubeInnertubePlaybackResolver()
 
-    private struct WebConfiguration: Sendable {
+    private struct BootstrapConfiguration: Sendable {
         let apiKey: String
-        let clientVersion: String
         let visitorData: String?
     }
 
@@ -19,7 +18,7 @@ actor YouTubeInnertubePlaybackResolver: PlaybackResolving {
     }
 
     private let session: URLSession
-    private var configuration: WebConfiguration?
+    private var configuration: BootstrapConfiguration?
     private var cache: [PlaybackRequest: CacheEntry] = [:]
     private var inFlight: [PlaybackRequest: Task<ResolvedPlaybackSource, Error>] = [:]
 
@@ -64,7 +63,7 @@ actor YouTubeInnertubePlaybackResolver: PlaybackResolving {
     }
 
     private func resolveUncached(_ request: PlaybackRequest) async throws -> ResolvedPlaybackSource {
-        let configuration = try await webConfiguration()
+        let configuration = try await bootstrapConfiguration(for: request.videoID)
         guard let endpoint = URL(
             string: "https://www.youtube.com/youtubei/v1/player?key=\(configuration.apiKey)&prettyPrint=false"
         ) else {
@@ -77,10 +76,13 @@ actor YouTubeInnertubePlaybackResolver: PlaybackResolving {
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
         urlRequest.setValue("application/json", forHTTPHeaderField: "Accept")
         urlRequest.setValue("https://www.youtube.com", forHTTPHeaderField: "Origin")
-        urlRequest.setValue("https://www.youtube.com/", forHTTPHeaderField: "Referer")
-        urlRequest.setValue(Self.webUserAgent, forHTTPHeaderField: "User-Agent")
-        urlRequest.setValue("1", forHTTPHeaderField: "X-YouTube-Client-Name")
-        urlRequest.setValue(configuration.clientVersion, forHTTPHeaderField: "X-YouTube-Client-Version")
+        urlRequest.setValue(
+            "https://www.youtube.com/watch?v=\(request.videoID)",
+            forHTTPHeaderField: "Referer"
+        )
+        urlRequest.setValue(Self.visionOSUserAgent, forHTTPHeaderField: "User-Agent")
+        urlRequest.setValue(Self.visionOSClientNumber, forHTTPHeaderField: "X-YouTube-Client-Name")
+        urlRequest.setValue(Self.visionOSClientVersion, forHTTPHeaderField: "X-YouTube-Client-Version")
         urlRequest.setValue(request.languageCode, forHTTPHeaderField: "Accept-Language")
         if let visitorData = configuration.visitorData {
             urlRequest.setValue(visitorData, forHTTPHeaderField: "X-Goog-Visitor-Id")
@@ -88,13 +90,17 @@ actor YouTubeInnertubePlaybackResolver: PlaybackResolving {
         urlRequest.httpBody = try JSONSerialization.data(withJSONObject: [
             "context": [
                 "client": [
-                    "clientName": "WEB",
-                    "clientVersion": configuration.clientVersion,
+                    "clientName": "VISIONOS",
+                    "clientVersion": Self.visionOSClientVersion,
                     "hl": request.languageCode,
                     "gl": request.regionCode,
                     "timeZone": "UTC",
                     "utcOffsetMinutes": 0,
-                    "userAgent": Self.webUserAgent
+                    "deviceMake": "Apple",
+                    "deviceModel": "RealityDevice17,1",
+                    "userAgent": Self.visionOSUserAgent,
+                    "osName": "visionOS",
+                    "osVersion": "26.5.23O471"
                 ]
             ],
             "videoId": request.videoID,
@@ -102,7 +108,9 @@ actor YouTubeInnertubePlaybackResolver: PlaybackResolving {
                 "contentPlaybackContext": [
                     "html5Preference": "HTML5_PREF_WANTS"
                 ]
-            ]
+            ],
+            "contentCheckOk": true,
+            "racyCheckOk": true
         ])
 
         let (data, response) = try await session.data(for: urlRequest)
@@ -127,10 +135,16 @@ actor YouTubeInnertubePlaybackResolver: PlaybackResolving {
         return try Self.parse(root: root, videoID: request.videoID)
     }
 
-    private func webConfiguration() async throws -> WebConfiguration {
+    private func bootstrapConfiguration(for videoID: String) async throws -> BootstrapConfiguration {
         if let configuration { return configuration }
 
-        var request = URLRequest(url: URL(string: "https://www.youtube.com")!)
+        var components = URLComponents(string: "https://www.youtube.com/watch")!
+        components.queryItems = [URLQueryItem(name: "v", value: videoID)]
+        guard let bootstrapURL = components.url else {
+            throw PlaybackResolverError.configurationUnavailable
+        }
+
+        var request = URLRequest(url: bootstrapURL)
         request.timeoutInterval = 15
         request.setValue(Self.webUserAgent, forHTTPHeaderField: "User-Agent")
         request.setValue("text/html", forHTTPHeaderField: "Accept")
@@ -140,17 +154,15 @@ actor YouTubeInnertubePlaybackResolver: PlaybackResolving {
         guard let http = response as? HTTPURLResponse,
               200..<300 ~= http.statusCode,
               let html = String(data: data, encoding: .utf8),
-              let apiKey = Self.capture(#"\"INNERTUBE_API_KEY\":\"([^\"]+)\""#, in: html),
-              let clientVersion = Self.capture(#"\"INNERTUBE_CLIENT_VERSION\":\"([^\"]+)\""#, in: html)
+              let apiKey = Self.capture(#"\"INNERTUBE_API_KEY\":\"([^\"]+)\""#, in: html)
         else {
             throw PlaybackResolverError.configurationUnavailable
         }
 
         let visitorData = Self.capture(#"\"VISITOR_DATA\":\"([^\"]+)\""#, in: html)
             ?? Self.capture(#"\"visitorData\":\"([^\"]+)\""#, in: html)
-        let value = WebConfiguration(
+        let value = BootstrapConfiguration(
             apiKey: apiKey,
-            clientVersion: clientVersion,
             visitorData: visitorData
         )
         configuration = value
@@ -399,4 +411,12 @@ actor YouTubeInnertubePlaybackResolver: PlaybackResolving {
     private static let webUserAgent =
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
         + "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.5 Safari/605.1.15,gzip(gfe)"
+
+    /// Current JS-free playback client used by yt-dlp. Keep all provider
+    /// specifics isolated here so callers remain independent of Innertube.
+    private static let visionOSClientNumber = "101"
+    private static let visionOSClientVersion = "1.02"
+    private static let visionOSUserAgent =
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 15_7_3) "
+        + "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15"
 }

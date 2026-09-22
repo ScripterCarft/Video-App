@@ -544,7 +544,7 @@ private struct NativePlayerView: UIViewControllerRepresentable {
     }
 
     @MainActor
-    final class Coordinator: NSObject, AVPlayerViewControllerDelegate, UIGestureRecognizerDelegate {
+    final class Coordinator: NSObject, @preconcurrency AVPlayerViewControllerDelegate, @preconcurrency UIGestureRecognizerDelegate {
         var parent: NativePlayerView
         weak var playerViewController: AVPlayerViewController?
 

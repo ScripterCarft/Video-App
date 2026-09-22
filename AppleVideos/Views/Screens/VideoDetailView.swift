@@ -66,8 +66,12 @@ struct VideoDetailView: View {
             }
         }
         .navigationTransition(.zoom(sourceID: transitionID, in: transition))
-        .fullScreenCover(isPresented: $showPlayer) {
-            PlayerScreen(video: video)
+        .sheet(isPresented: $showPlayer) {
+            PlayerScreen(video: video, description: visibleDescription)
+                .presentationDetents([.large])
+                .presentationDragIndicator(.hidden)
+                .presentationCornerRadius(0)
+                .presentationBackground(.black)
         }
         .sheet(isPresented: $showDescription) {
             DescriptionSheet(video: video, description: visibleDescription)
@@ -339,6 +343,7 @@ private struct MetadataBadge: View {
 
 private struct PlayerScreen: View {
     let video: Video
+    let description: String?
     @Environment(LibraryStore.self) private var library
     @State private var nativePlayer: AVPlayer?
     @State private var usesEmbeddedFallback = false
@@ -441,9 +446,33 @@ private struct PlayerScreen: View {
 
     @MainActor
     private func makePlayer(item: AVPlayerItem) -> AVPlayer {
+        item.externalMetadata = playerMetadata
         let player = AVPlayer(playerItem: item)
         player.allowsExternalPlayback = true
         return player
+    }
+
+    private var playerMetadata: [AVMetadataItem] {
+        var metadata = [
+            metadataItem(identifier: .commonIdentifierTitle, value: video.title)
+        ]
+        if let description, !description.isEmpty {
+            metadata.append(
+                metadataItem(identifier: .commonIdentifierDescription, value: description)
+            )
+        }
+        return metadata
+    }
+
+    private func metadataItem(
+        identifier: AVMetadataIdentifier,
+        value: String
+    ) -> AVMetadataItem {
+        let item = AVMutableMetadataItem()
+        item.identifier = identifier
+        item.value = value as NSString
+        item.extendedLanguageTag = "und"
+        return item
     }
 
     @MainActor

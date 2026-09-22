@@ -32,8 +32,9 @@ struct Video: Identifiable, Hashable, Codable, Sendable {
     var artworkURLs: [URL] {
         guard source == .youtube else { return thumbnailURL.map { [$0] } ?? [] }
         let candidates = [
-            URL(string: "https://i.ytimg.com/vi/\(id)/maxresdefault.jpg"),
             thumbnailURL,
+            URL(string: "https://i.ytimg.com/vi/\(id)/hqdefault.jpg"),
+            URL(string: "https://i.ytimg.com/vi/\(id)/maxresdefault.jpg"),
             URL(string: "https://i.ytimg.com/vi/\(id)/hq720.jpg"),
             URL(string: "https://i.ytimg.com/vi/\(id)/mqdefault.jpg")
         ].compactMap { $0 }

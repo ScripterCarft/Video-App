@@ -9,7 +9,11 @@ struct VideoCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            VideoArtwork(video: video, cornerRadius: 14)
+            VideoArtwork(
+                video: video,
+                cornerRadius: 14,
+                quality: compact ? .compact : .search
+            )
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(video.title)
@@ -63,7 +67,7 @@ struct VideoCard: View {
                 }
             }
         } preview: {
-            VideoArtwork(video: video, cornerRadius: 18)
+            VideoArtwork(video: video, cornerRadius: 18, quality: .search)
                 .frame(width: 320)
                 .padding()
         }

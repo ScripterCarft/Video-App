@@ -376,9 +376,22 @@ actor YouTubeService {
 
     private static func thumbnailURL(from value: Any?) -> URL? {
         guard let dictionary = value as? [String: Any],
-              let thumbnails = dictionary["thumbnails"] as? [[String: Any]],
-              let url = thumbnails.last?["url"] as? String
+              let thumbnails = dictionary["thumbnails"] as? [[String: Any]]
         else { return nil }
-        return URL(string: url.hasPrefix("//") ? "https:\(url)" : url)
+
+        let candidates = thumbnails.compactMap { thumbnail -> (url: URL, width: Int)? in
+            guard let value = thumbnail["url"] as? String,
+                  let width = thumbnail["width"] as? Int,
+                  let height = thumbnail["height"] as? Int,
+                  width > 0,
+                  height > 0,
+                  width <= 720,
+                  abs((Double(width) / Double(height)) - (16.0 / 9.0)) < 0.04,
+                  let url = URL(string: value.hasPrefix("//") ? "https:\(value)" : value)
+            else { return nil }
+            return (url, width)
+        }
+
+        return candidates.max(by: { $0.width < $1.width })?.url
     }
 }

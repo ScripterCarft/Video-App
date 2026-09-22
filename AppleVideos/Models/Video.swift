@@ -1,5 +1,11 @@
 import Foundation
 
+enum ArtworkQuality: Sendable {
+    case compact
+    case search
+    case hero
+}
+
 struct Video: Identifiable, Hashable, Codable, Sendable {
     enum Source: String, Codable, Sendable {
         case youtube
@@ -23,11 +29,24 @@ struct Video: Identifiable, Hashable, Codable, Sendable {
         return URL(string: "https://www.youtube.com/watch?v=\(id)")
     }
 
-    /// A predictable 16:9 image keeps curated, searched, and previously saved
-    /// YouTube videos on the exact same card geometry.
-    var artworkURL: URL? {
-        guard source == .youtube else { return thumbnailURL }
-        return URL(string: "https://i.ytimg.com/vi/\(id)/mqdefault.jpg")
+    func artworkURLs(for quality: ArtworkQuality) -> [URL] {
+        guard source == .youtube else { return [thumbnailURL].compactMap { $0 } }
+
+        let medium = URL(string: "https://i.ytimg.com/vi/\(id)/mqdefault.jpg")
+        let maximum = URL(string: "https://i.ytimg.com/vi/\(id)/maxresdefault.jpg")
+
+        let candidates: [URL?]
+        switch quality {
+        case .compact:
+            candidates = [medium, thumbnailURL]
+        case .search:
+            candidates = [thumbnailURL, medium]
+        case .hero:
+            candidates = [maximum, thumbnailURL, medium]
+        }
+
+        var seen = Set<URL>()
+        return candidates.compactMap { $0 }.filter { seen.insert($0).inserted }
     }
 
     var metadataLine: String {
@@ -112,7 +131,7 @@ extension Video {
             id: id,
             title: title,
             channelName: channel,
-            thumbnailURL: thumbnailURL ?? URL(string: "https://i.ytimg.com/vi/\(id)/hqdefault.jpg"),
+            thumbnailURL: thumbnailURL,
             duration: duration,
             publishedText: published,
             viewCountText: views,

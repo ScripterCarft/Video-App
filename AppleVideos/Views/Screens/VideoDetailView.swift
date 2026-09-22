@@ -690,10 +690,9 @@ private struct NativePlayerPresenter: UIViewControllerRepresentable {
         controller.dismissPresentedPlayer()
     }
 
-    @MainActor
     final class Coordinator:
         NSObject,
-        AVPlayerViewControllerDelegate,
+        @preconcurrency AVPlayerViewControllerDelegate,
         UIAdaptivePresentationControllerDelegate
     {
         private var isPictureInPictureActiveBinding: Binding<Bool>

@@ -224,10 +224,10 @@ struct VideoDetailView: View {
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.white.opacity(0.88))
                     .buttonStyle(.plain)
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 3)
-                    .frame(minHeight: 44)
+                    .padding(.horizontal, 6)
+                    .frame(height: 22)
                     .background(.ultraThinMaterial, in: Capsule())
+                    .contentShape(Rectangle().inset(by: -11))
             }
         }
     }

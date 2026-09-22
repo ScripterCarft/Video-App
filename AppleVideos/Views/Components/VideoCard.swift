@@ -14,6 +14,7 @@ struct VideoCard: View {
                 cornerRadius: 14,
                 quality: compact ? .compact : .search
             )
+            .frame(height: compact ? 153 : nil)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(video.title)

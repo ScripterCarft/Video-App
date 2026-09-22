@@ -13,6 +13,7 @@ struct VideoDetailView: View {
     @State private var showDescription = false
     @State private var loadedDescription: String?
     @State private var loadedBadges: [String]?
+    @State private var detailsLoadFinished = false
 
     init(video: Video, transition: Namespace.ID, transitionID: String? = nil) {
         self.video = video
@@ -68,7 +69,6 @@ struct VideoDetailView: View {
         .navigationTransition(.zoom(sourceID: transitionID, in: transition))
         .fullScreenCover(isPresented: $showPlayer) {
             PlayerScreen(video: video, description: visibleDescription)
-                .presentationBackground(.clear)
         }
         .sheet(isPresented: $showDescription) {
             DescriptionSheet(video: video, description: visibleDescription)
@@ -76,9 +76,12 @@ struct VideoDetailView: View {
                 .presentationDragIndicator(.visible)
         }
         .task(id: video.id) {
-            guard video.source == .youtube,
-                  let details = try? await YouTubeService.shared.details(for: video.id)
-            else { return }
+            guard video.source == .youtube else { return }
+            defer { detailsLoadFinished = true }
+
+            guard let details = try? await YouTubeService.shared.details(for: video.id) else {
+                return
+            }
             loadedDescription = details.description
             loadedBadges = details.badges.isEmpty ? nil : details.badges
         }
@@ -193,6 +196,8 @@ struct VideoDetailView: View {
                     DescriptionPreview(text: description) {
                         showDescription = true
                     }
+                } else if video.source == .youtube && !detailsLoadFinished {
+                    DescriptionPlaceholder()
                 }
 
                 HStack(spacing: 7) {
@@ -217,6 +222,17 @@ struct VideoDetailView: View {
         .foregroundStyle(.white)
         .padding(.horizontal, 18)
         .padding(.bottom, 18)
+    }
+}
+
+private struct DescriptionPlaceholder: View {
+    var body: some View {
+        Text("Loading video description\nLoading video description")
+            .font(.subheadline)
+            .foregroundStyle(.white.opacity(0.72))
+            .lineLimit(2)
+            .redacted(reason: .placeholder)
+            .accessibilityHidden(true)
     }
 }
 
@@ -341,29 +357,20 @@ private struct MetadataBadge: View {
 private struct PlayerScreen: View {
     let video: Video
     let description: String?
-    @Environment(\.dismiss) private var dismiss
     @Environment(LibraryStore.self) private var library
     @State private var nativePlayer: AVPlayer?
     @State private var usesEmbeddedFallback = false
     @State private var isResolving = true
     @State private var playbackStarted = false
     @State private var diagnosticMessage: String?
-    @State private var dismissalOffset: CGFloat = 0
 
     var body: some View {
         ZStack {
-            Color.black
-                .opacity(dismissalBackdropOpacity)
-                .ignoresSafeArea()
+            Color.black.ignoresSafeArea()
 
             Group {
                 if let nativePlayer {
-                    NativePlayerView(
-                        player: nativePlayer,
-                        dismissalOffset: $dismissalOffset
-                    ) {
-                        dismiss()
-                    }
+                    NativePlayerView(player: nativePlayer)
                 } else if usesEmbeddedFallback, video.source == .youtube {
                     YouTubePlayerView(videoID: video.id)
                 } else if isResolving {
@@ -373,7 +380,6 @@ private struct PlayerScreen: View {
                 }
             }
             .ignoresSafeArea()
-            .offset(y: dismissalOffset)
         }
         .statusBarHidden()
         .task(id: video.id) {
@@ -399,10 +405,6 @@ private struct PlayerScreen: View {
         .onDisappear {
             nativePlayer?.pause()
         }
-    }
-
-    private var dismissalBackdropOpacity: Double {
-        max(0, 1 - Double(dismissalOffset / 500))
     }
 
     @MainActor
@@ -507,11 +509,9 @@ private struct PlayerScreen: View {
 
 private struct NativePlayerView: UIViewControllerRepresentable {
     let player: AVPlayer
-    @Binding var dismissalOffset: CGFloat
-    let onDismiss: () -> Void
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(parent: self)
+        Coordinator()
     }
 
     func makeUIViewController(context: Context) -> AVPlayerViewController {
@@ -524,80 +524,16 @@ private struct NativePlayerView: UIViewControllerRepresentable {
         controller.entersFullScreenWhenPlaybackBegins = false
         controller.exitsFullScreenWhenPlaybackEnds = false
         controller.videoGravity = .resizeAspect
-
-        let dismissalPan = UIPanGestureRecognizer(
-            target: context.coordinator,
-            action: #selector(Coordinator.handleDismissPan(_:))
-        )
-        dismissalPan.delegate = context.coordinator
-        dismissalPan.cancelsTouchesInView = false
-        controller.view.addGestureRecognizer(dismissalPan)
-        context.coordinator.playerViewController = controller
         return controller
     }
 
     func updateUIViewController(_ controller: AVPlayerViewController, context: Context) {
-        context.coordinator.parent = self
         if controller.player !== player {
             controller.player = player
         }
     }
 
-    @MainActor
-    final class Coordinator: NSObject, @preconcurrency AVPlayerViewControllerDelegate, @preconcurrency UIGestureRecognizerDelegate {
-        var parent: NativePlayerView
-        weak var playerViewController: AVPlayerViewController?
-
-        init(parent: NativePlayerView) {
-            self.parent = parent
-        }
-
-        @objc
-        func handleDismissPan(_ gesture: UIPanGestureRecognizer) {
-            let translation = max(0, gesture.translation(in: gesture.view).y)
-
-            switch gesture.state {
-            case .changed:
-                parent.dismissalOffset = translation
-
-            case .ended:
-                let velocity = gesture.velocity(in: gesture.view).y
-                if translation > 140 || velocity > 1_000 {
-                    parent.onDismiss()
-                } else {
-                    resetDismissalOffset()
-                }
-
-            case .cancelled, .failed:
-                resetDismissalOffset()
-
-            default:
-                break
-            }
-        }
-
-        func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
-            guard playerViewController?.presentedViewController == nil,
-                  let pan = gestureRecognizer as? UIPanGestureRecognizer
-            else { return false }
-
-            let velocity = pan.velocity(in: pan.view)
-            return velocity.y > 0 && abs(velocity.y) > abs(velocity.x)
-        }
-
-        func gestureRecognizer(
-            _ gestureRecognizer: UIGestureRecognizer,
-            shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
-        ) -> Bool {
-            true
-        }
-
-        private func resetDismissalOffset() {
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.86)) {
-                parent.dismissalOffset = 0
-            }
-        }
-
+    final class Coordinator: NSObject, AVPlayerViewControllerDelegate {
         func playerViewController(
             _ playerViewController: AVPlayerViewController,
             restoreUserInterfaceForPictureInPictureStopWithCompletionHandler completionHandler: @escaping (Bool) -> Void

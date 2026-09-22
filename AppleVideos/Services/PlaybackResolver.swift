@@ -90,8 +90,8 @@ struct PlaybackCapabilities: Sendable {
 enum PlaybackResolverError: LocalizedError, Sendable {
     case invalidVideoID
     case configurationUnavailable
-    case invalidResponse
-    case videoUnavailable(reason: String?)
+    case invalidResponse(statusCode: Int?, reason: String?)
+    case videoUnavailable(status: String, reason: String?)
     case unsupportedLiveContent
     case noCompatibleSource(capabilities: PlaybackCapabilities)
 
@@ -101,10 +101,17 @@ enum PlaybackResolverError: LocalizedError, Sendable {
             return "The video ID is invalid."
         case .configurationUnavailable:
             return "Playback configuration is temporarily unavailable."
-        case .invalidResponse:
-            return "The playback service returned an unreadable response."
-        case let .videoUnavailable(reason):
-            return reason ?? "This video is unavailable."
+        case let .invalidResponse(statusCode, reason):
+            return [
+                "INVALID_RESPONSE",
+                statusCode.map { "HTTP \($0)" },
+                reason
+            ]
+            .compactMap { $0 }
+            .joined(separator: " · ")
+        case let .videoUnavailable(status, reason):
+            return [status, reason ?? "This video is unavailable."]
+                .joined(separator: " · ")
         case .unsupportedLiveContent:
             return "Live and upcoming videos are not supported by native playback yet."
         case let .noCompatibleSource(capabilities):

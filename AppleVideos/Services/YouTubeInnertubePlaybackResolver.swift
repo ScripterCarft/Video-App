@@ -11,6 +11,7 @@ actor YouTubeInnertubePlaybackResolver: PlaybackResolving {
     private struct WebConfiguration: Sendable {
         let apiKey: String
         let clientVersion: String
+        let visitorData: String?
     }
 
     private struct CacheEntry: Sendable {
@@ -74,26 +75,53 @@ actor YouTubeInnertubePlaybackResolver: PlaybackResolving {
         urlRequest.httpMethod = "POST"
         urlRequest.timeoutInterval = 20
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Accept")
         urlRequest.setValue("https://www.youtube.com", forHTTPHeaderField: "Origin")
         urlRequest.setValue("https://www.youtube.com/", forHTTPHeaderField: "Referer")
+        urlRequest.setValue(Self.webUserAgent, forHTTPHeaderField: "User-Agent")
+        urlRequest.setValue("1", forHTTPHeaderField: "X-YouTube-Client-Name")
+        urlRequest.setValue(configuration.clientVersion, forHTTPHeaderField: "X-YouTube-Client-Version")
+        urlRequest.setValue(request.languageCode, forHTTPHeaderField: "Accept-Language")
+        if let visitorData = configuration.visitorData {
+            urlRequest.setValue(visitorData, forHTTPHeaderField: "X-Goog-Visitor-Id")
+        }
         urlRequest.httpBody = try JSONSerialization.data(withJSONObject: [
             "context": [
                 "client": [
                     "clientName": "WEB",
                     "clientVersion": configuration.clientVersion,
                     "hl": request.languageCode,
-                    "gl": request.regionCode
+                    "gl": request.regionCode,
+                    "timeZone": "UTC",
+                    "utcOffsetMinutes": 0,
+                    "userAgent": Self.webUserAgent
                 ]
             ],
-            "videoId": request.videoID
+            "videoId": request.videoID,
+            "playbackContext": [
+                "contentPlaybackContext": [
+                    "html5Preference": "HTML5_PREF_WANTS"
+                ]
+            ]
         ])
 
         let (data, response) = try await session.data(for: urlRequest)
         try Task.checkCancellation()
-        guard let http = response as? HTTPURLResponse, 200..<300 ~= http.statusCode,
-              let root = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-        else {
-            throw PlaybackResolverError.invalidResponse
+        guard let http = response as? HTTPURLResponse else {
+            throw PlaybackResolverError.invalidResponse(statusCode: nil, reason: "Missing HTTP response.")
+        }
+        let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        guard 200..<300 ~= http.statusCode else {
+            throw PlaybackResolverError.invalidResponse(
+                statusCode: http.statusCode,
+                reason: root.flatMap(Self.playabilityDiagnostic)
+            )
+        }
+        guard let root else {
+            throw PlaybackResolverError.invalidResponse(
+                statusCode: http.statusCode,
+                reason: "The response was not valid JSON."
+            )
         }
 
         return try Self.parse(root: root, videoID: request.videoID)
@@ -104,7 +132,8 @@ actor YouTubeInnertubePlaybackResolver: PlaybackResolving {
 
         var request = URLRequest(url: URL(string: "https://www.youtube.com")!)
         request.timeoutInterval = 15
-        request.setValue(Self.userAgent, forHTTPHeaderField: "User-Agent")
+        request.setValue(Self.webUserAgent, forHTTPHeaderField: "User-Agent")
+        request.setValue("text/html", forHTTPHeaderField: "Accept")
 
         let (data, response) = try await session.data(for: request)
         try Task.checkCancellation()
@@ -117,7 +146,13 @@ actor YouTubeInnertubePlaybackResolver: PlaybackResolving {
             throw PlaybackResolverError.configurationUnavailable
         }
 
-        let value = WebConfiguration(apiKey: apiKey, clientVersion: clientVersion)
+        let visitorData = Self.capture(#"\"VISITOR_DATA\":\"([^\"]+)\""#, in: html)
+            ?? Self.capture(#"\"visitorData\":\"([^\"]+)\""#, in: html)
+        let value = WebConfiguration(
+            apiKey: apiKey,
+            clientVersion: clientVersion,
+            visitorData: visitorData
+        )
         configuration = value
         return value
     }
@@ -128,7 +163,7 @@ actor YouTubeInnertubePlaybackResolver: PlaybackResolving {
            status != "OK" {
             let reason = playability["reason"] as? String
                 ?? text(from: playability["errorScreen"])
-            throw PlaybackResolverError.videoUnavailable(reason: reason)
+            throw PlaybackResolverError.videoUnavailable(status: status, reason: reason)
         }
 
         if let details = root["videoDetails"] as? [String: Any],
@@ -137,7 +172,10 @@ actor YouTubeInnertubePlaybackResolver: PlaybackResolving {
         }
 
         guard let streamingData = root["streamingData"] as? [String: Any] else {
-            throw PlaybackResolverError.invalidResponse
+            throw PlaybackResolverError.invalidResponse(
+                statusCode: 200,
+                reason: Self.playabilityDiagnostic(root) ?? "The response contains no streamingData."
+            )
         }
 
         let progressiveFormats = streamingData["formats"] as? [[String: Any]] ?? []
@@ -314,6 +352,12 @@ actor YouTubeInnertubePlaybackResolver: PlaybackResolving {
 
     private static func text(from value: Any?) -> String? {
         if let text = value as? String { return text }
+        if let array = value as? [Any] {
+            for child in array {
+                if let result = text(from: child) { return result }
+            }
+            return nil
+        }
         guard let dictionary = value as? [String: Any] else { return nil }
         if let simpleText = dictionary["simpleText"] as? String { return simpleText }
         if let runs = dictionary["runs"] as? [[String: Any]] {
@@ -324,6 +368,17 @@ actor YouTubeInnertubePlaybackResolver: PlaybackResolving {
             if let result = text(from: child) { return result }
         }
         return nil
+    }
+
+    private static func playabilityDiagnostic(_ root: [String: Any]) -> String? {
+        guard let playability = root["playabilityStatus"] as? [String: Any] else { return nil }
+        let status = playability["status"] as? String
+        let reason = playability["reason"] as? String
+            ?? text(from: playability["errorScreen"])
+        return [status, reason]
+            .compactMap { $0 }
+            .filter { !$0.isEmpty }
+            .joined(separator: " · ")
     }
 
     private static func capture(_ pattern: String, in text: String) -> String? {
@@ -338,7 +393,10 @@ actor YouTubeInnertubePlaybackResolver: PlaybackResolving {
         value.range(of: #"^[A-Za-z0-9_-]{11}$"#, options: .regularExpression) != nil
     }
 
-    private static let userAgent =
-        "Mozilla/5.0 (iPhone; CPU iPhone OS 27_0 like Mac OS X) "
-        + "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.0 Mobile/15E148 Safari/604.1"
+    /// Keep the HTTP identity consistent with Innertube's WEB client. An iPhone
+    /// user agent can cause YouTube to return MWEB configuration while the
+    /// request body identifies itself as WEB.
+    private static let webUserAgent =
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+        + "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.5 Safari/605.1.15,gzip(gfe)"
 }

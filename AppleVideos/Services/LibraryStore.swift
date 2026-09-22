@@ -31,7 +31,7 @@ final class LibraryStore {
         playlists = Self.uniquePlaylists(decodedPlaylists)
 
         let decodedRecent = Self.decode([Video].self, from: defaults.data(forKey: Keys.recent)) ?? []
-        recentlyWatched = Self.uniqueVideos(decodedRecent)
+        recentlyWatched = Array(Self.uniqueVideos(decodedRecent).prefix(8))
 
         persist(savedVideos, key: Keys.saved)
         persist(playlists, key: Keys.playlists)
@@ -54,7 +54,7 @@ final class LibraryStore {
     func markWatched(_ video: Video) {
         recentlyWatched.removeAll { $0.id == video.id }
         recentlyWatched.insert(video, at: 0)
-        recentlyWatched = Array(recentlyWatched.prefix(20))
+        recentlyWatched = Array(recentlyWatched.prefix(8))
         persist(recentlyWatched, key: Keys.recent)
     }
 

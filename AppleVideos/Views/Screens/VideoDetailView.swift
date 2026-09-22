@@ -631,7 +631,7 @@ private struct NativePlayerView: UIViewControllerRepresentable {
         }
     }
 
-    final class Coordinator: NSObject, @preconcurrency AVPlayerViewControllerDelegate {
+    final class Coordinator: NSObject, AVPlayerViewControllerDelegate {
         private var isPictureInPictureActive: Binding<Bool>
 
         init(isPictureInPictureActive: Binding<Bool>) {

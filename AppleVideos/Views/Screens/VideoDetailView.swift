@@ -341,19 +341,23 @@ private struct MetadataBadge: View {
 private struct PlayerScreen: View {
     let video: Video
     @Environment(\.dismiss) private var dismiss
+    @State private var nativePlayer: AVPlayer?
+    @State private var usesEmbeddedFallback = false
+    @State private var isResolving = true
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
             Color.black.ignoresSafeArea()
 
             Group {
-                switch video.source {
-                case .youtube:
+                if let nativePlayer {
+                    VideoPlayer(player: nativePlayer)
+                } else if usesEmbeddedFallback, video.source == .youtube {
                     YouTubePlayerView(videoID: video.id)
-                case .direct:
-                    if let url = video.playbackURL {
-                        VideoPlayer(player: AVPlayer(url: url))
-                    }
+                } else if isResolving {
+                    ProgressView()
+                        .tint(.white)
+                        .controlSize(.large)
                 }
             }
             .ignoresSafeArea()
@@ -371,6 +375,64 @@ private struct PlayerScreen: View {
             .accessibilityLabel("Close player")
         }
         .statusBarHidden()
+        .task(id: video.id) {
+            await preparePlayback()
+        }
+        .onDisappear {
+            nativePlayer?.pause()
+        }
+    }
+
+    @MainActor
+    private func preparePlayback() async {
+        switch video.source {
+        case .direct:
+            guard let url = video.playbackURL else {
+                isResolving = false
+                return
+            }
+            let player = AVPlayer(url: url)
+            nativePlayer = player
+            isResolving = false
+            player.play()
+
+        case .youtube:
+            do {
+                let source = try await YouTubeInnertubePlaybackResolver.shared.resolve(
+                    PlaybackRequest(videoID: video.id)
+                )
+                try Task.checkCancellation()
+                guard let variant = source.preferredVariant else {
+                    showEmbeddedFallback()
+                    return
+                }
+
+                let asset = AVURLAsset(url: variant.url)
+                let isPlayable = try await asset.load(.isPlayable)
+                try Task.checkCancellation()
+                guard isPlayable else {
+                    showEmbeddedFallback()
+                    return
+                }
+
+                let player = AVPlayer(playerItem: AVPlayerItem(asset: asset))
+                nativePlayer = player
+                isResolving = false
+                player.play()
+            } catch is CancellationError {
+                return
+            } catch {
+                showEmbeddedFallback()
+            }
+        }
+    }
+
+    @MainActor
+    private func showEmbeddedFallback() {
+        nativePlayer?.pause()
+        nativePlayer = nil
+        isResolving = false
+        usesEmbeddedFallback = true
     }
 }
 

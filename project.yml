@@ -20,21 +20,28 @@ targets:
     platform: iOS
     sources:
       - path: AppleVideos
+    info:
+      path: AppleVideos/Resources/Info.plist
+      properties:
+        CFBundleDisplayName: Apple Videos
+        LSApplicationCategoryType: public.app-category.entertainment
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: true
+          UISceneConfigurations: {}
+        UIApplicationSupportsIndirectInputEvents: true
+        UILaunchScreen: {}
+        UIBackgroundModes:
+          - audio
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.scriptercarft.AppleVideos
         PRODUCT_NAME: Apple Videos
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
-        INFOPLIST_KEY_CFBundleDisplayName: Apple Videos
-        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.entertainment
-        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: true
-        INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: true
-        INFOPLIST_KEY_UILaunchScreen_Generation: true
-        INFOPLIST_KEY_UIBackgroundModes:
-          - audio
-        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
-        GENERATE_INFOPLIST_FILE: true
         TARGETED_DEVICE_FAMILY: "1"
     scheme:
       testTargets: []

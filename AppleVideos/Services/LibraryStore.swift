@@ -13,14 +13,29 @@ final class LibraryStore {
     private(set) var savedVideos: [Video]
     private(set) var playlists: [VideoPlaylist]
     private(set) var recentlyWatched: [Video]
+    private let defaults: UserDefaults
 
     init(defaults: UserDefaults = .standard) {
-        savedVideos = Self.decode([Video].self, from: defaults.data(forKey: Keys.saved)) ?? []
-        playlists = Self.decode([VideoPlaylist].self, from: defaults.data(forKey: Keys.playlists)) ?? [
+        self.defaults = defaults
+
+        let decodedSaved = Self.decode([Video].self, from: defaults.data(forKey: Keys.saved)) ?? []
+        savedVideos = Self.uniqueVideos(decodedSaved)
+
+        let decodedPlaylists = Self.decode(
+            [VideoPlaylist].self,
+            from: defaults.data(forKey: Keys.playlists)
+        ) ?? [
             VideoPlaylist(name: "Watch Later"),
             VideoPlaylist(name: "Favorites")
         ]
-        recentlyWatched = Self.decode([Video].self, from: defaults.data(forKey: Keys.recent)) ?? []
+        playlists = Self.uniquePlaylists(decodedPlaylists)
+
+        let decodedRecent = Self.decode([Video].self, from: defaults.data(forKey: Keys.recent)) ?? []
+        recentlyWatched = Self.uniqueVideos(decodedRecent)
+
+        persist(savedVideos, key: Keys.saved)
+        persist(playlists, key: Keys.playlists)
+        persist(recentlyWatched, key: Keys.recent)
     }
 
     func isSaved(_ video: Video) -> Bool {
@@ -68,7 +83,27 @@ final class LibraryStore {
 
     private func persist<T: Encodable>(_ value: T, key: String) {
         guard let data = try? JSONEncoder().encode(value) else { return }
-        UserDefaults.standard.set(data, forKey: key)
+        defaults.set(data, forKey: key)
+    }
+
+    private static func uniqueVideos(_ videos: [Video]) -> [Video] {
+        var seen = Set<String>()
+        return videos.filter { seen.insert($0.id).inserted }
+    }
+
+    private static func uniquePlaylists(_ playlists: [VideoPlaylist]) -> [VideoPlaylist] {
+        var seenPlaylists = Set<UUID>()
+
+        return playlists.compactMap { playlist in
+            guard seenPlaylists.insert(playlist.id).inserted else { return nil }
+
+            var normalized = playlist
+            var seenVideos = Set<String>()
+            normalized.videoIDs = playlist.videoIDs.filter {
+                seenVideos.insert($0).inserted
+            }
+            return normalized
+        }
     }
 
     private static func decode<T: Decodable>(_ type: T.Type, from data: Data?) -> T? {

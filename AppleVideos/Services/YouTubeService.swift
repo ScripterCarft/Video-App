@@ -4,6 +4,12 @@ actor YouTubeService {
     static let shared = YouTubeService()
 
     struct VideoDetails: Sendable {
+        let title: String?
+        let channelName: String?
+        let duration: String?
+        let publishedText: String?
+        let viewCountText: String?
+        let thumbnailURL: URL?
         let description: String?
         let badges: [String]
     }
@@ -108,14 +114,42 @@ actor YouTubeService {
         else { throw SearchError.invalidResponse }
 
         let videoDetails = root["videoDetails"] as? [String: Any]
+        let microformat = root["microformat"] as? [String: Any]
+        let playerMicroformat = microformat?["playerMicroformatRenderer"] as? [String: Any]
         let description = (videoDetails?["shortDescription"] as? String)
             .flatMap(Self.normalizedDescription)
         let details = VideoDetails(
+            title: videoDetails?["title"] as? String,
+            channelName: videoDetails?["author"] as? String,
+            duration: (videoDetails?["lengthSeconds"] as? String)
+                .flatMap(Self.durationText),
+            publishedText: (playerMicroformat?["publishDate"] as? String)
+                .flatMap(Self.relativePublishedText),
+            viewCountText: (videoDetails?["viewCount"] as? String)
+                .flatMap(Self.viewCountText),
+            thumbnailURL: Self.thumbnailURL(from: videoDetails?["thumbnail"]),
             description: description,
             badges: Self.playerBadges(from: root)
         )
         cachedDetails[videoID] = details
         return details
+    }
+
+    func refreshedVideo(_ video: Video) async throws -> Video {
+        guard video.source == .youtube else { return video }
+
+        let details = try await details(for: video.id)
+        return .youtube(
+            id: video.id,
+            title: details.title ?? video.title,
+            channel: details.channelName ?? video.channelName,
+            duration: details.duration ?? video.duration,
+            published: details.publishedText ?? video.publishedText,
+            views: details.viewCountText ?? video.viewCountText,
+            thumbnailURL: details.thumbnailURL ?? video.thumbnailURL,
+            description: details.description ?? video.descriptionText,
+            badges: details.badges.isEmpty ? video.badges : details.badges
+        )
     }
 
     private func webConfiguration() async throws -> WebConfiguration {
@@ -324,6 +358,43 @@ actor YouTubeService {
         }
         if let array = value as? [Any] { return array.flatMap(allStrings) }
         return []
+    }
+
+    private static func durationText(from secondsText: String) -> String? {
+        guard let totalSeconds = Int(secondsText), totalSeconds >= 0 else { return nil }
+        let hours = totalSeconds / 3_600
+        let minutes = (totalSeconds % 3_600) / 60
+        let seconds = totalSeconds % 60
+
+        if hours > 0 {
+            return String(format: "%d:%02d:%02d", hours, minutes, seconds)
+        }
+        return String(format: "%d:%02d", minutes, seconds)
+    }
+
+    private static func viewCountText(from value: String) -> String? {
+        guard let count = Int64(value) else { return nil }
+        return "\(count.formatted(.number.notation(.compactName))) views"
+    }
+
+    private static func relativePublishedText(from value: String) -> String? {
+        let components = value.split(separator: "-").compactMap { Int($0) }
+        guard components.count == 3,
+              let date = Calendar(identifier: .gregorian).date(
+                from: DateComponents(
+                    timeZone: TimeZone(secondsFromGMT: 0),
+                    year: components[0],
+                    month: components[1],
+                    day: components[2]
+                )
+              )
+        else {
+            return nil
+        }
+
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .full
+        return formatter.localizedString(for: date, relativeTo: Date())
     }
 
     private static func normalizedDescription(_ value: String) -> String? {

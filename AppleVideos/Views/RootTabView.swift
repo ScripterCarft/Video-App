@@ -8,7 +8,6 @@ enum AppTab: Hashable {
 }
 
 struct RootTabView: View {
-    @Environment(PlaybackStore.self) private var playback
     @State private var selection: AppTab = .home
 
     var body: some View {
@@ -29,17 +28,6 @@ struct RootTabView: View {
                 SearchView()
             }
         }
-        .tabBarMinimizeBehavior(.onScrollDown)
-        .tabViewBottomAccessory(isEnabled: playback.currentVideo != nil && !playback.isExpanded) {
-            MiniPlayerAccessory()
-        }
-        .fullScreenCover(
-            isPresented: Binding(
-                get: { playback.isExpanded },
-                set: { playback.isExpanded = $0 }
-            )
-        ) {
-            PlayerScreen()
-        }
     }
 }
+

@@ -1,4 +1,6 @@
+import AVKit
 import SwiftUI
+import WebKit
 
 struct VideoDetailView: View {
     let video: Video
@@ -6,11 +8,11 @@ struct VideoDetailView: View {
     let transitionID: String
 
     @Environment(LibraryStore.self) private var library
-    @Environment(PlaybackStore.self) private var playback
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @State private var showPlayer = false
     @State private var feedback = 0
     @State private var showDescription = false
-    @State private var loadedDetails: YouTubeService.VideoDetails?
+    @State private var loadedDescription: String?
+    @State private var loadedBadges: [String]?
 
     init(video: Video, transition: Namespace.ID, transitionID: String? = nil) {
         self.video = video
@@ -22,10 +24,6 @@ struct VideoDetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
                 detailStage
-
-                if dynamicTypeSize >= .accessibility1 {
-                    accessibilityDetails
-                }
 
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Up Next")
@@ -68,34 +66,41 @@ struct VideoDetailView: View {
             }
         }
         .navigationTransition(.zoom(sourceID: transitionID, in: transition))
+        .fullScreenCover(isPresented: $showPlayer) {
+            PlayerScreen(video: video)
+        }
         .sheet(isPresented: $showDescription) {
-            DescriptionSheet(video: video, description: fullDescription)
+            DescriptionSheet(video: video, description: visibleDescription)
                 .presentationDetents([.fraction(0.55), .fraction(0.8)])
                 .presentationDragIndicator(.visible)
         }
         .task(id: video.id) {
-            guard video.source == .youtube else { return }
-            loadedDetails = try? await YouTubeService.shared.details(for: video.id)
+            guard video.source == .youtube,
+                  let details = try? await YouTubeService.shared.details(for: video.id)
+            else { return }
+            loadedDescription = details.description
+            loadedBadges = details.badges.isEmpty ? nil : details.badges
         }
         .sensoryFeedback(.selection, trigger: feedback)
     }
 
     private var visibleDescription: String? {
-        let candidate = video.descriptionText ?? loadedDetails?.description
-        guard let candidate, !candidate.isEmpty else { return nil }
-        let normalized = candidate
-            .split(whereSeparator: { $0.isWhitespace })
-            .joined(separator: " ")
-        return normalized.isEmpty ? nil : normalized
-    }
-
-    private var fullDescription: String? {
-        video.descriptionText ?? loadedDetails?.description
+        for candidate in [video.descriptionText, loadedDescription].compactMap({ $0 }) {
+            let normalized = candidate.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+            if !normalized.isEmpty { return normalized }
+        }
+        return nil
     }
 
     private var visibleBadges: [String] {
-        let loaded = loadedDetails?.badges ?? []
-        return loaded.isEmpty ? (video.badges ?? []) : loaded
+        let original = video.badges ?? []
+        let verified = loadedBadges ?? []
+        let resolutions = Set(["8K", "4K", "HD", "SD"])
+        let resolution = verified.first(where: resolutions.contains)
+            ?? original.first(where: resolutions.contains)
+        let supported = ["HDR", "CC", "SDH", "360°", "LIVE", "PREMIERE", "UPCOMING"]
+        let combined = Set(original + verified)
+        return [resolution].compactMap { $0 } + supported.filter(combined.contains)
     }
 
     private var textMetadata: [String] {
@@ -152,7 +157,7 @@ struct VideoDetailView: View {
 
                     Button {
                         library.markWatched(video)
-                        playback.play(video)
+                        showPlayer = true
                         feedback += 1
                     } label: {
                         Label("Play", systemImage: "play.fill")
@@ -184,28 +189,75 @@ struct VideoDetailView: View {
                     Spacer(minLength: 0)
                 }
 
-                if dynamicTypeSize < .accessibility1 {
-                    descriptionPreview
-                    metadataRow
+                if let description = visibleDescription {
+                    DescriptionPreview(text: description) {
+                        showDescription = true
+                    }
                 }
+
+                HStack(spacing: 7) {
+                    ForEach(Array(textMetadata.enumerated()), id: \.offset) { index, item in
+                        if index > 0 {
+                            Text("·")
+                                .foregroundStyle(.white.opacity(0.42))
+                        }
+                        Text(item)
+                            .foregroundStyle(.white.opacity(0.7))
+                            .lineLimit(1)
+                    }
+
+                    ForEach(visibleBadges, id: \.self) { badge in
+                        MetadataBadge(text: badge)
+                    }
+                }
+                .font(.footnote)
+                .minimumScaleFactor(0.86)
+                .shadow(color: .black.opacity(0.56), radius: 7, y: 2)
         }
         .foregroundStyle(.white)
         .padding(.horizontal, 18)
         .padding(.bottom, 18)
     }
+}
 
-    @ViewBuilder
-    private var descriptionPreview: some View {
-        if let description = visibleDescription {
-            ZStack(alignment: .bottomTrailing) {
-                Text(description)
-                    .font(.subheadline)
-                    .foregroundStyle(.white.opacity(0.88))
-                    .lineLimit(2)
-                    .truncationMode(.tail)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .shadow(color: .black.opacity(0.58), radius: 8, y: 2)
-                    .mask {
+private struct DescriptionPreview: View {
+    let text: String
+    let onMore: () -> Void
+
+    @State private var limitedHeight: CGFloat = 0
+    @State private var fullHeight: CGFloat = 0
+
+    private var isTruncated: Bool {
+        limitedHeight > 0 && fullHeight > limitedHeight + 0.5
+    }
+
+    var body: some View {
+        ZStack(alignment: .bottomTrailing) {
+            Text(text)
+                .font(.subheadline)
+                .foregroundStyle(.white.opacity(0.88))
+                .lineLimit(2)
+                .truncationMode(.tail)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .shadow(color: .black.opacity(0.58), radius: 8, y: 2)
+                .background(alignment: .topLeading) {
+                    Text(text)
+                        .font(.subheadline)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .hidden()
+                        .onGeometryChange(for: CGFloat.self) { proxy in
+                            proxy.size.height
+                        } action: { height in
+                            fullHeight = height
+                        }
+                }
+                .onGeometryChange(for: CGFloat.self) { proxy in
+                    proxy.size.height
+                } action: { height in
+                    limitedHeight = height
+                }
+                .mask {
+                    if isTruncated {
                         VStack(spacing: 0) {
                             Color.white
                             HStack(spacing: 0) {
@@ -218,54 +270,21 @@ struct VideoDetailView: View {
                                 .frame(width: 84)
                             }
                         }
+                    } else {
+                        Color.white
                     }
+                }
 
-                Button("MORE") { showDescription = true }
+            if isTruncated {
+                Button("MORE", action: onMore)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.white.opacity(0.88))
                     .buttonStyle(.plain)
-                    .padding(.horizontal, 6)
-                    .frame(height: 22)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
                     .background(.ultraThinMaterial, in: Capsule())
-                    .contentShape(Rectangle().inset(by: -11))
             }
         }
-    }
-
-    private var metadataRow: some View {
-        HStack(spacing: 7) {
-            ForEach(Array(textMetadata.enumerated()), id: \.offset) { index, item in
-                if index > 0 {
-                    Text("·")
-                        .foregroundStyle(.white.opacity(0.42))
-                }
-                Text(item)
-                    .foregroundStyle(.white.opacity(0.7))
-                    .lineLimit(1)
-            }
-
-            ForEach(visibleBadges, id: \.self) { badge in
-                MetadataBadge(text: badge)
-            }
-        }
-        .font(.footnote)
-        .minimumScaleFactor(0.86)
-        .shadow(color: .black.opacity(0.56), radius: 7, y: 2)
-    }
-
-    private var accessibilityDetails: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            if let description = visibleDescription {
-                Text(description)
-                    .lineLimit(4)
-                Button("More") { showDescription = true }
-            }
-            ScrollView(.horizontal) {
-                metadataRow
-            }
-            .scrollIndicators(.hidden)
-        }
-        .padding(.horizontal, 18)
     }
 }
 
@@ -316,5 +335,91 @@ private struct MetadataBadge: View {
                 RoundedRectangle(cornerRadius: 4, style: .continuous)
                     .strokeBorder(.white.opacity(0.22), lineWidth: 0.5)
             }
+    }
+}
+
+private struct PlayerScreen: View {
+    let video: Video
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            Color.black.ignoresSafeArea()
+
+            Group {
+                switch video.source {
+                case .youtube:
+                    YouTubePlayerView(videoID: video.id)
+                case .direct:
+                    if let url = video.playbackURL {
+                        VideoPlayer(player: AVPlayer(url: url))
+                    }
+                }
+            }
+            .ignoresSafeArea()
+
+            Button {
+                dismiss()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.headline)
+                    .foregroundStyle(.white)
+                    .frame(width: 40, height: 40)
+                    .background(.ultraThinMaterial, in: Circle())
+            }
+            .padding()
+            .accessibilityLabel("Close player")
+        }
+        .statusBarHidden()
+    }
+}
+
+private struct YouTubePlayerView: UIViewRepresentable {
+    let videoID: String
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    func makeUIView(context: Context) -> WKWebView {
+        let configuration = WKWebViewConfiguration()
+        configuration.allowsInlineMediaPlayback = true
+        configuration.allowsAirPlayForMediaPlayback = true
+        configuration.allowsPictureInPictureMediaPlayback = true
+        configuration.mediaTypesRequiringUserActionForPlayback = []
+        configuration.defaultWebpagePreferences.allowsContentJavaScript = true
+
+        let view = WKWebView(frame: .zero, configuration: configuration)
+        view.navigationDelegate = context.coordinator
+        view.scrollView.isScrollEnabled = false
+        view.isOpaque = false
+        view.backgroundColor = .black
+        view.customUserAgent = "Mozilla/5.0 (iPhone; CPU iPhone OS 27_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.0 Mobile/15E148 Safari/604.1"
+        return view
+    }
+
+    func updateUIView(_ webView: WKWebView, context: Context) {
+        guard context.coordinator.loadedVideoID != videoID else { return }
+        context.coordinator.loadedVideoID = videoID
+
+        let referrer = "https://github.com/ScripterCarft/Video-App/"
+        var components = URLComponents(string: "https://www.youtube.com/embed/\(videoID)")!
+        components.queryItems = [
+            URLQueryItem(name: "playsinline", value: "1"),
+            URLQueryItem(name: "autoplay", value: "1"),
+            URLQueryItem(name: "rel", value: "0"),
+            URLQueryItem(name: "origin", value: "https://github.com"),
+            URLQueryItem(name: "widget_referrer", value: referrer)
+        ]
+        guard let url = components.url else { return }
+
+        var request = URLRequest(url: url)
+        request.setValue(referrer, forHTTPHeaderField: "Referer")
+        request.setValue("https://github.com", forHTTPHeaderField: "Origin")
+        webView.load(request)
+    }
+
+    final class Coordinator: NSObject, WKNavigationDelegate {
+        var loadedVideoID: String?
     }
 }

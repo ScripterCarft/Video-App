@@ -77,7 +77,7 @@ actor YouTubeService {
         return results
     }
 
-    func details(for videoID: String) async throws -> VideoDetails? {
+    func details(for videoID: String) async throws -> VideoDetails {
         if let cached = cachedDetails[videoID] { return cached }
 
         let configuration = try await webConfiguration()
@@ -105,17 +105,17 @@ actor YouTubeService {
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse, 200..<300 ~= http.statusCode,
               let root = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-        else { return nil }
+        else { throw SearchError.invalidResponse }
 
         let videoDetails = root["videoDetails"] as? [String: Any]
-        let rawDescription = videoDetails?["shortDescription"] as? String
-        let description = rawDescription?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let result = VideoDetails(
-            description: description?.isEmpty == false ? description : nil,
+        let description = (videoDetails?["shortDescription"] as? String)
+            .flatMap(Self.normalizedDescription)
+        let details = VideoDetails(
+            description: description,
             badges: Self.playerBadges(from: root)
         )
-        cachedDetails[videoID] = result
-        return result
+        cachedDetails[videoID] = details
+        return details
     }
 
     private func webConfiguration() async throws -> WebConfiguration {
@@ -190,66 +190,145 @@ actor YouTubeService {
     }
 
     private static func badges(from renderer: [String: Any]) -> [String]? {
-        guard let source = renderer["badges"] as? [[String: Any]] else { return nil }
-        let allowed = Set(["8K", "4K", "HD", "HDR", "CC", "SDH", "360°"])
-        let values = source.compactMap { badge -> String? in
+        let badgeSource = renderer["badges"] as? [[String: Any]] ?? []
+        let labels = badgeSource.compactMap { badge -> String? in
             guard let metadata = badge["metadataBadgeRenderer"] as? [String: Any] else { return nil }
-            let candidate = (metadata["label"] as? String) ?? (metadata["tooltip"] as? String)
-            guard let candidate else { return nil }
-            let normalized = candidate.uppercased()
-            if normalized.contains("8K") { return "8K" }
-            if normalized.contains("4K") { return "4K" }
-            if normalized.contains("HDR") { return "HDR" }
-            if normalized.contains("SDH") { return "SDH" }
-            if normalized.contains("CC") || normalized.contains("CAPTION") { return "CC" }
-            if normalized == "HD" { return "HD" }
-            if normalized.contains("360") { return "360°" }
-            return nil
+            return (metadata["label"] as? String) ?? (metadata["tooltip"] as? String)
         }
-        let unique = Array(NSOrderedSet(array: values)) as? [String] ?? values
-        let filtered = unique.filter { allowed.contains($0) }
-        return filtered.isEmpty ? nil : filtered
+
+        var technical: [String] = []
+        let joinedLabels = labels.joined(separator: " ").uppercased()
+        appendResolution(from: joinedLabels, to: &technical)
+        if joinedLabels.contains("HDR") { technical.append("HDR") }
+        if joinedLabels.contains("CAPTION")
+            || joinedLabels.range(of: #"\bCC\b"#, options: .regularExpression) != nil {
+            technical.append("CC")
+        }
+        if joinedLabels.contains("SDH") || joinedLabels.contains("DEAF AND HARD OF HEARING") {
+            technical.append("SDH")
+        }
+        if joinedLabels.contains("360°") || joinedLabels.contains("360 VIDEO") {
+            technical.append("360°")
+        }
+
+        let overlayText = textFromTimeStatusOverlay(renderer).uppercased()
+        var statuses: [String] = []
+        if joinedLabels.contains("PREMIERE") || overlayText.contains("PREMIERE") {
+            statuses.append("PREMIERE")
+        }
+        if renderer["upcomingEventData"] != nil || joinedLabels.contains("UPCOMING") || overlayText.contains("UPCOMING") {
+            statuses.append("UPCOMING")
+        }
+        if !statuses.contains("PREMIERE"),
+           !statuses.contains("UPCOMING"),
+           (joinedLabels.contains("LIVE NOW") || overlayText == "LIVE") {
+            statuses.append("LIVE")
+        }
+
+        let values = orderedUnique(technical + statuses)
+        return values.isEmpty ? nil : values
     }
 
     private static func playerBadges(from root: [String: Any]) -> [String] {
-        var result: [String] = []
-        let streamingData = root["streamingData"] as? [String: Any]
-        let formats = ((streamingData?["formats"] as? [[String: Any]]) ?? [])
-            + ((streamingData?["adaptiveFormats"] as? [[String: Any]]) ?? [])
-        let labels = formats.compactMap { $0["qualityLabel"] as? String }
-        let heights = formats.compactMap { $0["height"] as? Int }
+        let streaming = root["streamingData"] as? [String: Any]
+        let formats = ((streaming?["formats"] as? [[String: Any]]) ?? [])
+            + ((streaming?["adaptiveFormats"] as? [[String: Any]]) ?? [])
+        let maxHeight = formats.compactMap { $0["height"] as? Int }.max()
 
-        if labels.contains(where: { $0.localizedCaseInsensitiveContains("8K") }) || heights.contains(where: { $0 >= 4320 }) {
-            result.append("8K")
-        } else if labels.contains(where: { $0.localizedCaseInsensitiveContains("4K") }) || heights.contains(where: { $0 >= 2160 }) {
-            result.append("4K")
-        } else if heights.contains(where: { $0 >= 720 }) {
-            result.append("HD")
+        var technical: [String] = []
+        if let maxHeight {
+            switch maxHeight {
+            case 4320...: technical.append("8K")
+            case 2160...: technical.append("4K")
+            case 720...: technical.append("HD")
+            default: technical.append("SD")
+            }
         }
 
-        let serialized = (try? JSONSerialization.data(withJSONObject: formats))
-            .flatMap { String(data: $0, encoding: .utf8) }?
-            .uppercased() ?? ""
-        if labels.contains(where: { $0.localizedCaseInsensitiveContains("HDR") }) ||
-            serialized.contains("ST2084") || serialized.contains("HLG") {
-            result.append("HDR")
+        let hasHDR = formats.contains { format in
+            let quality = (format["qualityLabel"] as? String)?.uppercased() ?? ""
+            let colorInfo = format["colorInfo"] as? [String: Any]
+            let transfer = (colorInfo?["transferCharacteristics"] as? String)?.uppercased() ?? ""
+            return quality.contains("HDR") || transfer.contains("2084") || transfer.contains("HLG")
+        }
+        if hasHDR { technical.append("HDR") }
+
+        let captions = root["captions"] as? [String: Any]
+        let renderer = captions?["playerCaptionsTracklistRenderer"] as? [String: Any]
+        let tracks = renderer?["captionTracks"] as? [[String: Any]] ?? []
+        if !tracks.isEmpty { technical.append("CC") }
+        let hasConfirmedSDH = tracks.contains { track in
+            let name = text(from: track["name"])?.uppercased() ?? ""
+            return name.contains("SDH") || name.contains("DEAF AND HARD OF HEARING")
+        }
+        if hasConfirmedSDH { technical.append("SDH") }
+
+        let is360 = formats.contains { format in
+            let projection = (format["projectionType"] as? String)?.uppercased() ?? ""
+            return projection.contains("360") || projection.contains("EQUIRECTANGULAR")
+        }
+        if is360 { technical.append("360°") }
+
+        let videoDetails = root["videoDetails"] as? [String: Any]
+        let microformat = root["microformat"] as? [String: Any]
+        let playerMicroformat = microformat?["playerMicroformatRenderer"] as? [String: Any]
+        let liveDetails = playerMicroformat?["liveBroadcastDetails"] as? [String: Any]
+        let playability = root["playabilityStatus"] as? [String: Any]
+        let statusText = (
+            allStrings(in: playability ?? [:]) + allStrings(in: liveDetails ?? [:])
+        ).joined(separator: " ").uppercased()
+
+        var statuses: [String] = []
+        if statusText.contains("PREMIERE") {
+            statuses.append("PREMIERE")
+        }
+        if videoDetails?["isUpcoming"] as? Bool == true
+            || statusText.contains("UPCOMING") {
+            statuses.append("UPCOMING")
+        }
+        if !statuses.contains("PREMIERE"),
+           !statuses.contains("UPCOMING"),
+           (videoDetails?["isLive"] as? Bool == true || liveDetails?["isLiveNow"] as? Bool == true) {
+            statuses.append("LIVE")
         }
 
-        if let captions = root["captions"] as? [String: Any],
-           let renderer = captions["playerCaptionsTracklistRenderer"] as? [String: Any],
-           let tracks = renderer["captionTracks"] as? [[String: Any]],
-           !tracks.isEmpty {
-            result.append("CC")
-        }
+        return orderedUnique(technical + statuses)
+    }
 
-        if formats.contains(where: {
-            (($0["projectionType"] as? String) ?? "").uppercased().contains("360") ||
-            (($0["projectionType"] as? String) ?? "").uppercased().contains("EQUIRECTANGULAR")
-        }) {
-            result.append("360°")
-        }
+    private static func appendResolution(from text: String, to values: inout [String]) {
+        if text.contains("8K") { values.append("8K") }
+        else if text.contains("4K") { values.append("4K") }
+        else if text.range(of: #"\bHD\b"#, options: .regularExpression) != nil
+            || text.contains("HIGH DEFINITION") { values.append("HD") }
+        else if text.range(of: #"\bSD\b"#, options: .regularExpression) != nil
+            || text.contains("STANDARD DEFINITION") { values.append("SD") }
+    }
 
-        return result
+    private static func textFromTimeStatusOverlay(_ renderer: [String: Any]) -> String {
+        guard let overlays = renderer["thumbnailOverlays"] as? [[String: Any]] else { return "" }
+        return overlays.compactMap { overlay in
+            guard let status = overlay["thumbnailOverlayTimeStatusRenderer"] as? [String: Any] else { return nil }
+            return text(from: status["text"])
+        }.joined(separator: " ")
+    }
+
+    private static func orderedUnique(_ values: [String]) -> [String] {
+        var seen = Set<String>()
+        return values.filter { seen.insert($0).inserted }
+    }
+
+    private static func allStrings(in value: Any) -> [String] {
+        if let string = value as? String { return [string] }
+        if let dictionary = value as? [String: Any] {
+            return dictionary.values.flatMap(allStrings)
+        }
+        if let array = value as? [Any] { return array.flatMap(allStrings) }
+        return []
+    }
+
+    private static func normalizedDescription(_ value: String) -> String? {
+        let normalized = value.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        return normalized.isEmpty ? nil : normalized
     }
 
     private static func isShort(_ renderer: [String: Any]) -> Bool {

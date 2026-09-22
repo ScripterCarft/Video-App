@@ -366,6 +366,7 @@ private struct PlayerScreen: View {
     let video: Video
     let description: String?
     @Environment(LibraryStore.self) private var library
+    @Environment(\.dismiss) private var dismiss
     @State private var nativePlayer: AVPlayer?
     @State private var usesEmbeddedFallback = false
     @State private var isResolving = true
@@ -381,7 +382,8 @@ private struct PlayerScreen: View {
                 if let nativePlayer {
                     NativePlayerView(
                         player: nativePlayer,
-                        isPictureInPictureActive: $isPictureInPictureActive
+                        isPictureInPictureActive: $isPictureInPictureActive,
+                        onDismiss: { dismiss() }
                     )
                 } else if usesEmbeddedFallback, video.source == .youtube {
                     YouTubePlayerView(videoID: video.id)
@@ -655,28 +657,25 @@ private struct PlayerScreen: View {
 private struct NativePlayerView: UIViewControllerRepresentable {
     let player: AVPlayer
     @Binding var isPictureInPictureActive: Bool
+    let onDismiss: () -> Void
 
     func makeCoordinator() -> Coordinator {
         Coordinator(isPictureInPictureActive: $isPictureInPictureActive)
     }
 
-    func makeUIViewController(context: Context) -> AVPlayerViewController {
-        let controller = AVPlayerViewController()
-        controller.delegate = context.coordinator
-        controller.player = player
-        controller.showsPlaybackControls = true
-        controller.allowsPictureInPicturePlayback = true
-        controller.canStartPictureInPictureAutomaticallyFromInline = true
-        controller.entersFullScreenWhenPlaybackBegins = false
-        controller.exitsFullScreenWhenPlaybackEnds = false
-        controller.videoGravity = .resizeAspect
-        return controller
+    func makeUIViewController(context: Context) -> InteractivePlayerContainerViewController {
+        InteractivePlayerContainerViewController(
+            player: player,
+            playerDelegate: context.coordinator,
+            onDismiss: onDismiss
+        )
     }
 
-    func updateUIViewController(_ controller: AVPlayerViewController, context: Context) {
-        if controller.player !== player {
-            controller.player = player
-        }
+    func updateUIViewController(
+        _ controller: InteractivePlayerContainerViewController,
+        context: Context
+    ) {
+        controller.update(player: player, onDismiss: onDismiss)
     }
 
     final class Coordinator: NSObject, AVPlayerViewControllerDelegate {
@@ -712,6 +711,189 @@ private struct NativePlayerView: UIViewControllerRepresentable {
         ) {
             completionHandler(true)
         }
+    }
+}
+
+private final class InteractivePlayerContainerViewController:
+    UIViewController,
+    UIGestureRecognizerDelegate
+{
+    private let playerController = AVPlayerViewController()
+    private var onDismiss: () -> Void
+    private var isDraggingVideo = false
+
+    init(
+        player: AVPlayer,
+        playerDelegate: AVPlayerViewControllerDelegate,
+        onDismiss: @escaping () -> Void
+    ) {
+        self.onDismiss = onDismiss
+        super.init(nibName: nil, bundle: nil)
+
+        playerController.delegate = playerDelegate
+        configurePlayer(player)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .black
+
+        addChild(playerController)
+        view.addSubview(playerController.view)
+        playerController.didMove(toParent: self)
+
+        let panGesture = UIPanGestureRecognizer(target: self, action: #selector(handlePan(_:)))
+        panGesture.delegate = self
+        panGesture.cancelsTouchesInView = false
+        playerController.view.addGestureRecognizer(panGesture)
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        guard !isDraggingVideo else { return }
+        playerController.view.transform = .identity
+        playerController.view.frame = view.bounds
+    }
+
+    func update(player: AVPlayer, onDismiss: @escaping () -> Void) {
+        self.onDismiss = onDismiss
+        if playerController.player !== player {
+            playerController.player = player
+        }
+    }
+
+    private func configurePlayer(_ player: AVPlayer) {
+        playerController.player = player
+        playerController.showsPlaybackControls = true
+        playerController.allowsPictureInPicturePlayback = true
+        playerController.canStartPictureInPictureAutomaticallyFromInline = true
+        playerController.entersFullScreenWhenPlaybackBegins = false
+        playerController.exitsFullScreenWhenPlaybackEnds = false
+        playerController.videoGravity = .resizeAspect
+    }
+
+    func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        guard let panGesture = gestureRecognizer as? UIPanGestureRecognizer else {
+            return true
+        }
+        let velocity = panGesture.velocity(in: view)
+        return abs(velocity.y) > abs(velocity.x) * 1.2
+    }
+
+    func gestureRecognizer(
+        _ gestureRecognizer: UIGestureRecognizer,
+        shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
+    ) -> Bool {
+        true
+    }
+
+    @objc
+    private func handlePan(_ gesture: UIPanGestureRecognizer) {
+        let translation = gesture.translation(in: view)
+        let velocity = gesture.velocity(in: view)
+
+        switch gesture.state {
+        case .began:
+            beginVideoDrag()
+        case .changed:
+            updateVideoDrag(translationY: translation.y)
+        case .ended:
+            finishVideoDrag(translationY: translation.y, velocityY: velocity.y)
+        case .cancelled, .failed:
+            restorePlayer()
+        default:
+            break
+        }
+    }
+
+    private func beginVideoDrag() {
+        guard !isDraggingVideo else { return }
+        isDraggingVideo = true
+        playerController.showsPlaybackControls = false
+        playerController.view.transform = .identity
+        playerController.view.frame = sixteenByNineFrame(in: view.bounds)
+    }
+
+    private func updateVideoDrag(translationY: CGFloat) {
+        guard isDraggingVideo else { return }
+
+        let downwardDistance = max(0, translationY)
+        let resistedUpwardDistance = min(0, translationY) * 0.12
+        let offset = downwardDistance + resistedUpwardDistance
+        let progress = min(1, downwardDistance / max(view.bounds.height * 0.5, 1))
+        let scale = 1 - (0.08 * progress)
+
+        playerController.view.transform = CGAffineTransform(
+            translationX: 0,
+            y: offset
+        )
+        .scaledBy(x: scale, y: scale)
+        view.backgroundColor = UIColor.black.withAlphaComponent(1 - (0.94 * progress))
+    }
+
+    private func finishVideoDrag(translationY: CGFloat, velocityY: CGFloat) {
+        guard isDraggingVideo else { return }
+
+        let projectedDistance = translationY + max(0, velocityY) * 0.18
+        let dismissalDistance = max(120, view.bounds.height * 0.22)
+
+        if projectedDistance > dismissalDistance {
+            dismissPlayer(velocityY: velocityY)
+        } else {
+            restorePlayer()
+        }
+    }
+
+    private func dismissPlayer(velocityY: CGFloat) {
+        let remainingDistance = view.bounds.maxY - playerController.view.frame.minY
+        let duration = min(
+            0.32,
+            max(0.16, remainingDistance / max(abs(velocityY), 900))
+        )
+
+        UIView.animate(
+            withDuration: duration,
+            delay: 0,
+            options: [.curveEaseIn, .beginFromCurrentState]
+        ) {
+            self.playerController.view.transform = self.playerController.view.transform
+                .translatedBy(x: 0, y: self.view.bounds.height)
+            self.view.backgroundColor = .clear
+        } completion: { _ in
+            self.onDismiss()
+        }
+    }
+
+    private func restorePlayer() {
+        guard isDraggingVideo else { return }
+
+        UIView.animate(
+            withDuration: 0.42,
+            delay: 0,
+            usingSpringWithDamping: 0.86,
+            initialSpringVelocity: 0,
+            options: [.allowUserInteraction, .beginFromCurrentState]
+        ) {
+            self.playerController.view.transform = .identity
+            self.playerController.view.frame = self.view.bounds
+            self.view.backgroundColor = .black
+        } completion: { _ in
+            self.isDraggingVideo = false
+            self.playerController.showsPlaybackControls = true
+            self.view.setNeedsLayout()
+        }
+    }
+
+    private func sixteenByNineFrame(in bounds: CGRect) -> CGRect {
+        AVMakeRect(
+            aspectRatio: CGSize(width: 16, height: 9),
+            insideRect: bounds
+        )
     }
 }
 

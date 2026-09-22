@@ -25,10 +25,11 @@ struct RootTabView: View {
                 LibraryView()
             }
 
-            Tab("Search", systemImage: "magnifyingglass", value: .search, role: .search) {
+            Tab("Search", systemImage: "magnifyingglass", value: .search) {
                 SearchView()
             }
         }
+        .tabBarMinimizeBehavior(.onScrollDown)
         .tabViewBottomAccessory(isEnabled: playback.currentVideo != nil && !playback.isExpanded) {
             MiniPlayerAccessory()
         }

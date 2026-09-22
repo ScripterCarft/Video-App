@@ -58,6 +58,34 @@ final class LibraryStore {
         persist(recentlyWatched, key: Keys.recent)
     }
 
+    func refreshRecentlyWatched() async {
+        let current = Array(recentlyWatched.prefix(8))
+        guard !current.isEmpty else { return }
+
+        let updates = await withTaskGroup(
+            of: (String, Video?).self,
+            returning: [String: Video].self
+        ) { group in
+            for video in current {
+                group.addTask {
+                    let refreshed = try? await YouTubeService.shared.refreshedVideo(video)
+                    return (video.id, refreshed)
+                }
+            }
+
+            var values: [String: Video] = [:]
+            for await (id, video) in group {
+                if let video {
+                    values[id] = video
+                }
+            }
+            return values
+        }
+
+        recentlyWatched = current.map { updates[$0.id] ?? $0 }
+        persist(recentlyWatched, key: Keys.recent)
+    }
+
     func createPlaylist(named name: String) {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }

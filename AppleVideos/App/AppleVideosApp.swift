@@ -9,6 +9,9 @@ struct AppleVideosApp: App {
             RootTabView()
                 .environment(library)
                 .tint(.red)
+                .task {
+                    await library.refreshRecentlyWatched()
+                }
         }
     }
 }

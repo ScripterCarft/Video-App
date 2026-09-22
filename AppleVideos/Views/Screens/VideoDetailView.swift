@@ -376,7 +376,9 @@ private struct PlayerScreen: View {
 
     var body: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
+            Color.black
+                .opacity(nativePlayer == nil ? 1 : 0)
+                .ignoresSafeArea()
 
             Group {
                 if let nativePlayer {
@@ -395,6 +397,7 @@ private struct PlayerScreen: View {
             }
             .ignoresSafeArea()
         }
+        .presentationBackground(.clear)
         .statusBarHidden()
         .task(id: video.id) {
             await preparePlayback()

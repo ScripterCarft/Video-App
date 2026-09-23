@@ -7,11 +7,13 @@ final class LibraryStore {
     private enum Keys {
         static let saved = "apple-videos.saved"
         static let playlists = "apple-videos.playlists"
+        static let playlistVideos = "apple-videos.playlist-videos"
         static let recent = "apple-videos.recent"
     }
 
     private(set) var savedVideos: [Video]
     private(set) var playlists: [VideoPlaylist]
+    private var playlistVideos: [String: Video]
     private(set) var recentlyWatched: [Video]
     private let defaults: UserDefaults
 
@@ -29,12 +31,21 @@ final class LibraryStore {
             VideoPlaylist(name: "Favorites")
         ]
         playlists = Self.uniquePlaylists(decodedPlaylists)
+        playlistVideos = Self.decode(
+            [String: Video].self,
+            from: defaults.data(forKey: Keys.playlistVideos)
+        ) ?? [:]
+        // Migrate existing playlists while their videos are still in Saved.
+        for video in savedVideos where playlists.contains(where: { $0.videoIDs.contains(video.id) }) {
+            playlistVideos[video.id] = video
+        }
 
         let decodedRecent = Self.decode([Video].self, from: defaults.data(forKey: Keys.recent)) ?? []
         recentlyWatched = Array(Self.uniqueVideos(decodedRecent).prefix(8))
 
         persist(savedVideos, key: Keys.saved)
         persist(playlists, key: Keys.playlists)
+        persist(playlistVideos, key: Keys.playlistVideos)
         persist(recentlyWatched, key: Keys.recent)
     }
 
@@ -82,7 +93,8 @@ final class LibraryStore {
             return values
         }
 
-        recentlyWatched = current.map { updates[$0.id] ?? $0 }
+        // Preserve videos watched while the refresh requests were running.
+        recentlyWatched = recentlyWatched.map { updates[$0.id] ?? $0 }
         persist(recentlyWatched, key: Keys.recent)
     }
 
@@ -95,6 +107,8 @@ final class LibraryStore {
 
     func add(_ video: Video, to playlistID: UUID) {
         guard let index = playlists.firstIndex(where: { $0.id == playlistID }) else { return }
+        playlistVideos[video.id] = video
+        persist(playlistVideos, key: Keys.playlistVideos)
         if !playlists[index].videoIDs.contains(video.id) {
             playlists[index].videoIDs.append(video.id)
             persist(playlists, key: Keys.playlists)
@@ -106,7 +120,9 @@ final class LibraryStore {
     }
 
     func videos(in playlist: VideoPlaylist) -> [Video] {
-        playlist.videoIDs.compactMap { id in savedVideos.first { $0.id == id } }
+        playlist.videoIDs.compactMap { id in
+            savedVideos.first { $0.id == id } ?? playlistVideos[id]
+        }
     }
 
     private func persist<T: Encodable>(_ value: T, key: String) {

@@ -103,9 +103,7 @@ final class NativePlayback: NSObject {
         super.init()
 
         item.externalMetadata = playerMetadata(description: videoDescription)
-        player.allowsExternalPlayback = true
         playerController.player = player
-        playerController.allowsPictureInPicturePlayback = true
         playerController.delegate = self
     }
 

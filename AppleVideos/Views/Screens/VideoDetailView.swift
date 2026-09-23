@@ -22,8 +22,19 @@ struct VideoDetailView: View {
 
     var body: some View {
         ScrollView {
-            detailStage
-                .padding(.bottom, 30)
+            VStack(alignment: .leading, spacing: 22) {
+                detailStage
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Up Next")
+                        .font(.title2.bold())
+                    Text("More recommendations will become personal as the Apple Videos algorithm evolves.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.horizontal)
+            }
+            .padding(.bottom, 30)
         }
         .background(.black)
         .foregroundStyle(.white)

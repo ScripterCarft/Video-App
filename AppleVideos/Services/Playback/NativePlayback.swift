@@ -8,7 +8,7 @@ import UIKit
 /// while it is on screen; AVKit owns presentation, controls and dismissal.
 @MainActor
 final class NativePlayback: NSObject {
-    enum Result {
+    enum Outcome {
         case presented
         case fallback(diagnostic: String)
         case cancelled
@@ -37,7 +37,7 @@ final class NativePlayback: NSObject {
         _ video: Video,
         description: String?,
         onFinish: @escaping @MainActor (_ reachedWatchThreshold: Bool) -> Void
-    ) async -> Result {
+    ) async -> Outcome {
         let item: AVPlayerItem
         switch video.source {
         case .direct:

@@ -1,6 +1,12 @@
 import SwiftUI
 
 struct LibraryView: View {
+    private enum Route: Hashable {
+        case saved
+        case history
+        case playlist(UUID)
+    }
+
     @Environment(LibraryStore.self) private var library
     @State private var isCreatingPlaylist = false
     @State private var playlistName = ""
@@ -10,24 +16,18 @@ struct LibraryView: View {
         NavigationStack {
             List {
                 Section {
-                    NavigationLink {
-                        SavedVideosView(transition: transition)
-                    } label: {
+                    NavigationLink(value: Route.saved) {
                         LibraryRow(title: "Saved", subtitle: "^[\(library.savedVideos.count) video](inflect: true)", icon: "bookmark.fill", color: .red)
                     }
 
-                    NavigationLink {
-                        HistoryView(transition: transition)
-                    } label: {
+                    NavigationLink(value: Route.history) {
                         LibraryRow(title: "History", subtitle: "\(library.recentlyWatched.count) recently watched", icon: "clock.fill", color: .gray)
                     }
                 }
 
                 Section("Playlists") {
                     ForEach(library.playlists) { playlist in
-                        NavigationLink {
-                            PlaylistView(playlistID: playlist.id, transition: transition)
-                        } label: {
+                        NavigationLink(value: Route.playlist(playlist.id)) {
                             LibraryRow(
                                 title: playlist.name,
                                 subtitle: "^[\(playlist.videoIDs.count) video](inflect: true)",
@@ -48,6 +48,19 @@ struct LibraryView: View {
                 }
             }
             .navigationTitle("Library")
+            // All navigation in this stack is value-based. Mixing view-destination
+            // links in the List with value-based video links could make the stack
+            // rebuild its path and pop a just-pushed video.
+            .navigationDestination(for: Route.self) { route in
+                switch route {
+                case .saved:
+                    SavedVideosView(transition: transition)
+                case .history:
+                    HistoryView(transition: transition)
+                case let .playlist(id):
+                    PlaylistView(playlistID: id, transition: transition)
+                }
+            }
             .videoDestination(transition: transition)
             .alert("New Playlist", isPresented: $isCreatingPlaylist) {
                 TextField("Playlist name", text: $playlistName)

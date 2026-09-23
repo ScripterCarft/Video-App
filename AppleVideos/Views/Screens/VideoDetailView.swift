@@ -299,10 +299,13 @@ struct VideoDetailView: View {
 
 private struct DescriptionPlaceholder: View {
     var body: some View {
-        Text("Loading video description\nLoading video description")
+        // Full-width text that wraps, so the redacted skeleton always shows two
+        // lines like the real description.
+        Text(String(repeating: "Loading video description ", count: 8))
             .font(.subheadline)
             .foregroundStyle(.white.opacity(0.72))
-            .lineLimit(2)
+            .lineLimit(2, reservesSpace: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
             .redacted(reason: .placeholder)
             .accessibilityHidden(true)
     }

@@ -235,6 +235,7 @@ final class NativePlayback: NSObject {
         item.identifier = .commonIdentifierArtwork
         item.value = data as NSData
         item.dataType = kCMMetadataBaseDataType_JPEG as String
+        item.extendedLanguageTag = "und"
         return item
     }
 

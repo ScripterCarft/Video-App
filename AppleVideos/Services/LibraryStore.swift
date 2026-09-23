@@ -35,13 +35,14 @@ final class LibraryStore {
             [String: Video].self,
             from: defaults.data(forKey: Keys.playlistVideos)
         ) ?? [:]
+
+        let decodedRecent = Self.decode([Video].self, from: defaults.data(forKey: Keys.recent)) ?? []
+        recentlyWatched = Array(Self.uniqueVideos(decodedRecent).prefix(8))
+
         // Migrate existing playlists while their videos are still in Saved.
         for video in savedVideos where playlists.contains(where: { $0.videoIDs.contains(video.id) }) {
             playlistVideos[video.id] = video
         }
-
-        let decodedRecent = Self.decode([Video].self, from: defaults.data(forKey: Keys.recent)) ?? []
-        recentlyWatched = Array(Self.uniqueVideos(decodedRecent).prefix(8))
 
         persist(savedVideos, key: Keys.saved)
         persist(playlists, key: Keys.playlists)

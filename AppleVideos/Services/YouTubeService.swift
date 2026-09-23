@@ -176,8 +176,11 @@ actor YouTubeService {
 
     private static func fetchWebConfiguration() async throws -> WebConfiguration {
         var request = URLRequest(url: URL(string: "https://www.youtube.com")!)
+        // Requests identify as the WEB client, so fetch the configuration with a
+        // desktop user agent. An iPhone user agent can return the MWEB client's
+        // configuration instead.
         request.setValue(
-            "Mozilla/5.0 (iPhone; CPU iPhone OS 27_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.5 Safari/605.1.15",
             forHTTPHeaderField: "User-Agent"
         )
         let (data, response) = try await URLSession.shared.data(for: request)

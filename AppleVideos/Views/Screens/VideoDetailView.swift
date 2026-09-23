@@ -38,6 +38,9 @@ struct VideoDetailView: View {
             }
             .padding(.bottom, 30)
         }
+        // Only scroll when the content is taller than the screen, so a downward
+        // swipe closes the screen instead of pulling the content.
+        .scrollBounceBehavior(.basedOnSize)
         .background(.black)
         .foregroundStyle(.white)
         .ignoresSafeArea(edges: .top)
@@ -316,15 +319,17 @@ private struct DescriptionPreview: View {
     }
 
     var body: some View {
-        ZStack(alignment: .bottomTrailing) {
+        // Plain text and a plain button: masking a shadowed text and blurring it
+        // with a material behind the button produced smearing artifacts.
+        VStack(alignment: .trailing, spacing: 4) {
             Text(text)
                 .font(.subheadline)
                 .foregroundStyle(.white.opacity(0.88))
                 .lineLimit(2)
                 .truncationMode(.tail)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .shadow(color: .black.opacity(0.58), radius: 8, y: 2)
                 .background(alignment: .topLeading) {
+                    // Measures the untruncated height to decide whether MORE is needed.
                     Text(text)
                         .font(.subheadline)
                         .fixedSize(horizontal: false, vertical: true)
@@ -340,35 +345,15 @@ private struct DescriptionPreview: View {
                 } action: { height in
                     limitedHeight = height
                 }
-                .mask {
-                    if isTruncated {
-                        VStack(spacing: 0) {
-                            Color.white
-                            HStack(spacing: 0) {
-                                Color.white
-                                LinearGradient(
-                                    colors: [.white, .clear],
-                                    startPoint: .leading,
-                                    endPoint: .trailing
-                                )
-                                .frame(width: 84)
-                            }
-                        }
-                    } else {
-                        Color.white
-                    }
-                }
 
             if isTruncated {
                 Button("MORE", action: onMore)
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.white.opacity(0.88))
+                    .foregroundStyle(.white)
                     .buttonStyle(.plain)
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 3)
-                    .background(.ultraThinMaterial, in: Capsule())
             }
         }
+        .shadow(color: .black.opacity(0.58), radius: 8, y: 2)
     }
 }
 

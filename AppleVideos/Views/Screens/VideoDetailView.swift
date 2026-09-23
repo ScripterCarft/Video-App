@@ -447,6 +447,9 @@ private struct PlayerScreen: View {
 
     @MainActor
     private func preparePlayback() async {
+        // Presenting AVKit can restart SwiftUI's view task. Keep the same player.
+        guard isResolving, nativePlayer == nil, !usesEmbeddedFallback else { return }
+
         switch video.source {
         case .direct:
             guard let url = video.playbackURL else {
@@ -457,7 +460,7 @@ private struct PlayerScreen: View {
             let player = makePlayer(item: item)
             nativePlayer = player
             isResolving = false
-            startPlayback(player)
+            configurePlaybackAudio()
             await installSupplementalMetadata(on: item)
 
         case .youtube:
@@ -491,7 +494,7 @@ private struct PlayerScreen: View {
                 let player = makePlayer(item: item)
                 nativePlayer = player
                 isResolving = false
-                startPlayback(player)
+                configurePlaybackAudio()
                 await installSupplementalMetadata(on: item)
             } catch is CancellationError {
                 return
@@ -658,11 +661,10 @@ private struct PlayerScreen: View {
     }
 
     @MainActor
-    private func startPlayback(_ player: AVPlayer) {
+    private func configurePlaybackAudio() {
         let audioSession = AVAudioSession.sharedInstance()
         try? audioSession.setCategory(.playback, mode: .moviePlayback)
         try? audioSession.setActive(true)
-        player.play()
     }
 
     @MainActor
@@ -727,6 +729,16 @@ private struct NativePlayerPresenter: UIViewControllerRepresentable {
             playerDidDismiss()
         }
 
+        func playerViewController(
+            _ playerViewController: AVPlayerViewController,
+            willEndFullScreenPresentationWithAnimationCoordinator transition: UIViewControllerTransitionCoordinator
+        ) {
+            transition.animate(alongsideTransition: nil) { [weak self] context in
+                guard !context.isCancelled else { return }
+                self?.playerDidDismiss()
+            }
+        }
+
         func playerDidDismiss() {
             guard !hasDismissed, !isPictureInPictureActive else { return }
             hasDismissed = true
@@ -769,7 +781,8 @@ private struct NativePlayerPresenter: UIViewControllerRepresentable {
 private final class PlayerPresentationHostViewController: UIViewController {
     private let playerController = AVPlayerViewController()
     private weak var coordinator: NativePlayerPresenter.Coordinator?
-    private var hasPresented = false
+    private var hasStartedPresentation = false
+    private var isPresentingPlayer = false
     private var isBeingTornDown = false
 
     init(player: AVPlayer, coordinator: NativePlayerPresenter.Coordinator) {
@@ -793,12 +806,10 @@ private final class PlayerPresentationHostViewController: UIViewController {
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
-        if !hasPresented {
-            presentPlayer(animated: false)
-        } else if presentedViewController == nil,
-                  coordinator?.isPictureInPictureActive == false,
-                  !isBeingTornDown {
-            coordinator?.playerDidDismiss()
+        guard !hasStartedPresentation else { return }
+        hasStartedPresentation = true
+        presentPlayer(animated: false) {
+            self.playerController.player?.play()
         }
     }
 
@@ -811,6 +822,8 @@ private final class PlayerPresentationHostViewController: UIViewController {
     func restorePlayerInterface(completionHandler: @escaping (Bool) -> Void) {
         if presentedViewController != nil {
             completionHandler(true)
+        } else if isPresentingPlayer || isBeingTornDown {
+            completionHandler(false)
         } else {
             presentPlayer(animated: true) {
                 completionHandler(true)
@@ -824,8 +837,10 @@ private final class PlayerPresentationHostViewController: UIViewController {
     }
 
     private func presentPlayer(animated: Bool, completion: (() -> Void)? = nil) {
+        guard !isPresentingPlayer, presentedViewController == nil, !isBeingTornDown else { return }
+        isPresentingPlayer = true
         present(playerController, animated: animated) {
-            self.hasPresented = true
+            self.isPresentingPlayer = false
             self.playerController.presentationController?.delegate = self.coordinator
             completion?()
         }

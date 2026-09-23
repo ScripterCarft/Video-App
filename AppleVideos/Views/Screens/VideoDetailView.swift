@@ -369,7 +369,7 @@ private struct PlayerScreen: View {
     @State private var nativePlayer: AVPlayer?
     @State private var usesEmbeddedFallback = false
     @State private var isResolving = true
-    @State private var playbackStarted = false
+    @State private var didMarkWatched = false
     @State private var diagnosticMessage: String?
     @State private var isPictureInPictureActive = false
 
@@ -384,7 +384,9 @@ private struct PlayerScreen: View {
                         isPictureInPictureActive: $isPictureInPictureActive
                     )
                 } else if usesEmbeddedFallback, video.source == .youtube {
-                    YouTubePlayerView(videoID: video.id)
+                    YouTubePlayerView(videoID: video.id) {
+                        markWatchedOnce()
+                    }
                 } else if isResolving {
                     ProgressView()
                         .tint(.white)
@@ -397,11 +399,32 @@ private struct PlayerScreen: View {
         .task(id: video.id) {
             await preparePlayback()
         }
-        .task(id: playbackStarted) {
-            guard playbackStarted else { return }
-            try? await Task.sleep(for: .seconds(10))
-            guard !Task.isCancelled else { return }
-            library.markWatched(video)
+        .task(id: nativePlayer != nil) {
+            guard let player = nativePlayer else { return }
+            var previousTime: Double?
+            var watchedSeconds = 0.0
+
+            while !Task.isCancelled && !didMarkWatched {
+                do {
+                    try await Task.sleep(for: .seconds(1))
+                } catch {
+                    return
+                }
+                let currentTime = player.currentTime().seconds
+                if player.timeControlStatus == .playing,
+                   let previousTime,
+                   currentTime.isFinite {
+                    let elapsed = currentTime - previousTime
+                    // Ignore seeks and stalls; only advancing playback counts.
+                    if elapsed > 0 && elapsed < 2.5 {
+                        watchedSeconds += min(elapsed, 1.5)
+                    }
+                }
+                previousTime = currentTime.isFinite ? currentTime : nil
+                if watchedSeconds >= 10 {
+                    markWatchedOnce()
+                }
+            }
         }
         .alert(
             "Native Playback Debug",
@@ -638,7 +661,13 @@ private struct PlayerScreen: View {
         try? audioSession.setCategory(.playback, mode: .moviePlayback)
         try? audioSession.setActive(true)
         player.play()
-        playbackStarted = true
+    }
+
+    @MainActor
+    private func markWatchedOnce() {
+        guard !didMarkWatched else { return }
+        didMarkWatched = true
+        library.markWatched(video)
     }
 
     @MainActor
@@ -648,7 +677,6 @@ private struct PlayerScreen: View {
         isResolving = false
         diagnosticMessage = diagnostic
         usesEmbeddedFallback = true
-        playbackStarted = true
     }
 }
 
@@ -717,9 +745,10 @@ private struct NativePlayerView: UIViewControllerRepresentable {
 
 private struct YouTubePlayerView: UIViewRepresentable {
     let videoID: String
+    let onWatchThreshold: @MainActor () -> Void
 
     func makeCoordinator() -> Coordinator {
-        Coordinator()
+        Coordinator(onWatchThreshold: onWatchThreshold)
     }
 
     func makeUIView(context: Context) -> WKWebView {
@@ -729,6 +758,13 @@ private struct YouTubePlayerView: UIViewRepresentable {
         configuration.allowsPictureInPictureMediaPlayback = true
         configuration.mediaTypesRequiringUserActionForPlayback = []
         configuration.defaultWebpagePreferences.allowsContentJavaScript = true
+        configuration.userContentController.add(
+            context.coordinator,
+            name: "watchThreshold"
+        )
+        configuration.userContentController.addUserScript(
+            WKUserScript(source: Self.watchScript, injectionTime: .atDocumentEnd, forMainFrameOnly: true)
+        )
 
         let view = WKWebView(frame: .zero, configuration: configuration)
         view.navigationDelegate = context.coordinator
@@ -760,7 +796,43 @@ private struct YouTubePlayerView: UIViewRepresentable {
         webView.load(request)
     }
 
-    final class Coordinator: NSObject, WKNavigationDelegate {
+    private static let watchScript = """
+        (() => {
+          let watchedSeconds = 0;
+          let previousTime = null;
+          let reported = false;
+          setInterval(() => {
+            const video = document.querySelector('video');
+            if (!video || reported) return;
+            const currentTime = video.currentTime;
+            if (!video.paused && !video.ended && previousTime !== null) {
+              const elapsed = currentTime - previousTime;
+              if (elapsed > 0 && elapsed < 2.5) watchedSeconds += Math.min(elapsed, 1.5);
+            }
+            previousTime = Number.isFinite(currentTime) ? currentTime : null;
+            if (watchedSeconds >= 10) {
+              reported = true;
+              window.webkit.messageHandlers.watchThreshold.postMessage(true);
+            }
+          }, 1000);
+        })();
+        """
+
+    @MainActor
+    final class Coordinator: NSObject, WKNavigationDelegate, @preconcurrency WKScriptMessageHandler {
         var loadedVideoID: String?
+        private let onWatchThreshold: @MainActor () -> Void
+
+        init(onWatchThreshold: @escaping @MainActor () -> Void) {
+            self.onWatchThreshold = onWatchThreshold
+        }
+
+        func userContentController(
+            _ userContentController: WKUserContentController,
+            didReceive message: WKScriptMessage
+        ) {
+            guard message.name == "watchThreshold" else { return }
+            onWatchThreshold()
+        }
     }
 }

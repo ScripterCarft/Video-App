@@ -211,11 +211,8 @@ actor YouTubeInnertubePlaybackResolver: PlaybackResolving {
                 qualityLabel: "Auto",
                 width: nil,
                 height: nil,
-                framesPerSecond: nil,
                 bitrate: nil,
                 mimeType: "application/vnd.apple.mpegurl",
-                codecs: nil,
-                isHDR: false,
                 expiresAt: expirationDate(for: url) ?? fallbackExpiration
             ))
         }
@@ -281,11 +278,8 @@ actor YouTubeInnertubePlaybackResolver: PlaybackResolving {
             qualityLabel: format["qualityLabel"] as? String,
             width: format["width"] as? Int,
             height: format["height"] as? Int,
-            framesPerSecond: format["fps"] as? Int,
             bitrate: format["bitrate"] as? Int,
             mimeType: mimeType,
-            codecs: codecs(from: mimeType),
-            isHDR: isHDR(format),
             expiresAt: expirationDate(for: url) ?? fallbackExpiration
         )
     }
@@ -350,21 +344,6 @@ actor YouTubeInnertubePlaybackResolver: PlaybackResolving {
               let timestamp = TimeInterval(rawValue)
         else { return nil }
         return Date(timeIntervalSince1970: timestamp)
-    }
-
-    private static func codecs(from mimeType: String) -> String? {
-        guard let marker = mimeType.range(of: "codecs=\"") else { return nil }
-        let suffix = mimeType[marker.upperBound...]
-        guard let end = suffix.firstIndex(of: "\"") else { return nil }
-        return String(suffix[..<end])
-    }
-
-    private static func isHDR(_ format: [String: Any]) -> Bool {
-        let label = (format["qualityLabel"] as? String)?.uppercased() ?? ""
-        if label.contains("HDR") { return true }
-        guard let colorInfo = format["colorInfo"] as? [String: Any] else { return false }
-        let transfer = (colorInfo["transferCharacteristics"] as? String)?.uppercased() ?? ""
-        return transfer.contains("ST2084") || transfer.contains("HLG")
     }
 
     private static func text(from value: Any?) -> String? {

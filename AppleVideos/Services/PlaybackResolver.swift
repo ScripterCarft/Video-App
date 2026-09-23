@@ -54,11 +54,8 @@ struct PlaybackVariant: Identifiable, Hashable, Sendable {
     let qualityLabel: String?
     let width: Int?
     let height: Int?
-    let framesPerSecond: Int?
     let bitrate: Int?
     let mimeType: String
-    let codecs: String?
-    let isHDR: Bool
     let expiresAt: Date
 
     fileprivate var qualitySortValue: Int {

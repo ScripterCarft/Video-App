@@ -776,10 +776,13 @@ private struct NativePlayerPresenter: UIViewControllerRepresentable {
             _ playerViewController: AVPlayerViewController,
             willEndFullScreenPresentationWithAnimationCoordinator transition: UIViewControllerTransitionCoordinator
         ) {
-            transition.animate(alongsideTransition: nil) { [weak self] context in
+            transition.animate(alongsideTransition: { _ in
+                playerViewController.view.backgroundColor = .clear
+            }, completion: { [weak self] context in
+                playerViewController.view.backgroundColor = .black
                 guard !context.isCancelled else { return }
                 self?.playerDidDismiss()
-            }
+            })
         }
 
         func playerDidDismiss() {
@@ -836,9 +839,9 @@ private final class PlayerPresentationHostViewController: UIViewController {
         playerController.player = player
         playerController.modalPresentationStyle = .overFullScreen
         playerController.allowsPictureInPicturePlayback = true
-        // Keep AVKit's outer canvas from covering the detail view during an
-        // interactive dismissal. AVKit still owns the video and its controls.
-        playerController.view.backgroundColor = .clear
+        // Animate this canvas with AVKit's interactive dismissal while keeping
+        // the letterboxed player black during ordinary playback.
+        playerController.view.backgroundColor = .black
         playerController.view.isOpaque = false
     }
 

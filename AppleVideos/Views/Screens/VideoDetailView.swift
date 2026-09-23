@@ -39,7 +39,20 @@ struct VideoDetailView: View {
             }
             .padding(.bottom, 30)
         }
-        .background(.black)
+        .background {
+            // Temporary split backdrop to identify the source of the dark
+            // surface visible behind an interactive AVKit dismissal.
+            LinearGradient(
+                stops: [
+                    .init(color: .black, location: 0),
+                    .init(color: .black, location: 0.5),
+                    .init(color: .clear, location: 0.5),
+                    .init(color: .clear, location: 1)
+                ],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+        }
         .foregroundStyle(.white)
         .ignoresSafeArea(edges: .top)
         .toolbarBackground(.hidden, for: .navigationBar)

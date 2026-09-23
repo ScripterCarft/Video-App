@@ -35,15 +35,6 @@ struct VideoDetailView: View {
                         .foregroundStyle(.secondary)
                 }
                 .padding(.horizontal)
-
-                // EXPERIMENT (temporary): play Apple's public HLS test stream through
-                // the same native path, to rule the YouTube stream in or out.
-                Button("Apple Test Stream", systemImage: "testtube.2") {
-                    startPlayback(Self.appleTestStream)
-                }
-                .buttonStyle(.bordered)
-                .disabled(isPreparingPlayback)
-                .padding(.horizontal)
             }
             .padding(.bottom, 30)
         }
@@ -133,15 +124,14 @@ struct VideoDetailView: View {
 
     /// Resolves the video and hands it to AVKit. From then on AVKit owns the
     /// player; this view only hears back once, after the player has closed.
-    private func startPlayback(_ target: Video? = nil) {
+    private func startPlayback() {
         isPreparingPlayback = true
-        let video = target ?? self.video
-        let recordsHistory = target == nil
+        let video = self.video
         let library = self.library
-        let description = target == nil ? visibleDescription : nil
+        let description = visibleDescription
         playbackTask = Task {
             let result = await NativePlayback.play(video, description: description) { reachedWatchThreshold in
-                if reachedWatchThreshold && recordsHistory {
+                if reachedWatchThreshold {
                     library.markWatched(video)
                 }
             }
@@ -153,21 +143,6 @@ struct VideoDetailView: View {
             }
         }
     }
-
-    // EXPERIMENT (temporary): Apple's public HLS example stream.
-    private static let appleTestStream = Video(
-        id: "apple-bipbop-test",
-        title: "Apple HLS Test Stream",
-        channelName: "Apple",
-        thumbnailURL: nil,
-        duration: nil,
-        publishedText: nil,
-        viewCountText: nil,
-        descriptionText: nil,
-        badges: nil,
-        source: .direct,
-        playbackURL: URL(string: "https://devstreaming-cdn.apple.com/videos/streaming/examples/img_bipbop_adv_example_fmp4/master.m3u8")
-    )
 
     private func cancelPlayback() {
         playbackTask?.cancel()

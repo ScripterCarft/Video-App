@@ -146,6 +146,23 @@ private struct FallbackThumbnailImage<Content: View, Placeholder: View>: View {
     @State private var loadedImage: UIImage?
     @State private var loadedURLs: [URL]?
 
+    init(
+        urls: [URL],
+        requiresSixteenByNine: Bool,
+        content: @escaping (Image) -> Content,
+        placeholder: @escaping () -> Placeholder
+    ) {
+        self.urls = urls
+        self.requiresSixteenByNine = requiresSixteenByNine
+        self.content = content
+        self.placeholder = placeholder
+        // Start with an already prepared image so cached artwork appears in the
+        // first frame instead of after a placeholder.
+        let cached = ArtworkLoader.cachedImage(for: urls)
+        _loadedImage = State(initialValue: cached)
+        _loadedURLs = State(initialValue: cached == nil ? nil : urls)
+    }
+
     var body: some View {
         Group {
             if let loadedImage {

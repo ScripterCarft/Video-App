@@ -396,23 +396,30 @@ actor YouTubeService {
     }
 
     private static func relativePublishedText(from value: String) -> String? {
-        let components = value.split(separator: "-").compactMap { Int($0) }
-        guard components.count == 3,
-              let date = Calendar(identifier: .gregorian).date(
-                from: DateComponents(
-                    timeZone: TimeZone(secondsFromGMT: 0),
-                    year: components[0],
-                    month: components[1],
-                    day: components[2]
-                )
-              )
-        else {
-            return nil
-        }
+        guard let date = publishDate(from: value) else { return nil }
 
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .full
         return formatter.localizedString(for: date, relativeTo: Date())
+    }
+
+    /// YouTube sends `publishDate` either as a full timestamp
+    /// ("2024-05-01T07:00:00-07:00") or as a plain date ("2024-05-01").
+    private static func publishDate(from value: String) -> Date? {
+        if let timestamp = try? Date(value, strategy: .iso8601) {
+            return timestamp
+        }
+
+        let components = value.prefix(10).split(separator: "-").compactMap { Int($0) }
+        guard components.count == 3 else { return nil }
+        return Calendar(identifier: .gregorian).date(
+            from: DateComponents(
+                timeZone: TimeZone(secondsFromGMT: 0),
+                year: components[0],
+                month: components[1],
+                day: components[2]
+            )
+        )
     }
 
     private static func isShort(_ renderer: [String: Any]) -> Bool {

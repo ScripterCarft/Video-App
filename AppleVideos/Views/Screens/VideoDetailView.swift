@@ -77,10 +77,13 @@ struct VideoDetailView: View {
                     onPreparationFinished: { isPreparingPlayback = false },
                     onDismiss: {
                         isPreparingPlayback = false
-                        showPlayer = false
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            showPlayer = false
+                        }
                     }
                 )
                 .ignoresSafeArea()
+                .transition(.asymmetric(insertion: .identity, removal: .opacity))
             }
         }
         .sheet(isPresented: $showDescription) {
@@ -181,7 +184,9 @@ struct VideoDetailView: View {
 
                     Button {
                         if isPreparingPlayback {
-                            showPlayer = false
+                            withAnimation(.easeOut(duration: 0.2)) {
+                                showPlayer = false
+                            }
                             isPreparingPlayback = false
                             return
                         }
@@ -470,6 +475,7 @@ private struct PlayerScreen: View {
                 }
             }
         }
+        #if DEBUG
         .alert(
             "Native Playback Debug",
             isPresented: Binding(
@@ -481,6 +487,7 @@ private struct PlayerScreen: View {
         } message: {
             Text(diagnosticMessage ?? "")
         }
+        #endif
     }
 
     @MainActor
@@ -835,6 +842,7 @@ private final class PlayerPresentationHostViewController: UIViewController {
         playerController.delegate = coordinator
         playerController.player = player
         playerController.allowsPictureInPicturePlayback = true
+        playerController.canStartPictureInPictureAutomaticallyFromInline = true
     }
 
     @available(*, unavailable)

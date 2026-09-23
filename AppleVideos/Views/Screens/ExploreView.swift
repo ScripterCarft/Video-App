@@ -1,72 +1,43 @@
+import AVKit
 import SwiftUI
 
+// TEMPORARY TEST (do not merge): Explore is replaced by a single button that
+// presents Apple's HLS example stream with the minimal AVKit recipe:
+// AVPlayer(url:), AVPlayerViewController, present modally, play on completion.
+// No delegate, metadata, audio session, navigation stack or app player code.
 struct ExploreView: View {
-    @Namespace private var transition
+    var body: some View {
+        Button("Play Apple Test Stream") {
+            PlainPlayerTest.present()
+        }
+        .buttonStyle(.borderedProminent)
+    }
+}
 
-    private struct Topic: Identifiable {
-        let title: String
-        let systemImage: String
-        let color: Color
+@MainActor
+private enum PlainPlayerTest {
+    static func present() {
+        guard let url = URL(string: "https://devstreaming-cdn.apple.com/videos/streaming/examples/img_bipbop_adv_example_fmp4/master.m3u8"),
+              let presenter = topViewController()
+        else { return }
 
-        var id: String { title }
+        let player = AVPlayer(url: url)
+        let controller = AVPlayerViewController()
+        controller.player = player
+        presenter.present(controller, animated: true) {
+            player.play()
+        }
     }
 
-    private let topics = [
-        Topic(title: "Technology", systemImage: "cpu", color: .blue),
-        Topic(title: "Film", systemImage: "film.stack", color: .indigo),
-        Topic(title: "Science", systemImage: "atom", color: .teal),
-        Topic(title: "Music", systemImage: "music.note", color: .pink),
-        Topic(title: "Gaming", systemImage: "gamecontroller", color: .purple),
-        Topic(title: "Learning", systemImage: "graduationcap", color: .orange)
-    ]
-
-    var body: some View {
-        NavigationStack {
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 28) {
-                    VStack(alignment: .leading, spacing: 14) {
-                        SectionHeader(title: "Browse Topics", subtitle: "Find something worth watching")
-
-                        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-                            ForEach(topics) { topic in
-                                NavigationLink {
-                                    SearchResultsView(
-                                        query: topic.title,
-                                        section: "topic-\(topic.title)",
-                                        transition: transition
-                                    )
-                                    .navigationTitle(topic.title)
-                                    .navigationBarTitleDisplayMode(.large)
-                                } label: {
-                                    Label(topic.title, systemImage: topic.systemImage)
-                                        .font(.headline)
-                                        .frame(maxWidth: .infinity, minHeight: 74, alignment: .leading)
-                                        .padding(.horizontal, 16)
-                                        .foregroundStyle(.white)
-                                        .background(topic.color.gradient, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                    }
-                    .padding(.horizontal)
-
-                    VStack(alignment: .leading, spacing: 14) {
-                        SectionHeader(title: "Trending Now", subtitle: "A first editorial selection")
-                            .padding(.horizontal)
-
-                        ForEach(Video.curated) { video in
-                            VideoLink(video: video, section: "trending", transition: transition) {
-                                VideoCard(video: video)
-                            }
-                            .padding(.horizontal)
-                        }
-                    }
-                }
-                .padding(.vertical)
-            }
-            .navigationTitle("Explore")
-            .videoDestination(transition: transition)
+    private static func topViewController() -> UIViewController? {
+        let window = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap(\.windows)
+            .first(where: \.isKeyWindow)
+        var top = window?.rootViewController
+        while let presented = top?.presentedViewController {
+            top = presented
         }
+        return top
     }
 }

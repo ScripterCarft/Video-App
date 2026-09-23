@@ -362,17 +362,7 @@ private struct NativePlayerPresenter: UIViewControllerRepresentable {
             self.onDismiss = onDismiss
         }
 
-        @MainActor
-        func playerViewController(
-            _ playerViewController: AVPlayerViewController,
-            willEndFullScreenPresentationWithAnimationCoordinator transition: UIViewControllerTransitionCoordinator
-        ) {
-            transition.animate(alongsideTransition: nil) { [weak self] context in
-                guard !context.isCancelled else { return }
-                self?.playerDidDismiss()
-            }
-        }
-
+        /// Called by the host once AVKit has finished dismissing the player.
         func playerDidDismiss() {
             guard !hasDismissed, !isPictureInPictureActive else { return }
             hasDismissed = true
@@ -440,10 +430,19 @@ private final class PlayerPresentationHostViewController: UIViewController {
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
-        guard !hasStartedPresentation else { return }
-        hasStartedPresentation = true
-        presentPlayer(animated: true) {
-            self.playerController.player?.play()
+        guard hasStartedPresentation else {
+            hasStartedPresentation = true
+            presentPlayer(animated: true) {
+                self.playerController.player?.play()
+            }
+            return
+        }
+
+        // Detect dismissal without taking part in AVKit's own transition. This
+        // host appears again only after a dismissal has completed; a cancelled
+        // interactive swipe never reaches viewDidAppear.
+        if presentedViewController == nil, !isPresentingPlayer, !isBeingTornDown {
+            coordinator?.playerDidDismiss()
         }
     }
 

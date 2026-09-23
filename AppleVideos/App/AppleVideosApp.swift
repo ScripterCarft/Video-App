@@ -27,7 +27,6 @@ struct AppleVideosApp: App {
         WindowGroup {
             RootTabView()
                 .environment(library)
-                .tint(.red)
         }
     }
 }

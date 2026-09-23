@@ -42,6 +42,9 @@ struct VideoDetailView: View {
         .scrollBounceBehavior(.basedOnSize)
         .background(.black)
         .foregroundStyle(.white)
+        // The detail screen is always dark; its toolbar buttons use white instead
+        // of the app's red accent, like the TV app.
+        .tint(.white)
         .ignoresSafeArea(edges: .top)
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
@@ -76,6 +79,7 @@ struct VideoDetailView: View {
         .playbackPresentation(playback)
         .sheet(isPresented: $showDescription) {
             DescriptionSheet(video: video, description: visibleDescription)
+                .tint(.primary)
                 .presentationDetents([.fraction(0.55), .fraction(0.8)])
                 .presentationDragIndicator(.visible)
         }

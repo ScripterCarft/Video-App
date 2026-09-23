@@ -2,6 +2,7 @@ import SwiftUI
 
 @main
 struct AppleVideosApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var library = LibraryStore()
 
     init() {

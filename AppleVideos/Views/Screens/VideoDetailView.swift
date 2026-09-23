@@ -842,7 +842,6 @@ private final class PlayerPresentationHostViewController: UIViewController {
         playerController.delegate = coordinator
         playerController.player = player
         playerController.allowsPictureInPicturePlayback = true
-        playerController.canStartPictureInPictureAutomaticallyFromInline = true
     }
 
     @available(*, unavailable)

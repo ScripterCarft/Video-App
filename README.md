@@ -24,11 +24,12 @@ The YouTube and Innertube representations stay inside the service and resolver l
 
 ## Project structure
 
-- `App/`: app entry point and shared URL cache setup
+- `App/`: app entry point, app delegate (audio session, orientation) and launch-time setup
 - `Models/`: provider-neutral app models
-- `Services/`: YouTube search/details, the playback resolver, the on-device library and artwork loading
+- `Services/`: YouTube search and details, the on-device library and artwork loading
+- `Services/Playback/`: the provider-neutral resolver contract, the YouTube resolver and `NativePlayback`
 - `Views/Screens/`: one file per tab plus the video detail screen
-- `Views/Player/`: native AVKit presentation and the embedded YouTube fallback
+- `Views/Player/`: the embedded YouTube fallback
 - `Views/Components/`: shared views, including `VideoLink`
 - `Support/`: small Foundation extensions
 
@@ -38,9 +39,9 @@ Every tab owns one `NavigationStack` and registers the video detail destination 
 
 `LibraryStore` owns Continue Watching and persists it under `apple-videos.recent`.
 
-- Playback is added only after the existing watch threshold is reached.
+- A video is added when its player closes after at least ten seconds of actual playback.
 - The list is deduplicated and limited to the eight most recent videos when it is loaded and whenever a video is marked as watched.
-- On app launch, the saved entries are refreshed concurrently through `YouTubeService.refreshedVideo`.
+- The app refreshes the saved entries once per launch, from `AppleVideosApp.init`, concurrently through `YouTubeService.refreshedVideo`.
 - Title, channel, duration, description, views, thumbnail, badges, and publication information are refreshed when YouTube supplies them.
 - The exact YouTube publication date is converted to a localized relative label during refresh, so labels such as “8 days ago” advance on later launches.
 - Refresh preserves the original order. If one request fails or omits a field, the stored value for that video is retained.
@@ -48,21 +49,20 @@ Every tab owns one `NavigationStack` and registers the video detail destination 
 
 The service coalesces simultaneous requests for YouTube's web configuration into a single in-flight task. Refreshing eight videos therefore does not bootstrap the same configuration eight times.
 
-## Playback status and handoff
+## Playback
 
-Native playback is owned by `NativePlayback` (`Views/Player/NativePlayback.swift`). The Play button resolves the source; `NativePlayback` then creates the `AVPlayer` and presents `AVPlayerViewController` from the window's top view controller, the way a UIKit app would. No SwiftUI view hosts, observes or updates the player while it is on screen, so nothing in the app re-renders under AVKit's interactive dismissal. The player keeps AVKit's default modal presentation style, background and controls; AVKit owns the backdrop and the swipe-down dismissal. The app only supplies Now Playing metadata, the audio session and the cellular HLS quality preference. The embedded YouTube fallback is a separate SwiftUI overlay with its own full-screen surface.
+Playback follows Apple's AVKit guidance:
 
-`NativePlayback` learns about a completed dismissal from `playerViewController(_:willEndFullScreenPresentationWithAnimationCoordinator:)` and reports back to the detail screen exactly once, after the player has closed or Picture in Picture has been closed. Watch history is recorded at that point once ten seconds of actual playback were reached. Restoring from Picture in Picture presents the same controller again from the top view controller.
+- The audio session category (`.playback`, `.moviePlayback`) is set once in `application(_:didFinishLaunchingWithOptions:)`. AVPlayer activates the session when playback starts.
+- `NativePlayback` (`Services/Playback/NativePlayback.swift`) creates the `AVPlayer` and presents `AVPlayerViewController` modally from the window's top view controller and starts playback when the presentation completes. No SwiftUI view hosts, observes or updates the player while it is on screen.
+- The player keeps AVKit's default presentation style, backdrop, controls, swipe-down dismissal, AirPlay and Picture in Picture.
+- The app supplies Now Playing metadata through `externalMetadata` and caps HLS at 720p on expensive (cellular) networks with `preferredMaximumResolutionForExpensiveNetworks`. On other networks AVPlayer's adaptive bitrate selection chooses the quality.
+- Watch time is counted with `addPeriodicTimeObserver`; only advancing playback counts, seeks and stalls do not.
+- Dismissal is reported by `playerViewController(_:willEndFullScreenPresentationWithAnimationCoordinator:)`. The detail screen hears back exactly once, after the player or Picture in Picture has closed. Restoring from Picture in Picture presents the same controller again.
+- The app is portrait only; only `AVPlayerViewController` may rotate (`AppDelegate.application(_:supportedInterfaceOrientationsFor:)`).
+- When the resolver has no compatible source, the embedded YouTube player is shown as a separate full-screen SwiftUI overlay.
 
-The following work still needs physical-device validation before the player presentation can be considered stable:
-
-- Native swipe-down dismissal, Picture in Picture restoration, rotation, AirPlay, and system controls across iPhone orientations
-- Any lock-screen `MPNowPlayingInfoCenter` bridge beyond AVFoundation's existing metadata
-- Any player information panel or additional transport-control customization
-
-Do not add a custom pan gesture, transform private AVKit subviews, or stack a second player overlay over Apple's controls. Keep player changes on public AVKit APIs and validate them on a physical device.
-
-Search-tab minimization and a bottom accessory are also deferred and are not part of this change.
+Do not add a custom pan gesture, transform private AVKit subviews, or stack a second player overlay over Apple's controls. Keep player changes on public AVKit APIs and validate them on a physical device. See [KNOWN_ISSUES.md](KNOWN_ISSUES.md) for the open interactive-dismissal backdrop issue.
 
 ## Generate and build
 

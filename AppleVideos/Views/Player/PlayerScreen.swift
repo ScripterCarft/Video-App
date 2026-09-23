@@ -20,7 +20,10 @@ struct PlayerScreen: View {
             Color.clear.ignoresSafeArea()
 
             if usesEmbeddedFallback {
+                // Only the embedded fallback owns the status bar. While AVKit is
+                // presented, this hierarchy states no status bar preference.
                 Color.black.ignoresSafeArea()
+                    .statusBarHidden()
             }
 
             Group {
@@ -50,7 +53,6 @@ struct PlayerScreen: View {
                 .padding()
             }
         }
-        .statusBarHidden(usesEmbeddedFallback)
         .allowsHitTesting(usesEmbeddedFallback)
         .task(id: video.id) {
             await preparePlayback()

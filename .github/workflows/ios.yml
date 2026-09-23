@@ -2,7 +2,6 @@ name: iOS Build
 
 on:
   push:
-    branches: [main]
   pull_request:
   workflow_dispatch:
 
@@ -31,6 +30,21 @@ jobs:
 
       - name: Generate Xcode project
         run: xcodegen generate
+
+      # Release builds skip #if DEBUG code, so compile Debug as well.
+      - name: Build Debug for Simulator
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project AppleVideos.xcodeproj \
+            -scheme AppleVideos \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath SimulatorDerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            COMPILER_INDEX_STORE_ENABLE=NO \
+            build | tee xcodebuild-simulator.log
 
       - name: Build unsigned iPhone app
         run: |
@@ -63,6 +77,7 @@ jobs:
           name: AppleVideos-iPhone
           path: |
             AppleVideos-unsigned.ipa
+            xcodebuild-simulator.log
             xcodebuild-device.log
           if-no-files-found: warn
           retention-days: 14

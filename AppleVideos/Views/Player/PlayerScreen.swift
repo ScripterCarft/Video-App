@@ -176,7 +176,7 @@ struct PlayerScreen: View {
 
     @MainActor
     private func makePlayer(item: AVPlayerItem) -> AVPlayer {
-        item.externalMetadata = playerMetadata(description: normalizedMetadataText(description))
+        item.externalMetadata = playerMetadata(description: description?.collapsedWhitespace)
         let player = AVPlayer(playerItem: item)
         player.allowsExternalPlayback = true
         return player
@@ -200,12 +200,6 @@ struct PlayerScreen: View {
             metadata.append(artworkMetadataItem(data: artworkData))
         }
         return metadata
-    }
-
-    private func normalizedMetadataText(_ value: String?) -> String? {
-        guard let value else { return nil }
-        let normalized = value.split(whereSeparator: \.isWhitespace).joined(separator: " ")
-        return normalized.isEmpty ? nil : normalized
     }
 
     private func metadataItem(
@@ -239,7 +233,7 @@ struct PlayerScreen: View {
     }
 
     private func resolvedPlayerDescription() async -> String? {
-        if let description = normalizedMetadataText(description) {
+        if let description = description?.collapsedWhitespace {
             return description
         }
         guard video.source == .youtube,
@@ -247,36 +241,18 @@ struct PlayerScreen: View {
         else {
             return nil
         }
-        return normalizedMetadataText(details.description)
+        return details.description?.collapsedWhitespace
     }
 
     @MainActor
     private func loadArtworkData() async -> Data? {
-        for url in video.artworkURLs(for: .hero) {
-            guard !Task.isCancelled else { return nil }
-
-            var request = URLRequest(
-                url: url,
-                cachePolicy: .returnCacheDataElseLoad,
-                timeoutInterval: 20
-            )
-            request.setValue(
-                "image/avif,image/webp,image/*,*/*;q=0.8",
-                forHTTPHeaderField: "Accept"
-            )
-
-            guard let (data, response) = try? await URLSession.shared.data(for: request),
-                  let httpResponse = response as? HTTPURLResponse,
-                  200..<300 ~= httpResponse.statusCode,
-                  let image = UIImage(data: data),
-                  video.source != .youtube || Self.isSixteenByNine(image.size),
-                  let artworkData = Self.squareArtworkData(from: image)
-            else {
-                continue
-            }
-            return artworkData
+        guard let image = await ArtworkLoader.firstImage(
+            from: video.artworkURLs(for: .hero),
+            requiresSixteenByNine: video.source == .youtube
+        ) else {
+            return nil
         }
-        return nil
+        return Self.squareArtworkData(from: image)
     }
 
     private func artworkMetadataItem(data: Data) -> AVMetadataItem {
@@ -285,11 +261,6 @@ struct PlayerScreen: View {
         item.value = data as NSData
         item.dataType = kCMMetadataBaseDataType_JPEG as String
         return item
-    }
-
-    private static func isSixteenByNine(_ size: CGSize) -> Bool {
-        guard size.width > 0, size.height > 0 else { return false }
-        return abs((size.width / size.height) - (16.0 / 9.0)) < 0.04
     }
 
     private static func squareArtworkData(

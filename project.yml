@@ -25,6 +25,7 @@ targets:
       properties:
         CFBundleDisplayName: Videos
         LSApplicationCategoryType: public.app-category.entertainment
+        ITSAppUsesNonExemptEncryption: false
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: true
           UISceneConfigurations: {}

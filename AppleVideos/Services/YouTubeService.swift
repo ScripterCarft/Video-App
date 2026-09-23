@@ -121,8 +121,7 @@ actor YouTubeService {
         let videoDetails = root["videoDetails"] as? [String: Any]
         let microformat = root["microformat"] as? [String: Any]
         let playerMicroformat = microformat?["playerMicroformatRenderer"] as? [String: Any]
-        let description = (videoDetails?["shortDescription"] as? String)
-            .flatMap(Self.normalizedDescription)
+        let description = (videoDetails?["shortDescription"] as? String)?.collapsedWhitespace
         let details = VideoDetails(
             title: videoDetails?["title"] as? String,
             channelName: videoDetails?["author"] as? String,
@@ -414,11 +413,6 @@ actor YouTubeService {
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .full
         return formatter.localizedString(for: date, relativeTo: Date())
-    }
-
-    private static func normalizedDescription(_ value: String) -> String? {
-        let normalized = value.split(whereSeparator: \.isWhitespace).joined(separator: " ")
-        return normalized.isEmpty ? nil : normalized
     }
 
     private static func isShort(_ renderer: [String: Any]) -> Bool {

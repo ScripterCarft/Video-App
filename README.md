@@ -20,7 +20,19 @@ Only `CFBundleDisplayName` is shortened. Do not rename the Xcode target or Swift
 - Native `AVPlayer` / `AVPlayerViewController` playback when the resolver supplies a compatible stream
 - Embedded YouTube playback remains available as a fallback
 
-The YouTube and Innertube representations stay inside the service and resolver layers. Views and the rest of the application must depend on app models and resolver protocols, never on raw Innertube response types. Resolved playback URLs are short-lived and must not be persisted.
+The YouTube and Innertube representations stay inside the service and resolver layers. Views and the rest of the application must depend on app models and resolver protocols, never on raw Innertube response types. Resolved playback URLs are short-lived and must not be persisted. They are also bound to the client network address, so the resolver reuses a resolved source for at most ten minutes, and closing a player whose item failed invalidates it. Both Innertube clients drop their cached configuration after a failed request and bootstrap again on the next one.
+
+## Project structure
+
+- `App/`: app entry point and shared URL cache setup
+- `Models/`: provider-neutral app models
+- `Services/`: YouTube search/details, the playback resolver, the on-device library and artwork loading
+- `Views/Screens/`: one file per tab plus the video detail screen
+- `Views/Player/`: native AVKit presentation and the embedded YouTube fallback
+- `Views/Components/`: shared views, including `VideoLink`
+- `Support/`: small Foundation extensions
+
+Every tab owns one `NavigationStack` and registers the video detail destination once with `videoDestination(transition:)` on its root. Links use `VideoLink`, which scopes the zoom-transition ID to the section a video was tapped in. Do not add further `navigationDestination(for:)` declarations for videos inside pushed screens.
 
 ## Continue Watching
 
@@ -68,7 +80,7 @@ xcodebuild \
   build
 ```
 
-GitHub Actions performs the same build for every push and pull request.
+GitHub Actions builds the Debug configuration for the simulator and the Release configuration for devices on every push and pull request. The Debug build ensures `#if DEBUG` code keeps compiling.
 
 ## Device installation
 

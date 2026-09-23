@@ -176,35 +176,10 @@ private struct FallbackThumbnailImage<Content: View, Placeholder: View>: View {
         .task(id: urls) {
             loadedImage = nil
             isLoading = true
-
-            for url in urls {
-                if Task.isCancelled { return }
-
-                var request = URLRequest(
-                    url: url,
-                    cachePolicy: .returnCacheDataElseLoad,
-                    timeoutInterval: 20
-                )
-                request.setValue("image/avif,image/webp,image/*,*/*;q=0.8", forHTTPHeaderField: "Accept")
-
-                guard let (data, response) = try? await URLSession.shared.data(for: request),
-                      let http = response as? HTTPURLResponse,
-                      200..<300 ~= http.statusCode,
-                      let image = UIImage(data: data),
-                      !requiresSixteenByNine || Self.isSixteenByNine(image.size)
-                else { continue }
-
-                loadedImage = image
-                isLoading = false
-                return
-            }
-
+            let image = await ArtworkLoader.firstImage(from: urls, requiresSixteenByNine: requiresSixteenByNine)
+            guard !Task.isCancelled else { return }
+            loadedImage = image
             isLoading = false
         }
-    }
-
-    private static func isSixteenByNine(_ size: CGSize) -> Bool {
-        guard size.width > 0, size.height > 0 else { return false }
-        return abs((size.width / size.height) - (16.0 / 9.0)) < 0.04
     }
 }

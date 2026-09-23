@@ -98,11 +98,10 @@ struct VideoDetailView: View {
     }
 
     private var visibleDescription: String? {
-        for candidate in [video.descriptionText, loadedDescription].compactMap({ $0 }) {
-            let normalized = candidate.split(whereSeparator: \.isWhitespace).joined(separator: " ")
-            if !normalized.isEmpty { return normalized }
-        }
-        return nil
+        [video.descriptionText, loadedDescription]
+            .lazy
+            .compactMap { $0?.collapsedWhitespace }
+            .first
     }
 
     private var visibleBadges: [String] {

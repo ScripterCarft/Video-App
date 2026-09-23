@@ -113,7 +113,7 @@ final class NativePlayback: NSObject {
         guard let presenter = Self.topViewController() else { return false }
 
         Self.current = self
-        configurePlaybackAudio()
+        // EXPERIMENT: leave the audio session to AVKit/system defaults.
         presenter.present(playerController, animated: true) { [weak self] in
             guard let self else { return }
             player.play()

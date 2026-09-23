@@ -6,8 +6,9 @@ struct VideoDetailView: View {
     let transitionID: String
 
     @Environment(LibraryStore.self) private var library
-    @State private var showPlayer = false
     @State private var isPreparingPlayback = false
+    @State private var playbackTask: Task<Void, Never>?
+    @State private var fallbackDiagnostic: String?
     @State private var feedback = 0
     @State private var showDescription = false
     @State private var loadedDescription: String?
@@ -68,20 +69,18 @@ struct VideoDetailView: View {
         }
         .navigationTransition(.zoom(sourceID: transitionID, in: transition))
         .overlay {
-            if showPlayer {
-                PlayerScreen(
-                    video: video,
-                    description: visibleDescription,
-                    onPreparationFinished: { isPreparingPlayback = false },
-                    onDismiss: {
-                        isPreparingPlayback = false
-                        withAnimation(.easeOut(duration: 0.2)) {
-                            showPlayer = false
-                        }
-                    }
-                )
+            if let fallbackDiagnostic {
+                EmbeddedPlayerScreen(video: video, diagnostic: fallbackDiagnostic) {
+                    self.fallbackDiagnostic = nil
+                }
                 .ignoresSafeArea()
-                .transition(.asymmetric(insertion: .identity, removal: .opacity))
+            }
+        }
+        .onDisappear {
+            // Leaving the screen while the source resolves cancels playback.
+            // (While AVKit is presented nothing is preparing, so this is a no-op.)
+            if isPreparingPlayback {
+                cancelPlayback()
             }
         }
         .sheet(isPresented: $showDescription) {
@@ -121,6 +120,33 @@ struct VideoDetailView: View {
             .lazy
             .compactMap { $0?.collapsedWhitespace }
             .first
+    }
+
+    /// Resolves the video and hands it to AVKit. From then on AVKit owns the
+    /// player; this view only hears back once, after the player has closed.
+    private func startPlayback() {
+        isPreparingPlayback = true
+        let video = video
+        let library = library
+        playbackTask = Task {
+            let result = await NativePlayback.play(video, description: visibleDescription) { reachedWatchThreshold in
+                if reachedWatchThreshold {
+                    library.markWatched(video)
+                }
+            }
+            guard !Task.isCancelled else { return }
+            isPreparingPlayback = false
+            playbackTask = nil
+            if case let .fallback(diagnostic) = result {
+                fallbackDiagnostic = diagnostic
+            }
+        }
+    }
+
+    private func cancelPlayback() {
+        playbackTask?.cancel()
+        playbackTask = nil
+        isPreparingPlayback = false
     }
 
     private var visibleBadges: [String] {
@@ -188,16 +214,11 @@ struct VideoDetailView: View {
 
                     Button {
                         if isPreparingPlayback {
-                            // Nothing is visible while the source resolves. Remove the
-                            // player immediately so its resolve task cannot present AVKit
-                            // during a fade-out.
-                            showPlayer = false
-                            isPreparingPlayback = false
-                            return
+                            cancelPlayback()
+                        } else {
+                            startPlayback()
+                            feedback += 1
                         }
-                        isPreparingPlayback = true
-                        showPlayer = true
-                        feedback += 1
                     } label: {
                         Group {
                             if isPreparingPlayback {

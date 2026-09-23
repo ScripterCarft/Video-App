@@ -13,7 +13,7 @@ struct LibraryView: View {
                     NavigationLink {
                         SavedVideosView(transition: transition)
                     } label: {
-                        LibraryRow(title: "Saved", subtitle: "\(library.savedVideos.count) videos", icon: "bookmark.fill", color: .red)
+                        LibraryRow(title: "Saved", subtitle: "^[\(library.savedVideos.count) video](inflect: true)", icon: "bookmark.fill", color: .red)
                     }
 
                     NavigationLink {
@@ -30,7 +30,7 @@ struct LibraryView: View {
                         } label: {
                             LibraryRow(
                                 title: playlist.name,
-                                subtitle: "\(playlist.videoIDs.count) videos",
+                                subtitle: "^[\(playlist.videoIDs.count) video](inflect: true)",
                                 icon: "text.badge.checkmark",
                                 color: .purple
                             )
@@ -65,7 +65,8 @@ struct LibraryView: View {
 
 private struct LibraryRow: View {
     let title: String
-    let subtitle: String
+    /// Localized so that counts use automatic grammar agreement ("1 video").
+    let subtitle: LocalizedStringKey
     let icon: String
     let color: Color
 

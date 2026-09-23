@@ -776,13 +776,10 @@ private struct NativePlayerPresenter: UIViewControllerRepresentable {
             _ playerViewController: AVPlayerViewController,
             willEndFullScreenPresentationWithAnimationCoordinator transition: UIViewControllerTransitionCoordinator
         ) {
-            transition.animate(alongsideTransition: { _ in
-                playerViewController.view.backgroundColor = .clear
-            }, completion: { [weak self] context in
-                playerViewController.view.backgroundColor = .black
+            transition.animate(alongsideTransition: nil) { [weak self] context in
                 guard !context.isCancelled else { return }
                 self?.playerDidDismiss()
-            })
+            }
         }
 
         func playerDidDismiss() {
@@ -839,9 +836,9 @@ private final class PlayerPresentationHostViewController: UIViewController {
         playerController.player = player
         playerController.modalPresentationStyle = .overFullScreen
         playerController.allowsPictureInPicturePlayback = true
-        // Animate this canvas with AVKit's interactive dismissal while keeping
-        // the letterboxed player black during ordinary playback.
-        playerController.view.backgroundColor = .black
+        // Leave the detail screen visible behind AVKit's own interactive
+        // presentation instead of animating a separate black canvas.
+        playerController.view.backgroundColor = .clear
         playerController.view.isOpaque = false
     }
 

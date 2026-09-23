@@ -3,7 +3,7 @@ import SwiftUI
 struct ExploreView: View {
     @Namespace private var transition
 
-    private struct Topic: Identifiable {
+    private struct Topic: Identifiable, Hashable {
         let title: String
         let systemImage: String
         let color: Color
@@ -29,15 +29,7 @@ struct ExploreView: View {
 
                         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
                             ForEach(topics) { topic in
-                                NavigationLink {
-                                    SearchResultsView(
-                                        query: topic.title,
-                                        section: "topic-\(topic.title)",
-                                        transition: transition
-                                    )
-                                    .navigationTitle(topic.title)
-                                    .navigationBarTitleDisplayMode(.large)
-                                } label: {
+                                NavigationLink(value: topic) {
                                     Label(topic.title, systemImage: topic.systemImage)
                                         .font(.headline)
                                         .frame(maxWidth: .infinity, minHeight: 74, alignment: .leading)
@@ -66,6 +58,17 @@ struct ExploreView: View {
                 .padding(.vertical)
             }
             .navigationTitle("Explore")
+            // Value-based like the video links; mixing view-destination links
+            // with value-based ones can pop a video right after it was pushed.
+            .navigationDestination(for: Topic.self) { topic in
+                SearchResultsView(
+                    query: topic.title,
+                    section: "topic-\(topic.title)",
+                    transition: transition
+                )
+                .navigationTitle(topic.title)
+                .navigationBarTitleDisplayMode(.large)
+            }
             .videoDestination(transition: transition)
         }
     }

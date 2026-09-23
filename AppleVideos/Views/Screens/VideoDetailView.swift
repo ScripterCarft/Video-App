@@ -745,6 +745,7 @@ private struct NativePlayerPresenter: UIViewControllerRepresentable {
             self.onDismiss = onDismiss
         }
 
+        @MainActor
         func playerViewController(
             _ playerViewController: AVPlayerViewController,
             willEndFullScreenPresentationWithAnimationCoordinator transition: UIViewControllerTransitionCoordinator
@@ -781,9 +782,10 @@ private struct NativePlayerPresenter: UIViewControllerRepresentable {
             print("Picture in Picture failed: \(error.localizedDescription)")
         }
 
+        @MainActor
         func playerViewController(
             _ playerViewController: AVPlayerViewController,
-            restoreUserInterfaceForPictureInPictureStopWithCompletionHandler completionHandler: @escaping (Bool) -> Void
+            restoreUserInterfaceForPictureInPictureStopWithCompletionHandler completionHandler: @escaping @Sendable (Bool) -> Void
         ) {
             guard let host else {
                 completionHandler(false)

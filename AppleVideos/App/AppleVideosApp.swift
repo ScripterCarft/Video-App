@@ -14,11 +14,13 @@ struct AppleVideosApp: App {
             directory: nil
         )
 
-        // The app is initialized once per launch, so Continue Watching is
-        // refreshed exactly once.
+        // The app is initialized once per launch. Load YouTube's configuration
+        // right away so the first search or Play does not wait for it, then
+        // refresh Continue Watching exactly once.
         let library = LibraryStore()
         _library = State(initialValue: library)
         Task {
+            await YouTubeWebConfiguration.shared.prewarm()
             await library.refreshRecentlyWatched()
         }
     }

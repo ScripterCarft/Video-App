@@ -28,13 +28,6 @@ actor YouTubeService {
         }
     }
 
-    private struct WebConfiguration: Sendable {
-        let apiKey: String
-        let clientVersion: String
-    }
-
-    private var cachedConfiguration: WebConfiguration?
-    private var configurationTask: Task<WebConfiguration, Error>?
     private var cachedSearches: [String: [Video]] = [:]
     private var cachedDetails: [String: VideoDetails] = [:]
 
@@ -44,7 +37,7 @@ actor YouTubeService {
         let cacheKey = normalized.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
         if !bypassingCache, let cached = cachedSearches[cacheKey] { return cached }
 
-        let configuration = try await webConfiguration()
+        let configuration = try await YouTubeWebConfiguration.shared.values()
         guard let endpoint = URL(string: "https://www.youtube.com/youtubei/v1/search?key=\(configuration.apiKey)&prettyPrint=false") else {
             throw SearchError.configurationUnavailable
         }
@@ -68,7 +61,7 @@ actor YouTubeService {
 
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse, 200..<300 ~= http.statusCode else {
-            cachedConfiguration = nil
+            await YouTubeWebConfiguration.shared.invalidate()
             throw SearchError.invalidResponse
         }
 
@@ -88,7 +81,7 @@ actor YouTubeService {
     func details(for videoID: String) async throws -> VideoDetails {
         if let cached = cachedDetails[videoID] { return cached }
 
-        let configuration = try await webConfiguration()
+        let configuration = try await YouTubeWebConfiguration.shared.values()
         guard let endpoint = URL(string: "https://www.youtube.com/youtubei/v1/player?key=\(configuration.apiKey)&prettyPrint=false") else {
             throw SearchError.configurationUnavailable
         }
@@ -114,7 +107,7 @@ actor YouTubeService {
         guard let http = response as? HTTPURLResponse, 200..<300 ~= http.statusCode,
               let root = try JSONSerialization.jsonObject(with: data) as? [String: Any]
         else {
-            cachedConfiguration = nil
+            await YouTubeWebConfiguration.shared.invalidate()
             throw SearchError.invalidResponse
         }
 
@@ -154,54 +147,6 @@ actor YouTubeService {
             description: details.description ?? video.descriptionText,
             badges: details.badges.isEmpty ? video.badges : details.badges
         )
-    }
-
-    private func webConfiguration() async throws -> WebConfiguration {
-        if let cachedConfiguration { return cachedConfiguration }
-        if let configurationTask { return try await configurationTask.value }
-
-        let task = Task { try await Self.fetchWebConfiguration() }
-        configurationTask = task
-
-        do {
-            let configuration = try await task.value
-            cachedConfiguration = configuration
-            configurationTask = nil
-            return configuration
-        } catch {
-            configurationTask = nil
-            throw error
-        }
-    }
-
-    private static func fetchWebConfiguration() async throws -> WebConfiguration {
-        var request = URLRequest(url: URL(string: "https://www.youtube.com")!)
-        // Requests identify as the WEB client, so fetch the configuration with a
-        // desktop user agent. An iPhone user agent can return the MWEB client's
-        // configuration instead.
-        request.setValue(
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.5 Safari/605.1.15",
-            forHTTPHeaderField: "User-Agent"
-        )
-        let (data, response) = try await URLSession.shared.data(for: request)
-        guard let http = response as? HTTPURLResponse,
-              200..<300 ~= http.statusCode,
-              let html = String(data: data, encoding: .utf8),
-              let apiKey = capture(#"\"INNERTUBE_API_KEY\":\"([^\"]+)\""#, in: html),
-              let clientVersion = capture(#"\"INNERTUBE_CLIENT_VERSION\":\"([^\"]+)\""#, in: html)
-        else {
-            throw SearchError.configurationUnavailable
-        }
-
-        return WebConfiguration(apiKey: apiKey, clientVersion: clientVersion)
-    }
-
-    private static func capture(_ pattern: String, in text: String) -> String? {
-        guard let regex = try? NSRegularExpression(pattern: pattern),
-              let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
-              let range = Range(match.range(at: 1), in: text)
-        else { return nil }
-        return String(text[range])
     }
 
     private static func collectVideoRenderers(in value: Any) -> [[String: Any]] {

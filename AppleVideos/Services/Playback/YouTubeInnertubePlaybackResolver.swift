@@ -8,17 +8,11 @@ import Foundation
 actor YouTubeInnertubePlaybackResolver: PlaybackResolving {
     static let shared = YouTubeInnertubePlaybackResolver()
 
-    private struct BootstrapConfiguration: Sendable {
-        let apiKey: String
-        let visitorData: String?
-    }
-
     private struct CacheEntry: Sendable {
         let source: ResolvedPlaybackSource
     }
 
     private let session: URLSession
-    private var configuration: BootstrapConfiguration?
     private var cache: [PlaybackRequest: CacheEntry] = [:]
     private var inFlight: [PlaybackRequest: Task<ResolvedPlaybackSource, Error>] = [:]
 
@@ -52,9 +46,12 @@ actor YouTubeInnertubePlaybackResolver: PlaybackResolving {
             return source
         } catch {
             inFlight[request] = nil
-            // The API key or visitor data may have rotated. Bootstrap again next time
-            // instead of failing with the same configuration until the app restarts.
-            configuration = nil
+            // A rejected request can mean the API key or visitor data rotated; load
+            // the configuration again next time. Unavailable videos keep it.
+            if let resolverError = error as? PlaybackResolverError,
+               case .invalidResponse = resolverError {
+                await YouTubeWebConfiguration.shared.invalidate()
+            }
             throw error
         }
     }
@@ -68,7 +65,7 @@ actor YouTubeInnertubePlaybackResolver: PlaybackResolving {
     }
 
     private func resolveUncached(_ request: PlaybackRequest) async throws -> ResolvedPlaybackSource {
-        let configuration = try await bootstrapConfiguration(for: request.videoID)
+        let configuration = try await YouTubeWebConfiguration.shared.values()
         guard let endpoint = URL(
             string: "https://www.youtube.com/youtubei/v1/player?key=\(configuration.apiKey)&prettyPrint=false"
         ) else {
@@ -138,40 +135,6 @@ actor YouTubeInnertubePlaybackResolver: PlaybackResolving {
         }
 
         return try Self.parse(root: root, videoID: request.videoID)
-    }
-
-    private func bootstrapConfiguration(for videoID: String) async throws -> BootstrapConfiguration {
-        if let configuration { return configuration }
-
-        var components = URLComponents(string: "https://www.youtube.com/watch")!
-        components.queryItems = [URLQueryItem(name: "v", value: videoID)]
-        guard let bootstrapURL = components.url else {
-            throw PlaybackResolverError.configurationUnavailable
-        }
-
-        var request = URLRequest(url: bootstrapURL)
-        request.timeoutInterval = 15
-        request.setValue(Self.webUserAgent, forHTTPHeaderField: "User-Agent")
-        request.setValue("text/html", forHTTPHeaderField: "Accept")
-
-        let (data, response) = try await session.data(for: request)
-        try Task.checkCancellation()
-        guard let http = response as? HTTPURLResponse,
-              200..<300 ~= http.statusCode,
-              let html = String(data: data, encoding: .utf8),
-              let apiKey = Self.capture(#"\"INNERTUBE_API_KEY\":\"([^\"]+)\""#, in: html)
-        else {
-            throw PlaybackResolverError.configurationUnavailable
-        }
-
-        let visitorData = Self.capture(#"\"VISITOR_DATA\":\"([^\"]+)\""#, in: html)
-            ?? Self.capture(#"\"visitorData\":\"([^\"]+)\""#, in: html)
-        let value = BootstrapConfiguration(
-            apiKey: apiKey,
-            visitorData: visitorData
-        )
-        configuration = value
-        return value
     }
 
     private static func parse(root: [String: Any], videoID: String) throws -> ResolvedPlaybackSource {
@@ -377,14 +340,6 @@ actor YouTubeInnertubePlaybackResolver: PlaybackResolving {
             .joined(separator: " · ")
     }
 
-    private static func capture(_ pattern: String, in text: String) -> String? {
-        guard let regex = try? NSRegularExpression(pattern: pattern),
-              let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
-              let range = Range(match.range(at: 1), in: text)
-        else { return nil }
-        return String(text[range])
-    }
-
     /// Stream URLs are bound to the client's network address, so a source that is
     /// still valid by its `expire` parameter can fail after a Wi-Fi/cellular switch.
     /// Reuse a resolved source only briefly (enough for close-and-replay).
@@ -393,13 +348,6 @@ actor YouTubeInnertubePlaybackResolver: PlaybackResolving {
     private static func isValidVideoID(_ value: String) -> Bool {
         value.range(of: #"^[A-Za-z0-9_-]{11}$"#, options: .regularExpression) != nil
     }
-
-    /// Keep the HTTP identity consistent with Innertube's WEB client. An iPhone
-    /// user agent can cause YouTube to return MWEB configuration while the
-    /// request body identifies itself as WEB.
-    private static let webUserAgent =
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-        + "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.5 Safari/605.1.15,gzip(gfe)"
 
     /// Current JS-free playback client used by yt-dlp. Keep all provider
     /// specifics isolated here so callers remain independent of Innertube.

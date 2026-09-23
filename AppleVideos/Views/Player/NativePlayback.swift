@@ -63,12 +63,7 @@ final class NativePlayback: NSObject {
                 }
 
                 item = AVPlayerItem(asset: asset)
-                if variant.transport == .hls {
-                    item.preferredMaximumResolutionForExpensiveNetworks = CGSize(
-                        width: 1_280,
-                        height: 720
-                    )
-                }
+                // EXPERIMENT: no HLS resolution cap on cellular.
             } catch {
                 // URLSession reports cancellation as URLError.cancelled.
                 if error is CancellationError || Task.isCancelled { return .cancelled }
@@ -103,7 +98,7 @@ final class NativePlayback: NSObject {
 
         // EXPERIMENT: no externalMetadata. The description gives AVKit an info
         // panel reached by swiping up, which may compete with the swipe-down.
-        player.allowsExternalPlayback = true
+        // EXPERIMENT: allowsExternalPlayback left at its default.
         playerController.player = player
         playerController.allowsPictureInPicturePlayback = true
         playerController.delegate = self

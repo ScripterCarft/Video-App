@@ -65,7 +65,10 @@ struct Video: Identifiable, Hashable, Codable, Sendable {
             let minutes = values[1]
             return minutes == 0 ? "\(hours)h" : "\(hours)h \(minutes)m"
         case 2:
-            return "\(values[0])m"
+            let minutes = values[0]
+            let seconds = values[1]
+            // Videos under a minute would otherwise read "0m".
+            return minutes == 0 ? "\(seconds)s" : "\(minutes)m"
         default:
             return duration
         }

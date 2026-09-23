@@ -24,8 +24,9 @@ final class NativePlayback: NSObject {
     private let player: AVPlayer
     private let playerController = AVPlayerViewController()
     private let onFinish: @MainActor (_ reachedWatchThreshold: Bool) -> Void
-    private let watchProgress = WatchProgress()
-    private var watchTask: Task<Void, Never>?
+    private var timeObserver: Any?
+    private var watchedSeconds = 0.0
+    private var lastObservedTime: Double?
     private var metadataTask: Task<Void, Never>?
     private var isPictureInPictureActive = false
     private var isFinished = false
@@ -115,10 +116,7 @@ final class NativePlayback: NSObject {
         presenter.present(playerController, animated: true) { [weak self] in
             guard let self else { return }
             player.play()
-            watchTask = Task { [weak self] in
-                guard let self else { return }
-                await watchProgress.track(player)
-            }
+            startWatchTracking()
         }
         metadataTask = Task { [weak self] in
             await self?.installSupplementalMetadata()
@@ -131,7 +129,7 @@ final class NativePlayback: NSObject {
         guard !isFinished else { return }
         isFinished = true
 
-        watchTask?.cancel()
+        stopWatchTracking()
         metadataTask?.cancel()
         if item.status == .failed {
             // Stream URLs can stop working (for example after a network change).
@@ -140,7 +138,7 @@ final class NativePlayback: NSObject {
             Task { await YouTubeInnertubePlaybackResolver.shared.invalidate(videoID: videoID) }
         }
         player.pause()
-        onFinish(watchProgress.reachedThreshold)
+        onFinish(reachedWatchThreshold)
         if Self.current === self {
             Self.current = nil
         }
@@ -332,33 +330,44 @@ extension NativePlayback: @preconcurrency AVPlayerViewControllerDelegate {
     }
 }
 
-/// Counts how long native playback actually advanced.
-@MainActor
-private final class WatchProgress {
-    private static let threshold: Double = 10
-    private var watchedSeconds = 0.0
+// MARK: - Watch history
 
-    var reachedThreshold: Bool { watchedSeconds >= Self.threshold }
+private extension NativePlayback {
+    static let watchThreshold: Double = 10
 
-    func track(_ player: AVPlayer) async {
-        var previousTime: Double?
-        while !Task.isCancelled && !reachedThreshold {
-            do {
-                try await Task.sleep(for: .seconds(1))
-            } catch {
-                return
+    var reachedWatchThreshold: Bool { watchedSeconds >= Self.watchThreshold }
+
+    /// AVPlayer reports playback time through its periodic time observer, which
+    /// also fires on seeks and rate changes; only advancing playback counts.
+    func startWatchTracking() {
+        timeObserver = player.addPeriodicTimeObserver(
+            forInterval: CMTime(seconds: 1, preferredTimescale: 600),
+            queue: .main
+        ) { [weak self] time in
+            MainActor.assumeIsolated {
+                self?.recordPlayback(at: time.seconds)
             }
-            let currentTime = player.currentTime().seconds
-            if player.timeControlStatus == .playing,
-               let previousTime,
-               currentTime.isFinite {
-                let elapsed = currentTime - previousTime
-                // Ignore seeks and stalls; only advancing playback counts.
-                if elapsed > 0 && elapsed < 2.5 {
-                    watchedSeconds += min(elapsed, 1.5)
-                }
-            }
-            previousTime = currentTime.isFinite ? currentTime : nil
+        }
+    }
+
+    func stopWatchTracking() {
+        if let timeObserver {
+            player.removeTimeObserver(timeObserver)
+            self.timeObserver = nil
+        }
+    }
+
+    func recordPlayback(at seconds: Double) {
+        defer { self.lastObservedTime = seconds.isFinite ? seconds : nil }
+        guard player.timeControlStatus == .playing,
+              let previous = lastObservedTime,
+              seconds.isFinite
+        else { return }
+
+        let elapsed = seconds - previous
+        // Ignore seeks and stalls.
+        if elapsed > 0 && elapsed < 2.5 {
+            watchedSeconds += min(elapsed, 1.5)
         }
     }
 }

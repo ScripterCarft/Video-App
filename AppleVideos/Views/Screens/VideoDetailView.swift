@@ -366,7 +366,6 @@ private struct PlayerScreen: View {
     let video: Video
     let description: String?
     @Environment(LibraryStore.self) private var library
-    @Environment(\.dismiss) private var dismiss
     @State private var nativePlayer: AVPlayer?
     @State private var usesEmbeddedFallback = false
     @State private var isResolving = true
@@ -380,10 +379,9 @@ private struct PlayerScreen: View {
 
             Group {
                 if let nativePlayer {
-                    NativePlayerPresenter(
+                    NativePlayerView(
                         player: nativePlayer,
-                        isPictureInPictureActive: $isPictureInPictureActive,
-                        onDismiss: { dismiss() }
+                        isPictureInPictureActive: $isPictureInPictureActive
                     )
                 } else if usesEmbeddedFallback, video.source == .youtube {
                     YouTubePlayerView(videoID: video.id)
@@ -654,97 +652,57 @@ private struct PlayerScreen: View {
     }
 }
 
-private struct NativePlayerPresenter: UIViewControllerRepresentable {
+private struct NativePlayerView: UIViewControllerRepresentable {
     let player: AVPlayer
     @Binding var isPictureInPictureActive: Bool
-    let onDismiss: () -> Void
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(
-            isPictureInPictureActive: $isPictureInPictureActive,
-            onDismiss: onDismiss
-        )
+        Coordinator(isPictureInPictureActive: $isPictureInPictureActive)
     }
 
-    func makeUIViewController(context: Context) -> PlayerPresentationHostViewController {
-        let controller = PlayerPresentationHostViewController(
-            player: player,
-            coordinator: context.coordinator
-        )
-        context.coordinator.host = controller
+    func makeUIViewController(context: Context) -> AVPlayerViewController {
+        let controller = AVPlayerViewController()
+        controller.delegate = context.coordinator
+        controller.player = player
+        controller.showsPlaybackControls = true
+        controller.allowsPictureInPicturePlayback = true
+        controller.canStartPictureInPictureAutomaticallyFromInline = true
+        controller.entersFullScreenWhenPlaybackBegins = false
+        controller.exitsFullScreenWhenPlaybackEnds = false
+        controller.videoGravity = .resizeAspect
         return controller
     }
 
-    func updateUIViewController(
-        _ controller: PlayerPresentationHostViewController,
-        context: Context
-    ) {
-        context.coordinator.update(onDismiss: onDismiss)
-        controller.update(player: player)
+    func updateUIViewController(_ controller: AVPlayerViewController, context: Context) {
+        if controller.player !== player {
+            controller.player = player
+        }
     }
 
-    static func dismantleUIViewController(
-        _ controller: PlayerPresentationHostViewController,
-        coordinator: Coordinator
-    ) {
-        controller.dismissPresentedPlayer()
-    }
+    final class Coordinator: NSObject, AVPlayerViewControllerDelegate {
+        private var isPictureInPictureActive: Binding<Bool>
 
-    final class Coordinator:
-        NSObject,
-        @preconcurrency AVPlayerViewControllerDelegate,
-        UIAdaptivePresentationControllerDelegate
-    {
-        private var isPictureInPictureActiveBinding: Binding<Bool>
-        private var onDismiss: () -> Void
-        private var hasFinished = false
-        weak var host: PlayerPresentationHostViewController?
-
-        var isPictureInPictureActive: Bool {
-            isPictureInPictureActiveBinding.wrappedValue
-        }
-
-        init(
-            isPictureInPictureActive: Binding<Bool>,
-            onDismiss: @escaping () -> Void
-        ) {
-            isPictureInPictureActiveBinding = isPictureInPictureActive
-            self.onDismiss = onDismiss
-        }
-
-        func update(onDismiss: @escaping () -> Void) {
-            self.onDismiss = onDismiss
-        }
-
-        func playerDidDismiss() {
-            guard !hasFinished, !isPictureInPictureActive else { return }
-            hasFinished = true
-            onDismiss()
-        }
-
-        func presentationControllerDidDismiss(
-            _ presentationController: UIPresentationController
-        ) {
-            playerDidDismiss()
+        init(isPictureInPictureActive: Binding<Bool>) {
+            self.isPictureInPictureActive = isPictureInPictureActive
         }
 
         func playerViewControllerWillStartPictureInPicture(
             _ playerViewController: AVPlayerViewController
         ) {
-            isPictureInPictureActiveBinding.wrappedValue = true
+            isPictureInPictureActive.wrappedValue = true
         }
 
         func playerViewControllerDidStopPictureInPicture(
             _ playerViewController: AVPlayerViewController
         ) {
-            isPictureInPictureActiveBinding.wrappedValue = false
+            isPictureInPictureActive.wrappedValue = false
         }
 
         func playerViewController(
             _ playerViewController: AVPlayerViewController,
             failedToStartPictureInPictureWithError error: Error
         ) {
-            isPictureInPictureActiveBinding.wrappedValue = false
+            isPictureInPictureActive.wrappedValue = false
             print("Picture in Picture failed: \(error.localizedDescription)")
         }
 
@@ -752,100 +710,7 @@ private struct NativePlayerPresenter: UIViewControllerRepresentable {
             _ playerViewController: AVPlayerViewController,
             restoreUserInterfaceForPictureInPictureStopWithCompletionHandler completionHandler: @escaping (Bool) -> Void
         ) {
-            guard let host else {
-                completionHandler(false)
-                return
-            }
-            host.restorePlayerInterface(completionHandler: completionHandler)
-        }
-    }
-}
-
-private final class PlayerPresentationHostViewController: UIViewController {
-    private let playerController = AVPlayerViewController()
-    private weak var playerCoordinator: NativePlayerPresenter.Coordinator?
-    private var hasPresentedPlayer = false
-    private var isBeingTornDown = false
-
-    init(
-        player: AVPlayer,
-        coordinator: NativePlayerPresenter.Coordinator
-    ) {
-        playerCoordinator = coordinator
-        super.init(nibName: nil, bundle: nil)
-        configurePlayerController(with: player, delegate: coordinator)
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
-    }
-
-    override func viewDidLoad() {
-        super.viewDidLoad()
-        view.backgroundColor = .black
-    }
-
-    override func viewDidAppear(_ animated: Bool) {
-        super.viewDidAppear(animated)
-
-        if !hasPresentedPlayer {
-            presentPlayer(animated: false)
-        } else if presentedViewController == nil,
-                  playerCoordinator?.isPictureInPictureActive != true,
-                  !isBeingTornDown {
-            playerCoordinator?.playerDidDismiss()
-        }
-    }
-
-    func update(player: AVPlayer) {
-        if playerController.player !== player {
-            playerController.player = player
-        }
-    }
-
-    func restorePlayerInterface(
-        completionHandler: @escaping (Bool) -> Void
-    ) {
-        guard presentedViewController == nil else {
             completionHandler(true)
-            return
-        }
-
-        presentPlayer(animated: true) {
-            completionHandler(true)
-        }
-    }
-
-    func dismissPresentedPlayer() {
-        isBeingTornDown = true
-        playerController.dismiss(animated: false)
-    }
-
-    private func configurePlayerController(
-        with player: AVPlayer,
-        delegate: AVPlayerViewControllerDelegate
-    ) {
-        playerController.delegate = delegate
-        playerController.player = player
-        playerController.showsPlaybackControls = true
-        playerController.allowsPictureInPicturePlayback = true
-        playerController.canStartPictureInPictureAutomaticallyFromInline = true
-        playerController.entersFullScreenWhenPlaybackBegins = false
-        playerController.exitsFullScreenWhenPlaybackEnds = false
-        playerController.videoGravity = .resizeAspect
-        playerController.modalPresentationStyle = .fullScreen
-    }
-
-    private func presentPlayer(
-        animated: Bool,
-        completion: (() -> Void)? = nil
-    ) {
-        playerController.presentationController?.delegate = playerCoordinator
-        present(playerController, animated: animated) {
-            self.playerController.presentationController?.delegate = self.playerCoordinator
-            self.hasPresentedPlayer = true
-            completion?()
         }
     }
 }

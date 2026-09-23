@@ -23,7 +23,7 @@ targets:
     info:
       path: AppleVideos/Resources/Info.plist
       properties:
-        CFBundleDisplayName: Apple Videos
+        CFBundleDisplayName: Videos
         LSApplicationCategoryType: public.app-category.entertainment
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: true

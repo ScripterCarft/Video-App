@@ -27,7 +27,7 @@ targets:
         LSApplicationCategoryType: public.app-category.entertainment
         ITSAppUsesNonExemptEncryption: false
         UIApplicationSceneManifest:
-          UIApplicationSupportsMultipleScenes: true
+          UIApplicationSupportsMultipleScenes: false
           UISceneConfigurations: {}
         UIApplicationSupportsIndirectInputEvents: true
         UILaunchScreen: {}

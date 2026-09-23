@@ -68,8 +68,13 @@ struct VideoDetailView: View {
             }
         }
         .navigationTransition(.zoom(sourceID: transitionID, in: transition))
-        .fullScreenCover(isPresented: $showPlayer) {
-            PlayerScreen(video: video, description: visibleDescription)
+        .overlay {
+            if showPlayer {
+                PlayerScreen(video: video, description: visibleDescription) {
+                    showPlayer = false
+                }
+                .ignoresSafeArea()
+            }
         }
         .sheet(isPresented: $showDescription) {
             DescriptionSheet(video: video, description: visibleDescription)
@@ -365,8 +370,8 @@ private struct MetadataBadge: View {
 private struct PlayerScreen: View {
     let video: Video
     let description: String?
+    let onDismiss: () -> Void
     @Environment(LibraryStore.self) private var library
-    @Environment(\.dismiss) private var dismiss
     @State private var nativePlayer: AVPlayer?
     @State private var usesEmbeddedFallback = false
     @State private var isResolving = true
@@ -376,14 +381,16 @@ private struct PlayerScreen: View {
 
     var body: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
+            if nativePlayer == nil {
+                Color.black.ignoresSafeArea()
+            }
 
             Group {
                 if let nativePlayer {
                     NativePlayerPresenter(
                         player: nativePlayer,
                         isPictureInPictureActive: $isPictureInPictureActive,
-                        onDismiss: { dismiss() }
+                        onDismiss: { closePlayback() }
                     )
                 } else if usesEmbeddedFallback, video.source == .youtube {
                     YouTubePlayerView(videoID: video.id) {
@@ -396,8 +403,21 @@ private struct PlayerScreen: View {
                 }
             }
             .ignoresSafeArea()
+
+            if nativePlayer == nil {
+                VStack {
+                    HStack {
+                        Spacer()
+                        Button("Close", systemImage: "xmark") { closePlayback() }
+                            .buttonStyle(.borderedProminent)
+                    }
+                    Spacer()
+                }
+                .padding()
+            }
         }
-        .statusBarHidden()
+        .statusBarHidden(nativePlayer == nil)
+        .allowsHitTesting(nativePlayer == nil)
         .task(id: video.id) {
             await preparePlayback()
         }
@@ -439,10 +459,12 @@ private struct PlayerScreen: View {
         } message: {
             Text(diagnosticMessage ?? "")
         }
-        .onDisappear {
-            guard !isPictureInPictureActive else { return }
-            nativePlayer?.pause()
-        }
+    }
+
+    @MainActor
+    private func closePlayback() {
+        nativePlayer?.pause()
+        onDismiss()
     }
 
     @MainActor
@@ -711,9 +733,7 @@ private struct NativePlayerPresenter: UIViewControllerRepresentable {
         host.dismissPresentedPlayer()
     }
 
-    final class Coordinator: NSObject, @preconcurrency AVPlayerViewControllerDelegate,
-        UIAdaptivePresentationControllerDelegate
-    {
+    final class Coordinator: NSObject, @preconcurrency AVPlayerViewControllerDelegate {
         private var pictureInPictureBinding: Binding<Bool>
         var isPictureInPictureActive: Bool { pictureInPictureBinding.wrappedValue }
         var onDismiss: () -> Void
@@ -723,10 +743,6 @@ private struct NativePlayerPresenter: UIViewControllerRepresentable {
         init(isPictureInPictureActive: Binding<Bool>, onDismiss: @escaping () -> Void) {
             pictureInPictureBinding = isPictureInPictureActive
             self.onDismiss = onDismiss
-        }
-
-        func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
-            playerDidDismiss()
         }
 
         func playerViewController(
@@ -801,7 +817,7 @@ private final class PlayerPresentationHostViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = .black
+        view.backgroundColor = .clear
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -841,7 +857,6 @@ private final class PlayerPresentationHostViewController: UIViewController {
         isPresentingPlayer = true
         present(playerController, animated: animated) {
             self.isPresentingPlayer = false
-            self.playerController.presentationController?.delegate = self.coordinator
             completion?()
         }
     }

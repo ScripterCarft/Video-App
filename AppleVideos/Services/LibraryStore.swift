@@ -127,10 +127,6 @@ final class LibraryStore {
             playlists[index].videoIDs.append(video.id)
             persist(playlists, key: Keys.playlists)
         }
-        if !isSaved(video) {
-            savedVideos.insert(video, at: 0)
-            persist(savedVideos, key: Keys.saved)
-        }
     }
 
     func videos(in playlist: VideoPlaylist) -> [Video] {

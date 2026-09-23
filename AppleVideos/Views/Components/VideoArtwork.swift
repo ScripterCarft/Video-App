@@ -16,14 +16,8 @@ struct VideoArtwork: View {
                 image
                     .resizable()
                     .scaledToFill()
-            } placeholder: { isLoading in
-                ZStack {
-                    placeholder
-                    if isLoading {
-                        ProgressView()
-                            .tint(.secondary)
-                    }
-                }
+            } placeholder: {
+                ArtworkPlaceholder()
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .clipped()
@@ -46,16 +40,6 @@ struct VideoArtwork: View {
                 .strokeBorder(.primary.opacity(0.06), lineWidth: 0.5)
         }
         .contentShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-    }
-
-    private var placeholder: some View {
-        Rectangle()
-            .fill(.quaternary)
-            .overlay {
-                Image(systemName: "play.rectangle.fill")
-                    .font(.largeTitle)
-                    .foregroundStyle(.tertiary)
-            }
     }
 }
 
@@ -126,14 +110,8 @@ struct VideoHeroArtwork: View {
                         }
                 }
             }
-        } placeholder: { isLoading in
-            ZStack {
-                heroPlaceholder
-                if isLoading {
-                    ProgressView()
-                        .tint(.secondary)
-                }
-            }
+        } placeholder: {
+            ArtworkPlaceholder()
         }
         .aspectRatio(stageAspectRatio, contentMode: .fit)
         .background(.quaternary)
@@ -144,8 +122,10 @@ struct VideoHeroArtwork: View {
         }
         .contentShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
     }
+}
 
-    private var heroPlaceholder: some View {
+private struct ArtworkPlaceholder: View {
+    var body: some View {
         Rectangle()
             .fill(.quaternary)
             .overlay {
@@ -156,14 +136,14 @@ struct VideoHeroArtwork: View {
     }
 }
 
+/// Shows a static placeholder until the first usable candidate image loads.
 private struct FallbackThumbnailImage<Content: View, Placeholder: View>: View {
     let urls: [URL]
     let requiresSixteenByNine: Bool
     let content: (Image) -> Content
-    let placeholder: (Bool) -> Placeholder
+    let placeholder: () -> Placeholder
 
     @State private var loadedImage: UIImage?
-    @State private var isLoading = true
     @State private var loadedURLs: [URL]?
 
     var body: some View {
@@ -171,22 +151,19 @@ private struct FallbackThumbnailImage<Content: View, Placeholder: View>: View {
             if let loadedImage {
                 content(Image(uiImage: loadedImage))
             } else {
-                placeholder(isLoading)
+                placeholder()
             }
         }
         .task(id: urls) {
-            // This task re-runs whenever the view re-enters the window (for example
-            // when an interactive player dismissal re-adds the detail screen). Keep
-            // the result of a finished load for the same URLs.
+            // The task re-runs whenever the view re-enters the window (for example
+            // under a full-screen player's interactive dismissal). Keep a finished
+            // load for the same URLs instead of loading again.
             guard loadedURLs != urls else { return }
-            // Only write state that actually changes; a cancelled load re-runs here.
             if loadedImage != nil { loadedImage = nil }
-            if !isLoading { isLoading = true }
             let image = await ArtworkLoader.firstImage(from: urls, requiresSixteenByNine: requiresSixteenByNine)
             guard !Task.isCancelled else { return }
             loadedImage = image
             loadedURLs = urls
-            isLoading = false
         }
     }
 }

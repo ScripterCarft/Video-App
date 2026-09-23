@@ -36,8 +36,7 @@ struct VideoDetailView: View {
             }
             .padding(.bottom, 30)
         }
-        // DIAGNOSTIC (do not merge): detail background is blue.
-        .background(.blue)
+        .background(.black)
         .foregroundStyle(.white)
         .ignoresSafeArea(edges: .top)
         .toolbarBackground(.hidden, for: .navigationBar)

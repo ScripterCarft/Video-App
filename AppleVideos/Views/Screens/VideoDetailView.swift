@@ -834,12 +834,7 @@ private final class PlayerPresentationHostViewController: UIViewController {
         super.init(nibName: nil, bundle: nil)
         playerController.delegate = coordinator
         playerController.player = player
-        playerController.modalPresentationStyle = .overFullScreen
         playerController.allowsPictureInPicturePlayback = true
-        // Leave the detail screen visible behind AVKit's own interactive
-        // presentation instead of animating a separate black canvas.
-        playerController.view.backgroundColor = .clear
-        playerController.view.isOpaque = false
     }
 
     @available(*, unavailable)

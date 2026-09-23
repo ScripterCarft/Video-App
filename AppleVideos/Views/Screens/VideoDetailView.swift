@@ -836,6 +836,10 @@ private final class PlayerPresentationHostViewController: UIViewController {
         playerController.player = player
         playerController.modalPresentationStyle = .overFullScreen
         playerController.allowsPictureInPicturePlayback = true
+        // Keep AVKit's outer canvas from covering the detail view during an
+        // interactive dismissal. AVKit still owns the video and its controls.
+        playerController.view.backgroundColor = .clear
+        playerController.view.isOpaque = false
     }
 
     @available(*, unavailable)

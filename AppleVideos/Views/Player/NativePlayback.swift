@@ -29,7 +29,6 @@ final class NativePlayback: NSObject {
     private var metadataTask: Task<Void, Never>?
     private var isPictureInPictureActive = false
     private var isFinished = false
-    private var isRecoveringFromCancelledDismissal = false
     private var playerWindow: UIWindow?
     private weak var previousKeyWindow: UIWindow?
 
@@ -149,36 +148,6 @@ final class NativePlayback: NSObject {
         window.rootViewController = root
         playerWindow = window
         window.makeKeyAndVisible()
-    }
-
-    /// Workaround for a UIKit issue on iOS 26 and later: after a cancelled
-    /// interactive dismissal of AVPlayerViewController, UIKit's gesture and
-    /// transition state is left broken (reported in react-native-video#4864).
-    /// Dismissing and re-presenting the same controller without animation makes
-    /// UIKit set that state up again. Playback position and rate are kept.
-    private func recoverFromCancelledDismissal() {
-        guard !isFinished,
-              !isRecoveringFromCancelledDismissal,
-              let root = playerWindow?.rootViewController,
-              playerController.presentingViewController === root
-        else { return }
-
-        isRecoveringFromCancelledDismissal = true
-        let wasPlaying = player.rate != 0
-        playerController.dismiss(animated: false) { [weak self, weak root] in
-            guard let self else { return }
-            guard let root, !isFinished else {
-                isRecoveringFromCancelledDismissal = false
-                return
-            }
-            root.present(playerController, animated: false) { [weak self] in
-                guard let self else { return }
-                if wasPlaying && player.rate == 0 {
-                    player.play()
-                }
-                isRecoveringFromCancelledDismissal = false
-            }
-        }
     }
 
     private func hidePlayerWindow() {
@@ -348,15 +317,8 @@ extension NativePlayback: @preconcurrency AVPlayerViewControllerDelegate {
         _ playerViewController: AVPlayerViewController,
         willEndFullScreenPresentationWithAnimationCoordinator coordinator: UIViewControllerTransitionCoordinator
     ) {
-        // Our own dismiss/re-present during recovery must not end playback.
-        guard !isRecoveringFromCancelledDismissal else { return }
-
         coordinator.animate(alongsideTransition: nil) { [weak self] context in
-            guard let self else { return }
-            if context.isCancelled {
-                recoverFromCancelledDismissal()
-                return
-            }
+            guard let self, !context.isCancelled else { return }
             if isPictureInPictureActive {
                 // Playback continues in PiP; only the empty window goes away.
                 hidePlayerWindow()

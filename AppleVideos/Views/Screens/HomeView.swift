@@ -56,6 +56,10 @@ struct HomeView: View {
             .navigationTitle("Home")
             .videoDestination(transition: transition)
             .playbackPresentation(playback)
+            .task {
+                // The featured video has a Play button right on Home.
+                await NativePlayback.prefetch(featured)
+            }
         }
     }
 

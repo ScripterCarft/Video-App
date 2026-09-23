@@ -15,6 +15,14 @@ final class NativePlayback: NSObject {
         case unavailable
     }
 
+    /// How a presented playback ended.
+    enum Ending {
+        /// The player (or Picture in Picture) was closed.
+        case closed(reachedWatchThreshold: Bool)
+        /// The stream could not be played; the player was dismissed.
+        case failed(diagnostic: String)
+    }
+
     /// Keeps the playback alive while it is presented or in Picture in Picture.
     private static var current: NativePlayback?
 
@@ -23,7 +31,8 @@ final class NativePlayback: NSObject {
     private let item: AVPlayerItem
     private let player: AVPlayer
     private let playerController = AVPlayerViewController()
-    private let onFinish: @MainActor (_ reachedWatchThreshold: Bool) -> Void
+    private let onFinish: @MainActor (Ending) -> Void
+    private var statusObservation: NSKeyValueObservation?
     private var timeObserver: Any?
     private var watchedSeconds = 0.0
     private var lastObservedTime: Double?
@@ -31,12 +40,21 @@ final class NativePlayback: NSObject {
     private var isPictureInPictureActive = false
     private var isFinished = false
 
+    /// Resolves a video's stream ahead of time, for example when its detail
+    /// screen opens, so Play can present the player without waiting. The
+    /// resolver caches the result briefly.
+    static func prefetch(_ video: Video) async {
+        guard video.source == .youtube else { return }
+        _ = try? await YouTubeInnertubePlaybackResolver.shared.resolve(PlaybackRequest(videoID: video.id))
+    }
+
     /// Resolves and presents native playback. `onFinish` runs once, after the
-    /// player has been dismissed (or Picture in Picture has been closed).
+    /// player has been dismissed, Picture in Picture has been closed, or the
+    /// stream failed before playback started.
     static func play(
         _ video: Video,
         description: String?,
-        onFinish: @escaping @MainActor (_ reachedWatchThreshold: Bool) -> Void
+        onFinish: @escaping @MainActor (Ending) -> Void
     ) async -> Outcome {
         let item: AVPlayerItem
         switch video.source {
@@ -54,16 +72,10 @@ final class NativePlayback: NSObject {
                     return .fallback(diagnostic: "NO_VARIANT · The resolver returned no preferred source.")
                 }
 
-                let asset = AVURLAsset(url: variant.url)
-                let isPlayable = try await asset.load(.isPlayable)
-                try Task.checkCancellation()
-                guard isPlayable else {
-                    return .fallback(
-                        diagnostic: "AVPLAYER_REJECTED · \(variant.qualityLabel ?? "Unknown quality") · \(variant.mimeType)"
-                    )
-                }
-
-                item = AVPlayerItem(asset: asset)
+                // The player is presented right away; AVKit shows its own loading
+                // state while the stream starts. A stream that cannot play is
+                // reported through the item's status after presentation.
+                item = AVPlayerItem(url: variant.url)
                 if variant.transport == .hls {
                     item.preferredMaximumResolutionForExpensiveNetworks = CGSize(
                         width: 1_280,
@@ -83,7 +95,7 @@ final class NativePlayback: NSObject {
         guard !Task.isCancelled else { return .cancelled }
 
         // Only one native playback at a time (for example while one is in PiP).
-        current?.finish()
+        current?.finish(.closed(reachedWatchThreshold: current?.reachedWatchThreshold ?? false))
 
         let playback = NativePlayback(video: video, description: description, item: item, onFinish: onFinish)
         return playback.present() ? .presented : .unavailable
@@ -93,7 +105,7 @@ final class NativePlayback: NSObject {
         video: Video,
         description: String?,
         item: AVPlayerItem,
-        onFinish: @escaping @MainActor (Bool) -> Void
+        onFinish: @escaping @MainActor (Ending) -> Void
     ) {
         self.video = video
         videoDescription = description?.collapsedWhitespace
@@ -105,6 +117,11 @@ final class NativePlayback: NSObject {
         item.externalMetadata = playerMetadata(description: videoDescription)
         playerController.player = player
         playerController.delegate = self
+        statusObservation = item.observe(\.status) { [weak self] _, _ in
+            Task { @MainActor [weak self] in
+                self?.itemStatusDidChange()
+            }
+        }
     }
 
     private func present() -> Bool {
@@ -122,11 +139,28 @@ final class NativePlayback: NSObject {
         return true
     }
 
-    /// Ends this playback exactly once and reports whether it counts as watched.
-    private func finish() {
+    /// A stream that fails before any playback falls back to the embedded
+    /// player. Later failures are left to AVKit, which shows its own error state.
+    private func itemStatusDidChange() {
+        guard !isFinished, item.status == .failed, watchedSeconds == 0 else { return }
+
+        let diagnostic = item.error.map { error in
+            let nsError = error as NSError
+            return "\(error.localizedDescription)\nCode: \(nsError.domain)/\(nsError.code)"
+        } ?? "AVPLAYER_FAILED · The stream could not be played."
+        finish(.failed(diagnostic: diagnostic))
+        if playerController.presentingViewController != nil {
+            playerController.dismiss(animated: true)
+        }
+    }
+
+    /// Ends this playback exactly once.
+    private func finish(_ ending: Ending) {
         guard !isFinished else { return }
         isFinished = true
 
+        statusObservation?.invalidate()
+        statusObservation = nil
         stopWatchTracking()
         metadataTask?.cancel()
         if item.status == .failed {
@@ -136,7 +170,7 @@ final class NativePlayback: NSObject {
             Task { await YouTubeInnertubePlaybackResolver.shared.invalidate(videoID: videoID) }
         }
         player.pause()
-        onFinish(reachedWatchThreshold)
+        onFinish(ending)
         if Self.current === self {
             Self.current = nil
         }
@@ -284,7 +318,7 @@ extension NativePlayback: @preconcurrency AVPlayerViewControllerDelegate {
     ) {
         coordinator.animate(alongsideTransition: nil) { [weak self] context in
             guard let self, !context.isCancelled, !isPictureInPictureActive else { return }
-            finish()
+            finish(.closed(reachedWatchThreshold: reachedWatchThreshold))
         }
     }
 
@@ -300,7 +334,7 @@ extension NativePlayback: @preconcurrency AVPlayerViewControllerDelegate {
         isPictureInPictureActive = false
         // Closing PiP without restoring the full-screen player ends playback.
         if playerViewController.presentingViewController == nil {
-            finish()
+            finish(.closed(reachedWatchThreshold: reachedWatchThreshold))
         }
     }
 

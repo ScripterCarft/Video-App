@@ -84,6 +84,10 @@ struct VideoDetailView: View {
                 .presentationDragIndicator(.visible)
         }
         .task(id: video.id) {
+            // Resolve the stream while the user reads, so Play starts without waiting.
+            await NativePlayback.prefetch(video)
+        }
+        .task(id: video.id) {
             // The full-screen player removes this screen from the window, and an
             // interactive swipe-down re-adds it, which re-runs this task. Only reset
             // for a different video so state stays unchanged under AVKit's transition.

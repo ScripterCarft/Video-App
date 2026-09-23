@@ -824,7 +824,7 @@ private final class PlayerPresentationHostViewController: UIViewController {
         super.viewDidAppear(animated)
         guard !hasStartedPresentation else { return }
         hasStartedPresentation = true
-        presentPlayer(animated: false) {
+        presentPlayer(animated: true) {
             self.playerController.player?.play()
         }
     }

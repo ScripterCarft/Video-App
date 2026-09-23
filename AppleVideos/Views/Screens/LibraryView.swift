@@ -17,12 +17,6 @@ struct LibraryView: View {
                     }
 
                     NavigationLink {
-                        DownloadsView()
-                    } label: {
-                        LibraryRow(title: "Downloads", subtitle: "Available for supported sources", icon: "arrow.down.circle.fill", color: .blue)
-                    }
-
-                    NavigationLink {
                         HistoryView(transition: transition)
                     } label: {
                         LibraryRow(title: "History", subtitle: "\(library.recentlyWatched.count) recently watched", icon: "clock.fill", color: .gray)
@@ -32,7 +26,7 @@ struct LibraryView: View {
                 Section("Playlists") {
                     ForEach(library.playlists) { playlist in
                         NavigationLink {
-                            PlaylistView(playlist: playlist, transition: transition)
+                            PlaylistView(playlistID: playlist.id, transition: transition)
                         } label: {
                             LibraryRow(
                                 title: playlist.name,
@@ -41,6 +35,9 @@ struct LibraryView: View {
                                 color: .purple
                             )
                         }
+                    }
+                    .onDelete { offsets in
+                        library.deletePlaylists(at: offsets)
                     }
 
                     Button {
@@ -51,6 +48,7 @@ struct LibraryView: View {
                 }
             }
             .navigationTitle("Library")
+            .videoDestination(transition: transition)
             .alert("New Playlist", isPresented: $isCreatingPlaylist) {
                 TextField("Playlist name", text: $playlistName)
                 Button("Cancel", role: .cancel) { playlistName = "" }
@@ -97,6 +95,7 @@ private struct SavedVideosView: View {
     var body: some View {
         VideoCollectionView(
             title: "Saved",
+            section: "saved",
             emptyTitle: "No Saved Videos",
             emptyDescription: "Use the bookmark button or a video's context menu to save it.",
             videos: library.savedVideos,
@@ -112,6 +111,7 @@ private struct HistoryView: View {
     var body: some View {
         VideoCollectionView(
             title: "History",
+            section: "history",
             emptyTitle: "No Watch History",
             emptyDescription: "Videos you play will appear here.",
             videos: library.recentlyWatched,
@@ -122,15 +122,18 @@ private struct HistoryView: View {
 
 private struct PlaylistView: View {
     @Environment(LibraryStore.self) private var library
-    let playlist: VideoPlaylist
+    let playlistID: UUID
     let transition: Namespace.ID
 
     var body: some View {
+        // Look the playlist up on every update so the list stays current.
+        let playlist = library.playlists.first { $0.id == playlistID }
         VideoCollectionView(
-            title: playlist.name,
+            title: playlist?.name ?? "Playlist",
+            section: "playlist-\(playlistID.uuidString)",
             emptyTitle: "Playlist is Empty",
             emptyDescription: "Add a video from its context menu.",
-            videos: library.videos(in: playlist),
+            videos: playlist.map { library.videos(in: $0) } ?? [],
             transition: transition
         )
     }
@@ -138,6 +141,7 @@ private struct PlaylistView: View {
 
 private struct VideoCollectionView: View {
     let title: String
+    let section: String
     let emptyTitle: String
     let emptyDescription: String
     let videos: [Video]
@@ -151,11 +155,9 @@ private struct VideoCollectionView: View {
                 ScrollView {
                     LazyVStack(spacing: 22) {
                         ForEach(videos) { video in
-                            NavigationLink(value: video) {
+                            VideoLink(video: video, section: section, transition: transition) {
                                 VideoCard(video: video)
                             }
-                            .buttonStyle(.plain)
-                            .matchedTransitionSource(id: video.id, in: transition)
                         }
                     }
                     .padding()
@@ -163,20 +165,5 @@ private struct VideoCollectionView: View {
             }
         }
         .navigationTitle(title)
-        .navigationDestination(for: Video.self) { video in
-            VideoDetailView(video: video, transition: transition)
-        }
     }
 }
-
-private struct DownloadsView: View {
-    var body: some View {
-        ContentUnavailableView {
-            Label("No Downloads", systemImage: "arrow.down.circle")
-        } description: {
-            Text("Native downloads will be available for direct MP4 and HLS sources. YouTube playback stays inside the official player in this first version.")
-        }
-        .navigationTitle("Downloads")
-    }
-}
-

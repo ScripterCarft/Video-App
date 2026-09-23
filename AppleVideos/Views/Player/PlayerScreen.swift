@@ -99,6 +99,12 @@ struct PlayerScreen: View {
 
     @MainActor
     private func closePlayback() {
+        if nativePlayer?.currentItem?.status == .failed {
+            // Stream URLs can stop working (for example after a network change).
+            // Resolve a fresh source on the next attempt instead of reusing it.
+            let videoID = video.id
+            Task { await YouTubeInnertubePlaybackResolver.shared.invalidate(videoID: videoID) }
+        }
         nativePlayer?.pause()
         onDismiss()
     }

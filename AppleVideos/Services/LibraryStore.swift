@@ -106,6 +106,18 @@ final class LibraryStore {
         persist(playlists, key: Keys.playlists)
     }
 
+    func deletePlaylists(at offsets: IndexSet) {
+        for index in offsets.sorted(by: >) where playlists.indices.contains(index) {
+            playlists.remove(at: index)
+        }
+        persist(playlists, key: Keys.playlists)
+
+        // Drop stored videos that no remaining playlist refers to.
+        let referencedIDs = Set(playlists.flatMap(\.videoIDs))
+        playlistVideos = playlistVideos.filter { referencedIDs.contains($0.key) }
+        persist(playlistVideos, key: Keys.playlistVideos)
+    }
+
     func add(_ video: Video, to playlistID: UUID) {
         guard let index = playlists.firstIndex(where: { $0.id == playlistID }) else { return }
         playlistVideos[video.id] = video

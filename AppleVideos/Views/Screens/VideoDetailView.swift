@@ -14,27 +14,16 @@ struct VideoDetailView: View {
     @State private var loadedBadges: [String]?
     @State private var detailsLoadFinished = false
 
-    init(video: Video, transition: Namespace.ID, transitionID: String? = nil) {
+    init(video: Video, transition: Namespace.ID, transitionID: String) {
         self.video = video
         self.transition = transition
-        self.transitionID = transitionID ?? video.id
+        self.transitionID = transitionID
     }
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 22) {
-                detailStage
-
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Up Next")
-                        .font(.title2.bold())
-                    Text("More recommendations will become personal as the Apple Videos algorithm evolves.")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.horizontal)
-            }
-            .padding(.bottom, 30)
+            detailStage
+                .padding(.bottom, 30)
         }
         .background(.black)
         .foregroundStyle(.white)
@@ -181,9 +170,10 @@ struct VideoDetailView: View {
 
                     Button {
                         if isPreparingPlayback {
-                            withAnimation(.easeOut(duration: 0.2)) {
-                                showPlayer = false
-                            }
+                            // Nothing is visible while the source resolves. Remove the
+                            // player immediately so its resolve task cannot present AVKit
+                            // during a fade-out.
+                            showPlayer = false
                             isPreparingPlayback = false
                             return
                         }

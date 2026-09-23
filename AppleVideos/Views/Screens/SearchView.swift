@@ -3,6 +3,7 @@ import SwiftUI
 struct SearchView: View {
     @State private var query = ""
     @State private var submittedQuery = ""
+    @Namespace private var transition
 
     private let suggestions = [
         "Kurzgesagt",
@@ -22,10 +23,11 @@ struct SearchView: View {
                         Text("Search for videos, topics, or creators.")
                     }
                 } else {
-                    SearchResultsView(query: submittedQuery)
+                    SearchResultsView(query: submittedQuery, section: "search", transition: transition)
                 }
             }
             .navigationTitle("Search")
+            .videoDestination(transition: transition)
             .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "Videos, topics, or creators")
             .searchSuggestions {
                 ForEach(suggestions, id: \.self) { suggestion in
@@ -49,13 +51,17 @@ struct SearchView: View {
     }
 }
 
+/// Search results for a query. The enclosing navigation stack must register
+/// `videoDestination(transition:)` with the same namespace.
 struct SearchResultsView: View {
     let query: String
+    let section: String
+    let transition: Namespace.ID
 
     @State private var results: [Video] = []
+    @State private var loadedQuery: String?
     @State private var isLoading = false
     @State private var errorMessage: String?
-    @Namespace private var transition
 
     var body: some View {
         ScrollView {
@@ -71,7 +77,7 @@ struct SearchResultsView: View {
                         description: Text(errorMessage)
                     )
                     Button("Try Again") {
-                        Task { await load() }
+                        Task { await load(bypassingCache: true) }
                     }
                     .buttonStyle(.borderedProminent)
                 } else if results.isEmpty {
@@ -79,35 +85,39 @@ struct SearchResultsView: View {
                         .padding(.top, 60)
                 } else {
                     ForEach(results) { video in
-                        NavigationLink(value: video) {
+                        VideoLink(video: video, section: section, transition: transition) {
                             VideoCard(video: video)
                         }
-                        .buttonStyle(.plain)
-                        .matchedTransitionSource(id: video.id, in: transition)
                     }
                 }
             }
             .padding()
         }
-        .navigationDestination(for: Video.self) { video in
-            VideoDetailView(video: video, transition: transition)
-        }
         .task(id: query) {
+            // Returning from a detail screen re-runs this task; keep the loaded
+            // results and scroll position instead of searching again.
+            guard loadedQuery != query else { return }
+            results = []
             await load()
         }
         .refreshable {
-            await load()
+            await load(bypassingCache: true)
         }
     }
 
     @MainActor
-    private func load() async {
+    private func load(bypassingCache: Bool = false) async {
         isLoading = true
         errorMessage = nil
         do {
-            results = try await YouTubeService.shared.search(query)
-        } catch is CancellationError {
+            let found = try await YouTubeService.shared.search(query, bypassingCache: bypassingCache)
+            guard !Task.isCancelled else { return }
+            results = found
+            loadedQuery = query
         } catch {
+            // A newer query cancelled this request. URLSession reports that as
+            // URLError.cancelled rather than CancellationError, so check the task.
+            guard !Task.isCancelled else { return }
             errorMessage = error.localizedDescription
         }
         isLoading = false

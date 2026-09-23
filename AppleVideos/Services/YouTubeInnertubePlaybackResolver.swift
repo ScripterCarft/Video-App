@@ -31,7 +31,9 @@ actor YouTubeInnertubePlaybackResolver: PlaybackResolving {
             throw PlaybackResolverError.invalidVideoID
         }
 
-        if let cached = cache[request], cached.source.isFresh() {
+        if let cached = cache[request],
+           cached.source.isFresh(),
+           Date.now.timeIntervalSince(cached.source.resolvedAt) < Self.maximumCacheAge {
             return cached.source
         }
         cache[request] = nil
@@ -50,6 +52,9 @@ actor YouTubeInnertubePlaybackResolver: PlaybackResolving {
             return source
         } catch {
             inFlight[request] = nil
+            // The API key or visitor data may have rotated. Bootstrap again next time
+            // instead of failing with the same configuration until the app restarts.
+            configuration = nil
             throw error
         }
     }
@@ -400,6 +405,11 @@ actor YouTubeInnertubePlaybackResolver: PlaybackResolving {
         else { return nil }
         return String(text[range])
     }
+
+    /// Stream URLs are bound to the client's network address, so a source that is
+    /// still valid by its `expire` parameter can fail after a Wi-Fi/cellular switch.
+    /// Reuse a resolved source only briefly (enough for close-and-replay).
+    private static let maximumCacheAge: TimeInterval = 10 * 60
 
     private static func isValidVideoID(_ value: String) -> Bool {
         value.range(of: #"^[A-Za-z0-9_-]{11}$"#, options: .regularExpression) != nil

@@ -38,11 +38,11 @@ actor YouTubeService {
     private var cachedSearches: [String: [Video]] = [:]
     private var cachedDetails: [String: VideoDetails] = [:]
 
-    func search(_ query: String) async throws -> [Video] {
+    func search(_ query: String, bypassingCache: Bool = false) async throws -> [Video] {
         let normalized = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalized.isEmpty else { return [] }
         let cacheKey = normalized.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
-        if let cached = cachedSearches[cacheKey] { return cached }
+        if !bypassingCache, let cached = cachedSearches[cacheKey] { return cached }
 
         let configuration = try await webConfiguration()
         guard let endpoint = URL(string: "https://www.youtube.com/youtubei/v1/search?key=\(configuration.apiKey)&prettyPrint=false") else {
@@ -68,6 +68,7 @@ actor YouTubeService {
 
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse, 200..<300 ~= http.statusCode else {
+            cachedConfiguration = nil
             throw SearchError.invalidResponse
         }
 
@@ -112,7 +113,10 @@ actor YouTubeService {
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse, 200..<300 ~= http.statusCode,
               let root = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-        else { throw SearchError.invalidResponse }
+        else {
+            cachedConfiguration = nil
+            throw SearchError.invalidResponse
+        }
 
         let videoDetails = root["videoDetails"] as? [String: Any]
         let microformat = root["microformat"] as? [String: Any]

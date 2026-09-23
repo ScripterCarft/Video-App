@@ -7,20 +7,13 @@ struct HomeView: View {
     private let featured = Video.curated[0]
     private let picks = Array(Video.curated.dropFirst())
 
-    private struct HomeRoute: Hashable {
-        let video: Video
-        let transitionID: String
-    }
-
     var body: some View {
         NavigationStack {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 30) {
-                    NavigationLink(value: HomeRoute(video: featured, transitionID: "featured-\(featured.id)")) {
+                    VideoLink(video: featured, section: "featured", transition: transition) {
                         featuredHero
                     }
-                    .buttonStyle(.plain)
-                    .matchedTransitionSource(id: "featured-\(featured.id)", in: transition)
 
                     if !library.recentlyWatched.isEmpty {
                         videoRow(
@@ -44,18 +37,7 @@ struct HomeView: View {
             }
             .background(Color(uiColor: .systemBackground))
             .navigationTitle("Home")
-            .navigationDestination(for: HomeRoute.self) { route in
-                VideoDetailView(video: route.video, transition: transition, transitionID: route.transitionID)
-            }
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                    } label: {
-                        Image(systemName: "person.crop.circle")
-                    }
-                    .accessibilityLabel("Profile")
-                }
-            }
+            .videoDestination(transition: transition)
         }
     }
 
@@ -112,15 +94,12 @@ struct HomeView: View {
             ScrollView(.horizontal) {
                 LazyHStack(alignment: .top, spacing: 14) {
                     ForEach(videos) { video in
-                        let sourceID = "\(sectionID)-\(video.id)"
-                        NavigationLink(value: HomeRoute(video: video, transitionID: sourceID)) {
+                        VideoLink(video: video, section: sectionID, transition: transition) {
                             VideoCard(video: video, compact: true)
                                 .frame(width: 272, alignment: .top)
                                 .clipped()
                         }
                         .frame(width: 272)
-                        .buttonStyle(.plain)
-                        .matchedTransitionSource(id: sourceID, in: transition)
                     }
                 }
             }

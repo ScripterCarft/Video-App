@@ -112,7 +112,6 @@ final class NativePlayback: NSObject {
         guard let presenter = Self.topViewController() else { return false }
 
         Self.current = self
-        configurePlaybackAudio()
         presenter.present(playerController, animated: true) { [weak self] in
             guard let self else { return }
             player.play()
@@ -160,12 +159,6 @@ final class NativePlayback: NSObject {
             top = presented
         }
         return top
-    }
-
-    private func configurePlaybackAudio() {
-        let audioSession = AVAudioSession.sharedInstance()
-        try? audioSession.setCategory(.playback, mode: .moviePlayback)
-        try? audioSession.setActive(true)
     }
 
     // MARK: - Now Playing metadata

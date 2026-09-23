@@ -10,6 +10,7 @@ struct VideoDetailView: View {
 
     @Environment(LibraryStore.self) private var library
     @State private var showPlayer = false
+    @State private var isPreparingPlayback = false
     @State private var feedback = 0
     @State private var showDescription = false
     @State private var loadedDescription: String?
@@ -70,9 +71,15 @@ struct VideoDetailView: View {
         .navigationTransition(.zoom(sourceID: transitionID, in: transition))
         .overlay {
             if showPlayer {
-                PlayerScreen(video: video, description: visibleDescription) {
-                    showPlayer = false
-                }
+                PlayerScreen(
+                    video: video,
+                    description: visibleDescription,
+                    onPreparationFinished: { isPreparingPlayback = false },
+                    onDismiss: {
+                        isPreparingPlayback = false
+                        showPlayer = false
+                    }
+                )
                 .ignoresSafeArea()
             }
         }
@@ -173,10 +180,26 @@ struct VideoDetailView: View {
                     Spacer(minLength: 0)
 
                     Button {
+                        if isPreparingPlayback {
+                            showPlayer = false
+                            isPreparingPlayback = false
+                            return
+                        }
+                        isPreparingPlayback = true
                         showPlayer = true
                         feedback += 1
                     } label: {
-                        Label("Play", systemImage: "play.fill")
+                        Group {
+                            if isPreparingPlayback {
+                                HStack(spacing: 8) {
+                                    ProgressView()
+                                        .tint(.black)
+                                    Text("Cancel")
+                                }
+                            } else {
+                                Label("Play", systemImage: "play.fill")
+                            }
+                        }
                             .font(.headline)
                             .foregroundStyle(.black)
                             .padding(.horizontal, 26)
@@ -370,6 +393,7 @@ private struct MetadataBadge: View {
 private struct PlayerScreen: View {
     let video: Video
     let description: String?
+    let onPreparationFinished: () -> Void
     let onDismiss: () -> Void
     @Environment(LibraryStore.self) private var library
     @State private var nativePlayer: AVPlayer?
@@ -381,7 +405,9 @@ private struct PlayerScreen: View {
 
     var body: some View {
         ZStack {
-            if nativePlayer == nil {
+            Color.clear.ignoresSafeArea()
+
+            if usesEmbeddedFallback {
                 Color.black.ignoresSafeArea()
             }
 
@@ -396,15 +422,11 @@ private struct PlayerScreen: View {
                     YouTubePlayerView(videoID: video.id) {
                         markWatchedOnce()
                     }
-                } else if isResolving {
-                    ProgressView()
-                        .tint(.white)
-                        .controlSize(.large)
                 }
             }
             .ignoresSafeArea()
 
-            if nativePlayer == nil {
+            if usesEmbeddedFallback {
                 VStack {
                     HStack {
                         Spacer()
@@ -416,8 +438,8 @@ private struct PlayerScreen: View {
                 .padding()
             }
         }
-        .statusBarHidden(nativePlayer == nil)
-        .allowsHitTesting(nativePlayer == nil)
+        .statusBarHidden(usesEmbeddedFallback)
+        .allowsHitTesting(usesEmbeddedFallback)
         .task(id: video.id) {
             await preparePlayback()
         }
@@ -476,12 +498,14 @@ private struct PlayerScreen: View {
         case .direct:
             guard let url = video.playbackURL else {
                 isResolving = false
+                onDismiss()
                 return
             }
             let item = AVPlayerItem(url: url)
             let player = makePlayer(item: item)
             nativePlayer = player
             isResolving = false
+            onPreparationFinished()
             configurePlaybackAudio()
             await installSupplementalMetadata(on: item)
 
@@ -516,6 +540,7 @@ private struct PlayerScreen: View {
                 let player = makePlayer(item: item)
                 nativePlayer = player
                 isResolving = false
+                onPreparationFinished()
                 configurePlaybackAudio()
                 await installSupplementalMetadata(on: item)
             } catch is CancellationError {
@@ -701,6 +726,7 @@ private struct PlayerScreen: View {
         nativePlayer?.pause()
         nativePlayer = nil
         isResolving = false
+        onPreparationFinished()
         diagnosticMessage = diagnostic
         usesEmbeddedFallback = true
     }
@@ -808,8 +834,8 @@ private final class PlayerPresentationHostViewController: UIViewController {
         super.init(nibName: nil, bundle: nil)
         playerController.delegate = coordinator
         playerController.player = player
+        playerController.modalPresentationStyle = .overFullScreen
         playerController.allowsPictureInPicturePlayback = true
-        playerController.videoGravity = .resizeAspect
     }
 
     @available(*, unavailable)

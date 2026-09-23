@@ -107,6 +107,29 @@ final class LibraryStore {
         persist(playlists, key: Keys.playlists)
     }
 
+    /// Replaces every stored copy of `video` (Saved, playlists, Continue
+    /// Watching) with fresher metadata, keeping each list's order. Lists
+    /// without a change are not rewritten.
+    func updateMetadata(of video: Video) {
+        func replaced(in videos: [Video]) -> [Video]? {
+            guard videos.contains(where: { $0.id == video.id && $0 != video }) else { return nil }
+            return videos.map { $0.id == video.id ? video : $0 }
+        }
+
+        if let updated = replaced(in: savedVideos) {
+            savedVideos = updated
+            persist(savedVideos, key: Keys.saved)
+        }
+        if let updated = replaced(in: recentlyWatched) {
+            recentlyWatched = updated
+            persist(recentlyWatched, key: Keys.recent)
+        }
+        if let stored = playlistVideos[video.id], stored != video {
+            playlistVideos[video.id] = video
+            persist(playlistVideos, key: Keys.playlistVideos)
+        }
+    }
+
     func deletePlaylists(at offsets: IndexSet) {
         for index in offsets.sorted(by: >) where playlists.indices.contains(index) {
             playlists.remove(at: index)

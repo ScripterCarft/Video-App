@@ -14,6 +14,7 @@ struct VideoDetailView: View {
     @State private var loadedBadges: [String]?
     @State private var detailsLoadFinished = false
     @State private var detailsVideoID: String?
+    @State private var refreshedVideo: Video?
 
     init(video: Video, transition: Namespace.ID, transitionID: String) {
         self.video = video
@@ -78,7 +79,7 @@ struct VideoDetailView: View {
         .navigationTransition(.zoom(sourceID: transitionID, in: transition))
         .playbackPresentation(playback)
         .sheet(isPresented: $showDescription) {
-            DescriptionSheet(video: video, description: visibleDescription)
+            DescriptionSheet(video: shown, description: visibleDescription)
                 .tint(.primary)
                 .presentationDetents([.fraction(0.55), .fraction(0.8)])
                 .presentationDragIndicator(.visible)
@@ -95,6 +96,7 @@ struct VideoDetailView: View {
                 detailsVideoID = video.id
                 loadedDescription = nil
                 loadedBadges = nil
+                refreshedVideo = nil
                 detailsLoadFinished = false
             }
             guard !detailsLoadFinished else { return }
@@ -109,13 +111,29 @@ struct VideoDetailView: View {
             guard !Task.isCancelled else { return }
             loadedDescription = details?.description
             loadedBadges = details.flatMap { $0.badges.isEmpty ? nil : $0.badges }
+
+            // Show current title, views and publish date, and keep the library's
+            // copies of this video up to date. Uses the details loaded above.
+            if details != nil,
+               let refreshed = try? await YouTubeService.shared.refreshedVideo(video),
+               !Task.isCancelled {
+                refreshedVideo = refreshed
+                library.updateMetadata(of: refreshed)
+            }
             detailsLoadFinished = true
         }
         .sensoryFeedback(.selection, trigger: feedback)
     }
 
+    /// The video with the freshest metadata available.
+    private var shown: Video {
+        refreshedVideo ?? video
+    }
+
+    /// Prefers the full description from the details request over the short
+    /// snippet that search results carry.
     private var visibleDescription: String? {
-        [video.descriptionText, loadedDescription]
+        [loadedDescription, video.descriptionText]
             .lazy
             .compactMap { $0?.collapsedWhitespace }
             .first
@@ -133,7 +151,7 @@ struct VideoDetailView: View {
     }
 
     private var textMetadata: [String] {
-        [video.formattedDuration, video.viewCountText, video.publishedText]
+        [shown.formattedDuration, shown.viewCountText, shown.publishedLabel]
             .compactMap { value in
                 guard let value, !value.isEmpty else { return nil }
                 return value
@@ -169,10 +187,10 @@ struct VideoDetailView: View {
     private var detailInformation: some View {
         VStack(alignment: .leading, spacing: 14) {
                 VStack(alignment: .center, spacing: 5) {
-                    Text(video.title)
+                    Text(shown.title)
                         .font(.title.bold())
                         .lineLimit(3)
-                    Text(video.channelName)
+                    Text(shown.channelName)
                         .font(.headline)
                         .foregroundStyle(.white.opacity(0.72))
                         .multilineTextAlignment(.center)

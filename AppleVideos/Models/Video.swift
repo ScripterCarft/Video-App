@@ -17,7 +17,13 @@ struct Video: Identifiable, Hashable, Codable, Sendable {
     let channelName: String
     let thumbnailURL: URL?
     let duration: String?
+    /// A label from the source, such as YouTube's "3 days ago", or an editorial
+    /// label for curated videos. Used when `publishedAt` is unknown.
     let publishedText: String?
+    /// When the video was published. Stored as a date so the relative label
+    /// is formatted at display time and never goes stale. Optional so that
+    /// libraries saved before this field existed still decode.
+    let publishedAt: Date?
     let viewCountText: String?
     let descriptionText: String?
     let badges: [String]?
@@ -49,8 +55,16 @@ struct Video: Identifiable, Hashable, Codable, Sendable {
         return candidates.compactMap { $0 }.filter { seen.insert($0).inserted }
     }
 
+    /// "3 days ago" computed now from `publishedAt`, else the stored label.
+    var publishedLabel: String? {
+        if let publishedAt {
+            return publishedAt.formatted(.relative(presentation: .named))
+        }
+        return publishedText
+    }
+
     var metadataLine: String {
-        [viewCountText, publishedText]
+        [viewCountText, publishedLabel]
             .compactMap { $0 }
             .filter { !$0.isEmpty }
             .joined(separator: " · ")
@@ -125,6 +139,7 @@ extension Video {
         channel: String,
         duration: String? = nil,
         published: String? = nil,
+        publishedAt: Date? = nil,
         views: String? = nil,
         thumbnailURL: URL? = nil,
         description: String? = nil,
@@ -137,6 +152,7 @@ extension Video {
             thumbnailURL: thumbnailURL,
             duration: duration,
             publishedText: published,
+            publishedAt: publishedAt,
             viewCountText: views,
             descriptionText: description,
             badges: badges,

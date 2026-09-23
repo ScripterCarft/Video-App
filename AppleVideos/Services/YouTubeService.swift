@@ -8,6 +8,7 @@ actor YouTubeService {
         let channelName: String?
         let duration: String?
         let publishedText: String?
+        let publishedAt: Date?
         let viewCountText: String?
         let thumbnailURL: URL?
         let description: String?
@@ -122,6 +123,8 @@ actor YouTubeService {
                 .flatMap(Self.durationText),
             publishedText: (playerMicroformat?["publishDate"] as? String)
                 .flatMap(Self.relativePublishedText),
+            publishedAt: (playerMicroformat?["publishDate"] as? String)
+                .flatMap(Self.publishDate),
             viewCountText: (videoDetails?["viewCount"] as? String)
                 .flatMap(Self.viewCountText),
             thumbnailURL: Self.thumbnailURL(from: videoDetails?["thumbnail"]),
@@ -142,6 +145,7 @@ actor YouTubeService {
             channel: details.channelName ?? video.channelName,
             duration: details.duration ?? video.duration,
             published: details.publishedText ?? video.publishedText,
+            publishedAt: details.publishedAt ?? video.publishedAt,
             views: details.viewCountText ?? video.viewCountText,
             thumbnailURL: details.thumbnailURL ?? video.thumbnailURL,
             description: details.description ?? video.descriptionText,
@@ -175,13 +179,15 @@ actor YouTubeService {
             ?? text(from: renderer["longBylineText"])
             ?? "YouTube"
         let thumbnailURL = thumbnailURL(from: renderer["thumbnail"])
+        let publishedText = text(from: renderer["publishedTimeText"])
 
         return .youtube(
             id: id,
             title: title,
             channel: channel,
             duration: text(from: renderer["lengthText"]),
-            published: text(from: renderer["publishedTimeText"]),
+            published: publishedText,
+            publishedAt: publishedText.flatMap(approximatePublishDate),
             views: text(from: renderer["viewCountText"]),
             thumbnailURL: thumbnailURL,
             description: text(from: renderer["descriptionSnippet"]),
@@ -349,6 +355,34 @@ actor YouTubeService {
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .full
         return formatter.localizedString(for: date, relativeTo: Date())
+    }
+
+    /// Search results only say "3 days ago" (or "Streamed 3 days ago"). Turn
+    /// that into an approximate date so the label keeps advancing; opening the
+    /// video's detail screen replaces it with the exact publish date. Returns
+    /// nil for other phrasings, which then keep their text.
+    private static func approximatePublishDate(from text: String) -> Date? {
+        guard let regex = try? NSRegularExpression(
+                pattern: #"(\d+)\s+(second|minute|hour|day|week|month|year)s?\s+ago"#,
+                options: .caseInsensitive
+              ),
+              let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+              let valueRange = Range(match.range(at: 1), in: text),
+              let unitRange = Range(match.range(at: 2), in: text),
+              let value = Int(text[valueRange])
+        else { return nil }
+
+        let component: Calendar.Component
+        switch text[unitRange].lowercased() {
+        case "second": component = .second
+        case "minute": component = .minute
+        case "hour": component = .hour
+        case "day": component = .day
+        case "week": component = .weekOfYear
+        case "month": component = .month
+        default: component = .year
+        }
+        return Calendar.current.date(byAdding: component, value: -value, to: .now)
     }
 
     /// YouTube sends `publishDate` either as a full timestamp

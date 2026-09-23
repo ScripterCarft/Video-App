@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct VideoDetailView: View {
     let video: Video
@@ -307,53 +308,85 @@ private struct DescriptionPlaceholder: View {
     }
 }
 
+/// Two lines of description with MORE at the end of the second line. The
+/// shown text is cut at a word so that it ends before MORE; nothing overlaps.
 private struct DescriptionPreview: View {
     let text: String
     let onMore: () -> Void
 
-    @State private var limitedHeight: CGFloat = 0
-    @State private var fullHeight: CGFloat = 0
-
-    private var isTruncated: Bool {
-        limitedHeight > 0 && fullHeight > limitedHeight + 0.5
-    }
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @State private var width: CGFloat = 0
 
     var body: some View {
-        // Plain text and a plain button: masking a shadowed text and blurring it
-        // with a material behind the button produced smearing artifacts.
-        VStack(alignment: .trailing, spacing: 4) {
-            Text(text)
-                .font(.subheadline)
-                .foregroundStyle(.white.opacity(0.88))
-                .lineLimit(2)
-                .truncationMode(.tail)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(alignment: .topLeading) {
-                    // Measures the untruncated height to decide whether MORE is needed.
-                    Text(text)
-                        .font(.subheadline)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .hidden()
-                        .onGeometryChange(for: CGFloat.self) { proxy in
-                            proxy.size.height
-                        } action: { height in
-                            fullHeight = height
-                        }
-                }
-                .onGeometryChange(for: CGFloat.self) { proxy in
-                    proxy.size.height
-                } action: { height in
-                    limitedHeight = height
-                }
+        let preview = Self.preview(of: text, width: width, dynamicTypeSize: dynamicTypeSize)
 
-            if isTruncated {
-                Button("MORE", action: onMore)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.white)
-                    .buttonStyle(.plain)
+        Text(preview ?? text)
+            .font(.subheadline)
+            .foregroundStyle(.white.opacity(0.88))
+            .lineLimit(2)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .overlay(alignment: Alignment(horizontal: .trailing, vertical: .lastTextBaseline)) {
+                if preview != nil {
+                    Button("MORE", action: onMore)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .buttonStyle(.plain)
+                }
+            }
+            .shadow(color: .black.opacity(0.58), radius: 8, y: 2)
+            .onGeometryChange(for: CGFloat.self) { proxy in
+                proxy.size.width
+            } action: { newWidth in
+                width = newWidth
+            }
+    }
+
+    /// Returns nil when the whole text fits in two lines. Otherwise returns the
+    /// longest word prefix plus an ellipsis that still leaves room for MORE at
+    /// the end of the second line.
+    private static func preview(
+        of text: String,
+        width: CGFloat,
+        dynamicTypeSize: DynamicTypeSize
+    ) -> String? {
+        guard width > 0 else { return nil }
+
+        // Measure with the same Dynamic Type size SwiftUI renders with.
+        let traits = UITraitCollection(preferredContentSizeCategory: UIContentSizeCategory(dynamicTypeSize))
+        let bodyFont = UIFont.preferredFont(forTextStyle: .subheadline, compatibleWith: traits)
+        let moreFont = UIFont.systemFont(
+            ofSize: UIFont.preferredFont(forTextStyle: .caption1, compatibleWith: traits).pointSize,
+            weight: .semibold
+        )
+        let twoLineHeight = ceil(bodyFont.lineHeight * 2) + 1
+
+        func fits(_ candidate: String, reservingMore: Bool) -> Bool {
+            let string = NSMutableAttributedString(string: candidate, attributes: [.font: bodyFont])
+            if reservingMore {
+                string.append(NSAttributedString(string: "   MORE", attributes: [.font: moreFont]))
+            }
+            let height = string.boundingRect(
+                with: CGSize(width: width, height: .greatestFiniteMagnitude),
+                options: [.usesLineFragmentOrigin, .usesFontLeading],
+                context: nil
+            ).height
+            return ceil(height) <= twoLineHeight
+        }
+
+        guard !fits(text, reservingMore: false) else { return nil }
+
+        let words = text.split(separator: " ")
+        var low = 0
+        var high = words.count
+        while low < high {
+            let middle = (low + high + 1) / 2
+            if fits(words.prefix(middle).joined(separator: " ") + "…", reservingMore: true) {
+                low = middle
+            } else {
+                high = middle - 1
             }
         }
-        .shadow(color: .black.opacity(0.58), radius: 8, y: 2)
+        return words.prefix(low).joined(separator: " ") + "…"
     }
 }
 

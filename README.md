@@ -38,17 +38,15 @@ The service coalesces simultaneous requests for YouTube's web configuration into
 
 ## Playback status and handoff
 
-The current player is intentionally the last stable implementation: `NativePlayerView` embeds `AVPlayerViewController` in the existing SwiftUI full-screen presentation. PiP/background lifecycle safeguards, metadata handoff, audio playback, cellular HLS quality preference, and the embedded-player fallback remain in place.
+Native playback presents `AVPlayerViewController` modally from a small UIKit host inside the existing SwiftUI loading screen. AVKit owns the video controls and full-screen dismissal. The host handles Picture in Picture restoration and returns to the video detail screen after dismissal. There are no custom player gestures or controls. Metadata handoff, background audio, the cellular HLS quality preference, and the embedded YouTube fallback remain in place.
 
-The following work is deliberately **unfinished** and must be treated as a separate, device-tested player redesign:
+The following work still needs physical-device validation before the player presentation can be considered stable:
 
-- Presenting `AVPlayerViewController` directly to obtain the system's native fullscreen dismissal behavior
-- Native swipe-down dismissal where AVKit controls and background transition correctly with the video
-- Verifying PiP restoration, rotation, dismissal, AirPlay, and system controls across iPhone orientations
+- Native swipe-down dismissal, Picture in Picture restoration, rotation, AirPlay, and system controls across iPhone orientations
 - Any lock-screen `MPNowPlayingInfoCenter` bridge beyond AVFoundation's existing metadata
 - Any player information panel or additional transport-control customization
 
-Do not reintroduce a custom pan gesture, transform private AVKit subviews, or stack a second custom player overlay over Apple's controls. A future implementation should stay on public AVKit APIs and be validated on a physical device before replacing the stable presentation.
+Do not add a custom pan gesture, transform private AVKit subviews, or stack a second player overlay over Apple's controls. Keep player changes on public AVKit APIs and validate them on a physical device.
 
 Search-tab minimization and a bottom accessory are also deferred and are not part of this change.
 

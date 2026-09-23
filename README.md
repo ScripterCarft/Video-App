@@ -38,9 +38,9 @@ The service coalesces simultaneous requests for YouTube's web configuration into
 
 ## Playback status and handoff
 
-Native playback presents `AVPlayerViewController` modally from a transparent UIKit host attached to the video detail screen. The loading view is an in-place overlay and is removed before native presentation, so interactive dismissal reveals the video detail screen rather than a second black full-screen cover. AVKit owns the video controls and full-screen dismissal. The host handles Picture in Picture restoration and returns to the video detail screen after dismissal. There are no custom native player gestures or controls. Metadata handoff, background audio, the cellular HLS quality preference, and the embedded YouTube fallback remain in place.
+Native playback presents `AVPlayerViewController` modally from a transparent UIKit host attached to the video detail screen. The presentation uses `overFullScreen` so UIKit keeps that detail screen in its view hierarchy throughout an interactive dismissal. The app does not place a black loading screen behind AVKit. The Play button indicates source resolution before the player exists; AVKit handles loading and buffering once the stream reaches the player. The embedded YouTube fallback retains its own full-screen surface. AVKit owns the video controls and full-screen dismissal. The host handles Picture in Picture restoration and returns to the video detail screen after dismissal. There are no custom native player gestures or controls. Metadata handoff, background audio, and the cellular HLS quality preference remain in place.
 
-The host presents the native controller once and starts playback only after presentation completes. If SwiftUI restarts the loading task during an interactive transition, it reuses the existing player. A cancelled dismissal does not create another player; a completed dismissal closes the SwiftUI loading screen.
+The host presents the native controller once and starts playback only after presentation completes. If SwiftUI restarts the source-resolution task during an interactive transition, it reuses the existing player. A cancelled dismissal does not create another player; a completed dismissal releases the player host.
 
 The following work still needs physical-device validation before the player presentation can be considered stable:
 

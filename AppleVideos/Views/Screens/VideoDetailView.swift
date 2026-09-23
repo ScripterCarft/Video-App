@@ -320,19 +320,15 @@ private struct DescriptionPreview: View {
             ofSize: UIFont.preferredFont(forTextStyle: .caption1, compatibleWith: traits).pointSize,
             weight: .semibold
         )
-        let twoLineHeight = ceil(bodyFont.lineHeight * 2) + 1
+        // A small margin keeps TextKit's wrapping on the safe side of SwiftUI's.
+        let measuringWidth = max(0, width - 4)
 
         func fits(_ candidate: String, reservingMore: Bool) -> Bool {
             let string = NSMutableAttributedString(string: candidate, attributes: [.font: bodyFont])
             if reservingMore {
                 string.append(NSAttributedString(string: "   MORE", attributes: [.font: moreFont]))
             }
-            let height = string.boundingRect(
-                with: CGSize(width: width, height: .greatestFiniteMagnitude),
-                options: [.usesLineFragmentOrigin, .usesFontLeading],
-                context: nil
-            ).height
-            return ceil(height) <= twoLineHeight
+            return lineCount(of: string, width: measuringWidth) <= 2
         }
 
         guard !fits(text, reservingMore: false) else { return nil }
@@ -349,6 +345,27 @@ private struct DescriptionPreview: View {
             }
         }
         return words.prefix(low).joined(separator: " ") + "…"
+    }
+
+    /// Counts the lines TextKit produces for `string` at `width`. Counting lines
+    /// avoids comparing floating-point heights, which misjudged two lines as three.
+    private static func lineCount(of string: NSAttributedString, width: CGFloat) -> Int {
+        let storage = NSTextStorage(attributedString: string)
+        let container = NSTextContainer(size: CGSize(width: width, height: .greatestFiniteMagnitude))
+        container.lineFragmentPadding = 0
+        let layoutManager = NSLayoutManager()
+        layoutManager.addTextContainer(container)
+        storage.addLayoutManager(layoutManager)
+
+        var lines = 0
+        var glyphIndex = 0
+        while glyphIndex < layoutManager.numberOfGlyphs {
+            var lineRange = NSRange()
+            layoutManager.lineFragmentRect(forGlyphAt: glyphIndex, effectiveRange: &lineRange)
+            glyphIndex = NSMaxRange(lineRange)
+            lines += 1
+        }
+        return lines
     }
 }
 

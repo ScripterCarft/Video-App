@@ -121,3 +121,32 @@ enum PlaybackResolverError: LocalizedError, Sendable {
         }
     }
 }
+
+extension ResolvedPlaybackSource {
+    /// Badges for what the stream offers: the highest resolution, HDR and
+    /// captions (SDH when a caption track is marked as such).
+    var technicalBadges: [String] {
+        let labels = capabilities.allQualityLabels
+        var badges: [String] = []
+
+        let heights = labels.compactMap { Int($0.prefix(while: \.isNumber)) }
+        if let maxHeight = heights.max() {
+            switch maxHeight {
+            case 4320...: badges.append("8K")
+            case 2160...: badges.append("4K")
+            case 720...: badges.append("HD")
+            default: badges.append("SD")
+            }
+        }
+        if labels.contains(where: { $0.uppercased().contains("HDR") }) {
+            badges.append("HDR")
+        }
+        if !captions.isEmpty {
+            badges.append("CC")
+        }
+        if captions.contains(where: { $0.displayName.uppercased().contains("SDH") }) {
+            badges.append("SDH")
+        }
+        return badges
+    }
+}

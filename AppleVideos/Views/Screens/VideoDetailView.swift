@@ -15,6 +15,7 @@ struct VideoDetailView: View {
     @State private var detailsLoadFinished = false
     @State private var detailsVideoID: String?
     @State private var refreshedVideo: Video?
+    @State private var streamBadges: [String] = []
 
     init(video: Video, transition: Namespace.ID, transitionID: String) {
         self.video = video
@@ -85,8 +86,11 @@ struct VideoDetailView: View {
                 .presentationDragIndicator(.visible)
         }
         .task(id: video.id) {
-            // Resolve the stream while the user reads, so Play starts without waiting.
-            await NativePlayback.prefetch(video)
+            // Resolve the stream while the user reads, so Play starts without
+            // waiting. The resolved formats and captions also give the badges.
+            let badges = await NativePlayback.prefetch(video)?.technicalBadges ?? []
+            guard !Task.isCancelled, badges != streamBadges else { return }
+            streamBadges = badges
         }
         .task(id: video.id) {
             // The full-screen player removes this screen from the window, and an
@@ -141,7 +145,9 @@ struct VideoDetailView: View {
 
     private var visibleBadges: [String] {
         let original = video.badges ?? []
-        let verified = loadedBadges ?? []
+        // Technical badges come from the resolved stream; the details request
+        // (WEB client) is refused playback data and only supplies live status.
+        let verified = streamBadges + (loadedBadges ?? [])
         let resolutions = Set(["8K", "4K", "HD", "SD"])
         let resolution = verified.first(where: resolutions.contains)
             ?? original.first(where: resolutions.contains)

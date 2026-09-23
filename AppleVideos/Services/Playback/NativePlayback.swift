@@ -42,11 +42,12 @@ final class NativePlayback: NSObject {
 
     /// Resolves a video's stream ahead of time, for example when its detail
     /// screen opens, so Play can present the player without waiting. The
-    /// resolver caches the result briefly.
-    /// Skipped in Low Data Mode: prefetching is optional and Play resolves anyway.
-    static func prefetch(_ video: Video) async {
-        guard video.source == .youtube, !NetworkConditions.shared.isConstrained else { return }
-        _ = try? await YouTubeInnertubePlaybackResolver.shared.resolve(PlaybackRequest(videoID: video.id))
+    /// resolver caches the result briefly. Skipped in Low Data Mode, where
+    /// prefetching is optional and Play resolves anyway.
+    @discardableResult
+    static func prefetch(_ video: Video) async -> ResolvedPlaybackSource? {
+        guard video.source == .youtube, !NetworkConditions.shared.isConstrained else { return nil }
+        return try? await YouTubeInnertubePlaybackResolver.shared.resolve(PlaybackRequest(videoID: video.id))
     }
 
     /// Resolves and presents native playback. `onFinish` runs once, after the

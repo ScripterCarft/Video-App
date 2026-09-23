@@ -440,6 +440,10 @@ private final class PlayerPresentationHostViewController: UIViewController {
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        // DIAGNOSTIC (do not merge): color the layers behind AVKit so a
+        // screen recording shows which one produces the black edge.
+        view.window?.backgroundColor = .magenta
+        view.window?.rootViewController?.view.backgroundColor = .orange
         guard !hasStartedPresentation else { return }
         hasStartedPresentation = true
         presentPlayer(animated: true) {

@@ -101,7 +101,8 @@ final class NativePlayback: NSObject {
         player = AVPlayer(playerItem: item)
         super.init()
 
-        item.externalMetadata = playerMetadata(description: videoDescription)
+        // EXPERIMENT: no externalMetadata. The description gives AVKit an info
+        // panel reached by swiping up, which may compete with the swipe-down.
         player.allowsExternalPlayback = true
         playerController.player = player
         playerController.allowsPictureInPicturePlayback = true
@@ -120,9 +121,6 @@ final class NativePlayback: NSObject {
                 guard let self else { return }
                 await watchProgress.track(player)
             }
-        }
-        metadataTask = Task { [weak self] in
-            await self?.installSupplementalMetadata()
         }
         return true
     }

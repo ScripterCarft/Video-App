@@ -16,7 +16,6 @@ final class LibraryStore {
     private var playlistVideos: [String: Video]
     private(set) var recentlyWatched: [Video]
     private let defaults: UserDefaults
-    @ObservationIgnored private var hasRefreshedRecentlyWatched = false
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -71,13 +70,8 @@ final class LibraryStore {
         persist(recentlyWatched, key: Keys.recent)
     }
 
-    /// Refreshes Continue Watching once per launch. The caller is a `.task` on the
-    /// root view, which SwiftUI can re-run when the app hierarchy re-enters the
-    /// window, for example while a full-screen player is being swiped away.
+    /// Refreshes Continue Watching metadata. Called once at launch.
     func refreshRecentlyWatched() async {
-        guard !hasRefreshedRecentlyWatched else { return }
-        hasRefreshedRecentlyWatched = true
-
         let current = Array(recentlyWatched.prefix(8))
         guard !current.isEmpty else { return }
 

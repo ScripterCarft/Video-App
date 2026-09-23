@@ -3,7 +3,7 @@ import SwiftUI
 @main
 struct AppleVideosApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-    @State private var library = LibraryStore()
+    @State private var library: LibraryStore
 
     init() {
         // Artwork is requested with `returnCacheDataElseLoad`. The default shared
@@ -13,6 +13,14 @@ struct AppleVideosApp: App {
             diskCapacity: 256 * 1024 * 1024,
             directory: nil
         )
+
+        // The app is initialized once per launch, so Continue Watching is
+        // refreshed exactly once.
+        let library = LibraryStore()
+        _library = State(initialValue: library)
+        Task {
+            await library.refreshRecentlyWatched()
+        }
     }
 
     var body: some Scene {
@@ -20,9 +28,6 @@ struct AppleVideosApp: App {
             RootTabView()
                 .environment(library)
                 .tint(.red)
-                .task {
-                    await library.refreshRecentlyWatched()
-                }
         }
     }
 }

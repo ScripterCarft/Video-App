@@ -13,6 +13,7 @@ struct VideoDetailView: View {
     @State private var loadedDescription: String?
     @State private var loadedBadges: [String]?
     @State private var detailsLoadFinished = false
+    @State private var detailsVideoID: String?
 
     init(video: Video, transition: Namespace.ID, transitionID: String) {
         self.video = video
@@ -89,21 +90,28 @@ struct VideoDetailView: View {
                 .presentationDragIndicator(.visible)
         }
         .task(id: video.id) {
-            loadedDescription = nil
-            loadedBadges = nil
-            detailsLoadFinished = false
+            // The full-screen player removes this screen from the window, and an
+            // interactive swipe-down re-adds it, which re-runs this task. Only reset
+            // for a different video so state stays unchanged under AVKit's transition.
+            if detailsVideoID != video.id {
+                detailsVideoID = video.id
+                loadedDescription = nil
+                loadedBadges = nil
+                detailsLoadFinished = false
+            }
+            guard !detailsLoadFinished else { return }
 
             guard video.source == .youtube else {
                 detailsLoadFinished = true
                 return
             }
-            defer { detailsLoadFinished = true }
 
-            guard let details = try? await YouTubeService.shared.details(for: video.id) else {
-                return
-            }
-            loadedDescription = details.description
-            loadedBadges = details.badges.isEmpty ? nil : details.badges
+            let details = try? await YouTubeService.shared.details(for: video.id)
+            // A cancelled load is retried the next time the screen appears.
+            guard !Task.isCancelled else { return }
+            loadedDescription = details?.description
+            loadedBadges = details.flatMap { $0.badges.isEmpty ? nil : $0.badges }
+            detailsLoadFinished = true
         }
         .sensoryFeedback(.selection, trigger: feedback)
     }

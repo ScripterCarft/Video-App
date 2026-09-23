@@ -164,6 +164,7 @@ private struct FallbackThumbnailImage<Content: View, Placeholder: View>: View {
 
     @State private var loadedImage: UIImage?
     @State private var isLoading = true
+    @State private var loadedURLs: [URL]?
 
     var body: some View {
         Group {
@@ -174,11 +175,17 @@ private struct FallbackThumbnailImage<Content: View, Placeholder: View>: View {
             }
         }
         .task(id: urls) {
-            loadedImage = nil
-            isLoading = true
+            // This task re-runs whenever the view re-enters the window (for example
+            // when an interactive player dismissal re-adds the detail screen). Keep
+            // the result of a finished load for the same URLs.
+            guard loadedURLs != urls else { return }
+            // Only write state that actually changes; a cancelled load re-runs here.
+            if loadedImage != nil { loadedImage = nil }
+            if !isLoading { isLoading = true }
             let image = await ArtworkLoader.firstImage(from: urls, requiresSixteenByNine: requiresSixteenByNine)
             guard !Task.isCancelled else { return }
             loadedImage = image
+            loadedURLs = urls
             isLoading = false
         }
     }

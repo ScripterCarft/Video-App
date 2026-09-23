@@ -34,6 +34,7 @@ actor YouTubeService {
     }
 
     private var cachedConfiguration: WebConfiguration?
+    private var configurationTask: Task<WebConfiguration, Error>?
     private var cachedSearches: [String: [Video]] = [:]
     private var cachedDetails: [String: VideoDetails] = [:]
 
@@ -154,7 +155,23 @@ actor YouTubeService {
 
     private func webConfiguration() async throws -> WebConfiguration {
         if let cachedConfiguration { return cachedConfiguration }
+        if let configurationTask { return try await configurationTask.value }
 
+        let task = Task { try await Self.fetchWebConfiguration() }
+        configurationTask = task
+
+        do {
+            let configuration = try await task.value
+            cachedConfiguration = configuration
+            configurationTask = nil
+            return configuration
+        } catch {
+            configurationTask = nil
+            throw error
+        }
+    }
+
+    private static func fetchWebConfiguration() async throws -> WebConfiguration {
         var request = URLRequest(url: URL(string: "https://www.youtube.com")!)
         request.setValue(
             "Mozilla/5.0 (iPhone; CPU iPhone OS 27_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148",
@@ -164,15 +181,13 @@ actor YouTubeService {
         guard let http = response as? HTTPURLResponse,
               200..<300 ~= http.statusCode,
               let html = String(data: data, encoding: .utf8),
-              let apiKey = Self.capture(#"\"INNERTUBE_API_KEY\":\"([^\"]+)\""#, in: html),
-              let clientVersion = Self.capture(#"\"INNERTUBE_CLIENT_VERSION\":\"([^\"]+)\""#, in: html)
+              let apiKey = capture(#"\"INNERTUBE_API_KEY\":\"([^\"]+)\""#, in: html),
+              let clientVersion = capture(#"\"INNERTUBE_CLIENT_VERSION\":\"([^\"]+)\""#, in: html)
         else {
             throw SearchError.configurationUnavailable
         }
 
-        let configuration = WebConfiguration(apiKey: apiKey, clientVersion: clientVersion)
-        cachedConfiguration = configuration
-        return configuration
+        return WebConfiguration(apiKey: apiKey, clientVersion: clientVersion)
     }
 
     private static func capture(_ pattern: String, in text: String) -> String? {

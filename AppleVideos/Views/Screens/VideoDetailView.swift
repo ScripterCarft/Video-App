@@ -7,9 +7,7 @@ struct VideoDetailView: View {
     let transitionID: String
 
     @Environment(LibraryStore.self) private var library
-    @State private var isPreparingPlayback = false
-    @State private var playbackTask: Task<Void, Never>?
-    @State private var fallbackDiagnostic: String?
+    @State private var playback = PlaybackStarter()
     @State private var feedback = 0
     @State private var showDescription = false
     @State private var loadedDescription: String?
@@ -75,21 +73,7 @@ struct VideoDetailView: View {
             }
         }
         .navigationTransition(.zoom(sourceID: transitionID, in: transition))
-        .overlay {
-            if let fallbackDiagnostic {
-                EmbeddedPlayerScreen(video: video, diagnostic: fallbackDiagnostic) {
-                    self.fallbackDiagnostic = nil
-                }
-                .ignoresSafeArea()
-            }
-        }
-        .onDisappear {
-            // Leaving the screen while the source resolves cancels playback.
-            // (While AVKit is presented nothing is preparing, so this is a no-op.)
-            if isPreparingPlayback {
-                cancelPlayback()
-            }
-        }
+        .playbackPresentation(playback)
         .sheet(isPresented: $showDescription) {
             DescriptionSheet(video: video, description: visibleDescription)
                 .presentationDetents([.fraction(0.55), .fraction(0.8)])
@@ -127,34 +111,6 @@ struct VideoDetailView: View {
             .lazy
             .compactMap { $0?.collapsedWhitespace }
             .first
-    }
-
-    /// Resolves the video and hands it to AVKit. From then on AVKit owns the
-    /// player; this view only hears back once, after the player has closed.
-    private func startPlayback() {
-        isPreparingPlayback = true
-        let video = self.video
-        let library = self.library
-        let description = visibleDescription
-        playbackTask = Task {
-            let result = await NativePlayback.play(video, description: description) { reachedWatchThreshold in
-                if reachedWatchThreshold {
-                    library.markWatched(video)
-                }
-            }
-            guard !Task.isCancelled else { return }
-            isPreparingPlayback = false
-            playbackTask = nil
-            if case let .fallback(diagnostic) = result {
-                fallbackDiagnostic = diagnostic
-            }
-        }
-    }
-
-    private func cancelPlayback() {
-        playbackTask?.cancel()
-        playbackTask = nil
-        isPreparingPlayback = false
     }
 
     private var visibleBadges: [String] {
@@ -221,15 +177,15 @@ struct VideoDetailView: View {
                     Spacer(minLength: 0)
 
                     Button {
-                        if isPreparingPlayback {
-                            cancelPlayback()
+                        if playback.isPreparing {
+                            playback.cancel()
                         } else {
-                            startPlayback()
+                            playback.start(video, description: visibleDescription, library: library)
                             feedback += 1
                         }
                     } label: {
                         Group {
-                            if isPreparingPlayback {
+                            if playback.isPreparing {
                                 HStack(spacing: 8) {
                                     ProgressView()
                                         .tint(.black)

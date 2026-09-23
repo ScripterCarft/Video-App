@@ -42,3 +42,24 @@ struct EmbeddedPlayerScreen: View {
         library.markWatched(video)
     }
 }
+
+extension View {
+    /// Shows the embedded player when `starter` falls back, and cancels a start
+    /// that is still resolving when the screen goes away. While AVKit is
+    /// presented nothing is resolving, so presenting the player does not cancel it.
+    func playbackPresentation(_ starter: PlaybackStarter) -> some View {
+        overlay {
+            if let fallback = starter.fallback {
+                EmbeddedPlayerScreen(video: fallback.video, diagnostic: fallback.diagnostic) {
+                    starter.fallback = nil
+                }
+                .ignoresSafeArea()
+            }
+        }
+        .onDisappear {
+            if starter.isPreparing {
+                starter.cancel()
+            }
+        }
+    }
+}

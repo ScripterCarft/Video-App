@@ -3,6 +3,7 @@ import SwiftUI
 struct HomeView: View {
     @Namespace private var transition
     @Environment(LibraryStore.self) private var library
+    @State private var playback = PlaybackStarter()
 
     private let featured = Video.curated[0]
     private let picks = Array(Video.curated.dropFirst())
@@ -13,6 +14,22 @@ struct HomeView: View {
                 LazyVStack(alignment: .leading, spacing: 30) {
                     VideoLink(video: featured, section: "featured", transition: transition) {
                         featuredHero
+                    }
+                    // Play sits above the link so that it starts playback while the
+                    // rest of the hero opens the detail screen.
+                    .overlay(alignment: .bottomLeading) {
+                        Button {
+                            if playback.isPreparing {
+                                playback.cancel()
+                            } else {
+                                playback.start(featured, description: featured.descriptionText, library: library)
+                            }
+                        } label: {
+                            featuredPlayLabel
+                        }
+                        .buttonStyle(.plain)
+                        .padding(22)
+                        .padding(.horizontal, 16)
                     }
 
                     if !library.recentlyWatched.isEmpty {
@@ -38,7 +55,27 @@ struct HomeView: View {
             .background(Color(uiColor: .systemBackground))
             .navigationTitle("Home")
             .videoDestination(transition: transition)
+            .playbackPresentation(playback)
         }
+    }
+
+    private var featuredPlayLabel: some View {
+        Group {
+            if playback.isPreparing {
+                HStack(spacing: 6) {
+                    ProgressView()
+                        .tint(.black)
+                    Text("Cancel")
+                }
+            } else {
+                Label("Play", systemImage: "play.fill")
+            }
+        }
+        .font(.subheadline.weight(.semibold))
+        .foregroundStyle(.black)
+        .padding(.horizontal, 15)
+        .padding(.vertical, 9)
+        .background(.white, in: Capsule())
     }
 
     private var featuredHero: some View {
@@ -62,12 +99,10 @@ struct HomeView: View {
                     .foregroundStyle(.white)
                     .lineLimit(2)
                 HStack(alignment: .center) {
-                    Label("Play", systemImage: "play.fill")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.black)
-                        .padding(.horizontal, 15)
-                        .padding(.vertical, 9)
-                        .background(.white, in: Capsule())
+                    // Reserves the Play button's space; the button itself is an
+                    // overlay outside the navigation link.
+                    featuredPlayLabel
+                        .hidden()
 
                     Spacer()
 

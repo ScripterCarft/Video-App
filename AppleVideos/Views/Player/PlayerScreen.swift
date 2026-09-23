@@ -14,6 +14,7 @@ struct PlayerScreen: View {
     @State private var didMarkWatched = false
     @State private var diagnosticMessage: String?
     @State private var isPictureInPictureActive = false
+    @State private var watchProgress = WatchProgress()
 
     var body: some View {
         ZStack {
@@ -58,31 +59,10 @@ struct PlayerScreen: View {
             await preparePlayback()
         }
         .task(id: nativePlayer != nil) {
-            guard let player = nativePlayer else { return }
-            var previousTime: Double?
-            var watchedSeconds = 0.0
-
-            while !Task.isCancelled && !didMarkWatched {
-                do {
-                    try await Task.sleep(for: .seconds(1))
-                } catch {
-                    return
-                }
-                let currentTime = player.currentTime().seconds
-                if player.timeControlStatus == .playing,
-                   let previousTime,
-                   currentTime.isFinite {
-                    let elapsed = currentTime - previousTime
-                    // Ignore seeks and stalls; only advancing playback counts.
-                    if elapsed > 0 && elapsed < 2.5 {
-                        watchedSeconds += min(elapsed, 1.5)
-                    }
-                }
-                previousTime = currentTime.isFinite ? currentTime : nil
-                if watchedSeconds >= 10 {
-                    markWatchedOnce()
-                }
-            }
+            guard let nativePlayer else { return }
+            // Counts into a plain reference type, so no SwiftUI state changes while
+            // AVKit is on screen. The video is recorded when the player closes.
+            await watchProgress.track(nativePlayer)
         }
         #if DEBUG
         .alert(
@@ -108,6 +88,9 @@ struct PlayerScreen: View {
             Task { await YouTubeInnertubePlaybackResolver.shared.invalidate(videoID: videoID) }
         }
         nativePlayer?.pause()
+        if watchProgress.reachedThreshold {
+            markWatchedOnce()
+        }
         onDismiss()
     }
 
@@ -481,3 +464,35 @@ private final class PlayerPresentationHostViewController: UIViewController {
     }
 }
 
+
+/// Counts how long native playback actually advanced. A plain reference type:
+/// updating it never invalidates SwiftUI views while AVKit is presented.
+@MainActor
+private final class WatchProgress {
+    private static let threshold: Double = 10
+    private var watchedSeconds = 0.0
+
+    var reachedThreshold: Bool { watchedSeconds >= Self.threshold }
+
+    func track(_ player: AVPlayer) async {
+        var previousTime: Double?
+        while !Task.isCancelled && !reachedThreshold {
+            do {
+                try await Task.sleep(for: .seconds(1))
+            } catch {
+                return
+            }
+            let currentTime = player.currentTime().seconds
+            if player.timeControlStatus == .playing,
+               let previousTime,
+               currentTime.isFinite {
+                let elapsed = currentTime - previousTime
+                // Ignore seeks and stalls; only advancing playback counts.
+                if elapsed > 0 && elapsed < 2.5 {
+                    watchedSeconds += min(elapsed, 1.5)
+                }
+            }
+            previousTime = currentTime.isFinite ? currentTime : nil
+        }
+    }
+}

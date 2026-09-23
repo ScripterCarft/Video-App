@@ -43,8 +43,9 @@ final class NativePlayback: NSObject {
     /// Resolves a video's stream ahead of time, for example when its detail
     /// screen opens, so Play can present the player without waiting. The
     /// resolver caches the result briefly.
+    /// Skipped in Low Data Mode: prefetching is optional and Play resolves anyway.
     static func prefetch(_ video: Video) async {
-        guard video.source == .youtube else { return }
+        guard video.source == .youtube, !NetworkConditions.shared.isConstrained else { return }
         _ = try? await YouTubeInnertubePlaybackResolver.shared.resolve(PlaybackRequest(videoID: video.id))
     }
 
@@ -77,10 +78,13 @@ final class NativePlayback: NSObject {
                 // reported through the item's status after presentation.
                 item = AVPlayerItem(url: variant.url)
                 if variant.transport == .hls {
-                    item.preferredMaximumResolutionForExpensiveNetworks = CGSize(
-                        width: 1_280,
-                        height: 720
-                    )
+                    let cap = CGSize(width: 1_280, height: 720)
+                    item.preferredMaximumResolutionForExpensiveNetworks = cap
+                    // Low Data Mode asks apps to reduce streaming quality on any
+                    // network, not only on cellular.
+                    if NetworkConditions.shared.isConstrained {
+                        item.preferredMaximumResolution = cap
+                    }
                 }
             } catch {
                 // URLSession reports cancellation as URLError.cancelled.
@@ -224,9 +228,11 @@ final class NativePlayback: NSObject {
     }
 
     private func loadArtworkData() async -> Data? {
+        // 1280 pixels wide gives the 720×720 square artwork its full height.
         guard let image = await ArtworkLoader.firstImage(
-            from: video.artworkURLs(for: .hero),
-            requiresSixteenByNine: video.source == .youtube
+            from: video.artworkCandidates(for: .hero, lowData: NetworkConditions.shared.isConstrained),
+            requiresSixteenByNine: video.source == .youtube,
+            maxPixelWidth: 1280
         ) else {
             return nil
         }

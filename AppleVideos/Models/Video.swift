@@ -4,6 +4,22 @@ enum ArtworkQuality: Sendable {
     case compact
     case search
     case hero
+
+    /// The widest the artwork is drawn, in points. Images are downsampled to
+    /// this width times the display scale.
+    var displayWidth: CGFloat {
+        switch self {
+        case .compact: 272
+        case .search, .hero: 440
+        }
+    }
+}
+
+/// One artwork URL to try. Large variants are optional downloads: they are
+/// skipped in Low Data Mode and requested without constrained-network access.
+struct ArtworkCandidate: Hashable, Sendable {
+    let url: URL
+    let isLarge: Bool
 }
 
 struct Video: Identifiable, Hashable, Codable, Sendable {
@@ -35,24 +51,39 @@ struct Video: Identifiable, Hashable, Codable, Sendable {
         return URL(string: "https://www.youtube.com/watch?v=\(id)")
     }
 
-    func artworkURLs(for quality: ArtworkQuality) -> [URL] {
-        guard source == .youtube else { return [thumbnailURL].compactMap { $0 } }
+    /// Artwork URLs to try in order, sharpest useful first.
+    ///
+    /// YouTube's 16:9 sizes are 320×180 (`mqdefault`), up to 720 wide (the
+    /// search result's own thumbnail) and 1280×720 (`hq720`, `maxresdefault`,
+    /// not available for every video). Cards and search rows are drawn up to
+    /// ~1300 pixels wide, so the small 320 version looks soft; it is only the
+    /// last resort. In Low Data Mode the 1280 variants are left out.
+    func artworkCandidates(for quality: ArtworkQuality, lowData: Bool) -> [ArtworkCandidate] {
+        guard source == .youtube else {
+            return [thumbnailURL].compactMap { $0 }.map { ArtworkCandidate(url: $0, isLarge: false) }
+        }
 
-        let medium = URL(string: "https://i.ytimg.com/vi/\(id)/mqdefault.jpg")
-        let maximum = URL(string: "https://i.ytimg.com/vi/\(id)/maxresdefault.jpg")
+        func image(_ name: String) -> URL? {
+            URL(string: "https://i.ytimg.com/vi/\(id)/\(name).jpg")
+        }
+        let small = image("mqdefault").map { ArtworkCandidate(url: $0, isLarge: false) }
+        let listed = thumbnailURL.map { ArtworkCandidate(url: $0, isLarge: false) }
+        let hq720 = image("hq720").map { ArtworkCandidate(url: $0, isLarge: true) }
+        let maximum = image("maxresdefault").map { ArtworkCandidate(url: $0, isLarge: true) }
 
-        let candidates: [URL?]
+        let candidates: [ArtworkCandidate?]
         switch quality {
-        case .compact:
-            candidates = [medium, thumbnailURL]
-        case .search:
-            candidates = [thumbnailURL, medium]
+        case .compact, .search:
+            candidates = [listed, hq720, small]
         case .hero:
-            candidates = [maximum, thumbnailURL, medium]
+            candidates = [maximum, hq720, listed, small]
         }
 
         var seen = Set<URL>()
-        return candidates.compactMap { $0 }.filter { seen.insert($0).inserted }
+        return candidates
+            .compactMap { $0 }
+            .filter { !(lowData && $0.isLarge) }
+            .filter { seen.insert($0.url).inserted }
     }
 
     /// "3 days ago" computed now from `publishedAt`, else the stored label.

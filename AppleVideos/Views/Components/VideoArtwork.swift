@@ -7,10 +7,13 @@ struct VideoArtwork: View {
     var showsDuration = true
     var quality: ArtworkQuality = .search
 
+    @Environment(\.displayScale) private var displayScale
+
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
             FallbackThumbnailImage(
-                urls: video.artworkURLs(for: quality),
+                candidates: video.artworkCandidates(for: quality, lowData: NetworkConditions.shared.isConstrained),
+                maxPixelWidth: quality.displayWidth * displayScale,
                 requiresSixteenByNine: video.source == .youtube
             ) { image in
                 image
@@ -51,9 +54,12 @@ struct VideoHeroArtwork: View {
     var cornerRadius: CGFloat = 0
     var stageAspectRatio: CGFloat = 4.0 / 5.0
 
+    @Environment(\.displayScale) private var displayScale
+
     var body: some View {
         FallbackThumbnailImage(
-            urls: video.artworkURLs(for: .hero),
+            candidates: video.artworkCandidates(for: .hero, lowData: NetworkConditions.shared.isConstrained),
+            maxPixelWidth: ArtworkQuality.hero.displayWidth * displayScale,
             requiresSixteenByNine: video.source == .youtube
         ) { image in
             GeometryReader { proxy in
@@ -138,29 +144,37 @@ private struct ArtworkPlaceholder: View {
 
 /// Shows a static placeholder until the first usable candidate image loads.
 private struct FallbackThumbnailImage<Content: View, Placeholder: View>: View {
-    let urls: [URL]
+    /// What to load: the candidates and the width to downsample to.
+    private struct Request: Hashable {
+        let candidates: [ArtworkCandidate]
+        let maxPixelWidth: CGFloat
+    }
+
+    private let request: Request
     let requiresSixteenByNine: Bool
     let content: (Image) -> Content
     let placeholder: () -> Placeholder
 
     @State private var loadedImage: UIImage?
-    @State private var loadedURLs: [URL]?
+    @State private var loadedRequest: Request?
 
     init(
-        urls: [URL],
+        candidates: [ArtworkCandidate],
+        maxPixelWidth: CGFloat,
         requiresSixteenByNine: Bool,
         content: @escaping (Image) -> Content,
         placeholder: @escaping () -> Placeholder
     ) {
-        self.urls = urls
+        let request = Request(candidates: candidates, maxPixelWidth: maxPixelWidth)
+        self.request = request
         self.requiresSixteenByNine = requiresSixteenByNine
         self.content = content
         self.placeholder = placeholder
         // Start with an already prepared image so cached artwork appears in the
         // first frame instead of after a placeholder.
-        let cached = ArtworkLoader.cachedImage(for: urls)
+        let cached = ArtworkLoader.cachedImage(for: candidates, maxPixelWidth: maxPixelWidth)
         _loadedImage = State(initialValue: cached)
-        _loadedURLs = State(initialValue: cached == nil ? nil : urls)
+        _loadedRequest = State(initialValue: cached == nil ? nil : request)
     }
 
     var body: some View {
@@ -171,16 +185,20 @@ private struct FallbackThumbnailImage<Content: View, Placeholder: View>: View {
                 placeholder()
             }
         }
-        .task(id: urls) {
+        .task(id: request) {
             // The task re-runs whenever the view re-enters the window (for example
             // under a full-screen player's interactive dismissal). Keep a finished
-            // load for the same URLs instead of loading again.
-            guard loadedURLs != urls else { return }
+            // load for the same request instead of loading again.
+            guard loadedRequest != request else { return }
             if loadedImage != nil { loadedImage = nil }
-            let image = await ArtworkLoader.firstImage(from: urls, requiresSixteenByNine: requiresSixteenByNine)
+            let image = await ArtworkLoader.firstImage(
+                from: request.candidates,
+                requiresSixteenByNine: requiresSixteenByNine,
+                maxPixelWidth: request.maxPixelWidth
+            )
             guard !Task.isCancelled else { return }
             loadedImage = image
-            loadedURLs = urls
+            loadedRequest = request
         }
     }
 }

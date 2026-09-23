@@ -53,11 +53,13 @@ struct VideoCard: View {
                 )
             }
 
-            Menu("Add to Playlist", systemImage: "text.badge.plus") {
-                ForEach(library.playlists) { playlist in
-                    Button(playlist.name) {
-                        library.add(video, to: playlist.id)
-                        feedback += 1
+            if !library.playlists.isEmpty {
+                Menu("Add to Playlist", systemImage: "text.badge.plus") {
+                    ForEach(library.playlists) { playlist in
+                        Button(playlist.name) {
+                            library.add(video, to: playlist.id)
+                            feedback += 1
+                        }
                     }
                 }
             }

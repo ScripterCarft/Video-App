@@ -38,7 +38,7 @@ The service coalesces simultaneous requests for YouTube's web configuration into
 
 ## Playback status and handoff
 
-Native playback presents `AVPlayerViewController` modally from a small UIKit host inside the existing SwiftUI loading screen. AVKit owns the video controls and full-screen dismissal. The host handles Picture in Picture restoration and returns to the video detail screen after dismissal. There are no custom player gestures or controls. Metadata handoff, background audio, the cellular HLS quality preference, and the embedded YouTube fallback remain in place.
+Native playback presents `AVPlayerViewController` modally from a transparent UIKit host attached to the video detail screen. The loading view is an in-place overlay and is removed before native presentation, so interactive dismissal reveals the video detail screen rather than a second black full-screen cover. AVKit owns the video controls and full-screen dismissal. The host handles Picture in Picture restoration and returns to the video detail screen after dismissal. There are no custom native player gestures or controls. Metadata handoff, background audio, the cellular HLS quality preference, and the embedded YouTube fallback remain in place.
 
 The host presents the native controller once and starts playback only after presentation completes. If SwiftUI restarts the loading task during an interactive transition, it reuses the existing player. A cancelled dismissal does not create another player; a completed dismissal closes the SwiftUI loading screen.
 

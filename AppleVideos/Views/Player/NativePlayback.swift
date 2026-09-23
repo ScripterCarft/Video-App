@@ -29,8 +29,6 @@ final class NativePlayback: NSObject {
     private var metadataTask: Task<Void, Never>?
     private var isPictureInPictureActive = false
     private var isFinished = false
-    private var playerWindow: UIWindow?
-    private weak var previousKeyWindow: UIWindow?
 
     /// Resolves and presents native playback. `onFinish` runs once, after the
     /// player has been dismissed (or Picture in Picture has been closed).
@@ -111,11 +109,11 @@ final class NativePlayback: NSObject {
     }
 
     private func present() -> Bool {
-        guard let scene = Self.activeWindowScene() else { return false }
+        guard let presenter = Self.topViewController() else { return false }
 
         Self.current = self
         configurePlaybackAudio()
-        showPlayerWindow(in: scene) { [weak self] in
+        presenter.present(playerController, animated: true) { [weak self] in
             guard let self else { return }
             player.play()
             watchTask = Task { [weak self] in
@@ -127,40 +125,6 @@ final class NativePlayback: NSObject {
             await self?.installSupplementalMetadata()
         }
         return true
-    }
-
-    // MARK: - Player window
-
-    /// Presents the player in a separate window whose only content is an empty,
-    /// transparent UIKit view controller. The app's own window, with its SwiftUI
-    /// hierarchy, is never removed, re-added or updated by the presentation or
-    /// by AVKit's interactive dismissal; it only shows through underneath.
-    private func showPlayerWindow(in scene: UIWindowScene, onPresented: @escaping () -> Void) {
-        let root = PlayerWindowRootViewController()
-        root.onFirstAppearance = { [weak self, weak root] in
-            guard let self, let root else { return }
-            root.present(playerController, animated: true, completion: onPresented)
-        }
-
-        previousKeyWindow = scene.windows.first(where: \.isKeyWindow)
-        let window = PassthroughWindow(windowScene: scene)
-        window.backgroundColor = .clear
-        window.rootViewController = root
-        playerWindow = window
-        window.makeKeyAndVisible()
-    }
-
-    private func hidePlayerWindow() {
-        guard let playerWindow else { return }
-        playerWindow.isHidden = true
-        self.playerWindow = nil
-        previousKeyWindow?.makeKey()
-        previousKeyWindow = nil
-    }
-
-    private static func activeWindowScene() -> UIWindowScene? {
-        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
-        return scenes.first { $0.activationState == .foregroundActive } ?? scenes.first
     }
 
     /// Ends this playback exactly once and reports whether it counts as watched.
@@ -177,14 +141,25 @@ final class NativePlayback: NSObject {
             Task { await YouTubeInnertubePlaybackResolver.shared.invalidate(videoID: videoID) }
         }
         player.pause()
-        if playerController.presentingViewController != nil {
-            playerController.dismiss(animated: false)
-        }
-        hidePlayerWindow()
         onFinish(watchProgress.reachedThreshold)
         if Self.current === self {
             Self.current = nil
         }
+    }
+
+    private static func topViewController() -> UIViewController? {
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        let window = scenes
+            .filter { $0.activationState == .foregroundActive }
+            .flatMap(\.windows)
+            .first(where: \.isKeyWindow)
+            ?? scenes.flatMap(\.windows).first(where: \.isKeyWindow)
+
+        var top = window?.rootViewController
+        while let presented = top?.presentedViewController, !presented.isBeingDismissed {
+            top = presented
+        }
+        return top
     }
 
     private func configurePlaybackAudio() {
@@ -318,13 +293,8 @@ extension NativePlayback: @preconcurrency AVPlayerViewControllerDelegate {
         willEndFullScreenPresentationWithAnimationCoordinator coordinator: UIViewControllerTransitionCoordinator
     ) {
         coordinator.animate(alongsideTransition: nil) { [weak self] context in
-            guard let self, !context.isCancelled else { return }
-            if isPictureInPictureActive {
-                // Playback continues in PiP; only the empty window goes away.
-                hidePlayerWindow()
-            } else {
-                finish()
-            }
+            guard let self, !context.isCancelled, !isPictureInPictureActive else { return }
+            finish()
         }
     }
 
@@ -332,14 +302,6 @@ extension NativePlayback: @preconcurrency AVPlayerViewControllerDelegate {
         _ playerViewController: AVPlayerViewController
     ) {
         isPictureInPictureActive = true
-    }
-
-    func playerViewControllerDidStartPictureInPicture(
-        _ playerViewController: AVPlayerViewController
-    ) {
-        if playerViewController.presentingViewController == nil {
-            hidePlayerWindow()
-        }
     }
 
     func playerViewControllerDidStopPictureInPicture(
@@ -367,42 +329,13 @@ extension NativePlayback: @preconcurrency AVPlayerViewControllerDelegate {
             completionHandler(true)
             return
         }
-        guard !isFinished, let scene = Self.activeWindowScene() else {
+        guard !isFinished, let presenter = Self.topViewController() else {
             completionHandler(false)
             return
         }
-        showPlayerWindow(in: scene) {
+        presenter.present(playerViewController, animated: true) {
             completionHandler(true)
         }
-    }
-}
-
-// MARK: - Player window types
-
-/// A window that only receives touches for the player it presents; touches on
-/// its empty, transparent root fall through to the app window underneath.
-private final class PassthroughWindow: UIWindow {
-    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
-        let view = super.hitTest(point, with: event)
-        return view === self || view === rootViewController?.view ? nil : view
-    }
-}
-
-/// Empty, transparent root of the player window. It presents the player once
-/// it is on screen and does nothing else.
-private final class PlayerWindowRootViewController: UIViewController {
-    var onFirstAppearance: (() -> Void)?
-
-    override func viewDidLoad() {
-        super.viewDidLoad()
-        view.backgroundColor = .clear
-    }
-
-    override func viewDidAppear(_ animated: Bool) {
-        super.viewDidAppear(animated)
-        let action = onFirstAppearance
-        onFirstAppearance = nil
-        action?()
     }
 }
 

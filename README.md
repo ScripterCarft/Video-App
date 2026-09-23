@@ -47,7 +47,6 @@ Every tab owns one `NavigationStack` and registers the video detail destination 
 - Refresh preserves the original order. If one request fails or omits a field, the stored value for that video is retained.
 - The normalized, refreshed list is written back to local storage.
 
-
 ## Playback
 
 Playback follows Apple's AVKit guidance:

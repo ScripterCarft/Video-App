@@ -19,7 +19,7 @@ final class NativePlayback: NSObject {
     private static var current: NativePlayback?
 
     private let video: Video
-    private let description: String?
+    private let videoDescription: String?
     private let item: AVPlayerItem
     private let player: AVPlayer
     private let playerController = AVPlayerViewController()
@@ -95,13 +95,13 @@ final class NativePlayback: NSObject {
         onFinish: @escaping @MainActor (Bool) -> Void
     ) {
         self.video = video
-        self.description = description?.collapsedWhitespace
+        videoDescription = description?.collapsedWhitespace
         self.item = item
         self.onFinish = onFinish
         player = AVPlayer(playerItem: item)
         super.init()
 
-        item.externalMetadata = playerMetadata(description: self.description)
+        item.externalMetadata = playerMetadata(description: videoDescription)
         player.allowsExternalPlayback = true
         playerController.player = player
         playerController.allowsPictureInPicturePlayback = true
@@ -189,8 +189,8 @@ final class NativePlayback: NSObject {
     }
 
     private func resolvedPlayerDescription() async -> String? {
-        if let description {
-            return description
+        if let videoDescription {
+            return videoDescription
         }
         guard video.source == .youtube,
               let details = try? await YouTubeService.shared.details(for: video.id)

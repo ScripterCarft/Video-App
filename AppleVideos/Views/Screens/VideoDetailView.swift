@@ -126,10 +126,11 @@ struct VideoDetailView: View {
     /// player; this view only hears back once, after the player has closed.
     private func startPlayback() {
         isPreparingPlayback = true
-        let video = video
-        let library = library
+        let video = self.video
+        let library = self.library
+        let description = visibleDescription
         playbackTask = Task {
-            let result = await NativePlayback.play(video, description: visibleDescription) { reachedWatchThreshold in
+            let result = await NativePlayback.play(video, description: description) { reachedWatchThreshold in
                 if reachedWatchThreshold {
                     library.markWatched(video)
                 }

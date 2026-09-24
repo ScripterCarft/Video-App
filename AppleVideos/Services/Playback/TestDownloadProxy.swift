@@ -22,6 +22,8 @@ final class TestDownloadProxy {
             log = []
             counts = [:]
             failures = []
+            retryLog = []
+            startDate = .now
             guard let listener = try? NWListener(using: .tcp, on: Self.port) else { return nil }
             listener.newConnectionHandler = { connection in
                 connection.start(queue: .main)
@@ -41,11 +43,14 @@ final class TestDownloadProxy {
     /// The first lines of the log plus a count per status and request kind.
     var summary: String {
         let totals = counts.sorted { $0.key < $1.key }.map { "\($0.key): \($0.value)" }
-        return (["Refused requests (first 6):"] + failures.prefix(6) + ["Totals:"] + totals)
+        return (["Retried after 401 (first 8):"] + retryLog.prefix(8)
+            + ["Still refused (first 3):"] + failures.prefix(3) + ["Totals:"] + totals)
             .joined(separator: "\n")
     }
 
     private var failures: [String] = []
+    private var retryLog: [String] = []
+    private var startDate = Date.now
 
     // MARK: URLs
 
@@ -87,7 +92,22 @@ final class TestDownloadProxy {
 
     /// Points every absolute URL in a playlist at the proxy.
     nonisolated private static func rewritePlaylist(_ text: String) -> String {
-        text.components(separatedBy: "\n").map { line in
+        // Drop VP9 variants (and the URL line after each), which AVFoundation
+        // cannot play but a download would otherwise pick.
+        var lines: [String] = []
+        var skipNext = false
+        for line in text.components(separatedBy: "\n") {
+            if skipNext {
+                skipNext = false
+                continue
+            }
+            if line.hasPrefix("#EXT-X-STREAM-INF"), line.contains("vp09") {
+                skipNext = true
+                continue
+            }
+            lines.append(line)
+        }
+        return lines.map { line in
             if line.hasPrefix("https://") || line.hasPrefix("http://") {
                 return URL(string: line.trimmingCharacters(in: .whitespacesAndNewlines))
                     .flatMap(proxied)?.absoluteString ?? line
@@ -148,11 +168,28 @@ final class TestDownloadProxy {
 
         let kind = Self.kind(of: url)
         do {
-            let (data, response) = try await URLSession.shared.data(for: request)
+            let firstTry = Date.now
+            var (data, response) = try await URLSession.shared.data(for: request)
+            // On 401, wait and try again for up to 60 s, to learn whether YouTube
+            // limits how far ahead media may be fetched and releases it later.
+            var retries = 0
+            while (response as? HTTPURLResponse)?.statusCode == 401, retries < 30 {
+                retries += 1
+                try await Task.sleep(for: .seconds(2))
+                (data, response) = try await URLSession.shared.data(for: request)
+            }
             let http = response as? HTTPURLResponse
             let status = http?.statusCode ?? 502
             let itag = Self.pathValue("itag", in: url) ?? "-"
             record("\(status) \(kind) itag \(itag)")
+            if retries > 0 {
+                let elapsed = Int(Date.now.timeIntervalSince(firstTry))
+                let sinceStart = Int(firstTry.timeIntervalSince(startDate))
+                retryLog.append(
+                    "itag \(itag) gosq \(Self.pathValue("gosq", in: url) ?? "-"): first 401 at \(sinceStart) s,"
+                        + " \(status == 401 ? "still 401" : "\(status)") after \(retries) retries / \(elapsed) s"
+                )
+            }
             if status >= 400 {
                 let finalHost = http?.url?.host ?? "?"
                 let redirected = finalHost != url.host ? " · redirected to \(finalHost)" : ""

@@ -42,6 +42,8 @@ struct VideoCard: View {
         .clipped()
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .contentShape(Rectangle())
+        // Rounded highlight when the card lifts for its context menu.
+        .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: 14, style: .continuous))
         .contextMenu {
             Button {
                 library.toggleSaved(video)

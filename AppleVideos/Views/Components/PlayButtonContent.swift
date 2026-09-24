@@ -48,7 +48,7 @@ private struct CapsuleProgressStyle: ProgressViewStyle {
                         .frame(width: proxy.size.width * fraction)
                 }
             }
-            .frame(height: 4)
+            .frame(height: 8)
             .clipShape(Capsule())
     }
 }

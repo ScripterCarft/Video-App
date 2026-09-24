@@ -129,13 +129,18 @@ struct HomeView: View {
                         VideoLink(video: video, section: sectionID, transition: transition) {
                             VideoCard(video: video, compact: true)
                                 .frame(width: 272, alignment: .top)
-                                .clipped()
                         }
                         .frame(width: 272)
                     }
                 }
+                .scrollTargetLayout()
             }
             .contentMargins(.horizontal, 16, for: .scrollContent)
+            // Shelves snap to cards like the App Store and TV app.
+            .scrollTargetBehavior(.viewAligned)
+            // Scroll views clip their content by default, which cut off a card
+            // lifted for its context menu at the edge of the row.
+            .scrollClipDisabled()
             .scrollIndicators(.hidden)
         }
     }

@@ -33,6 +33,9 @@ targets:
         UILaunchScreen: {}
         UIBackgroundModes:
           - audio
+        # TEST (do not merge): lets the header capture use http://127.0.0.1.
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
           - UIInterfaceOrientationLandscapeLeft

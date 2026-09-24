@@ -73,6 +73,13 @@ final class TestDownloads: NSObject {
         }
     }
 
+    /// Records the request headers of AVPlayer and of the download service.
+    func captureHeaders() {
+        Task {
+            report = await TestHeaderCapture.shared.capture(downloadSession: session)
+        }
+    }
+
     private func finishIPCheck(trace: String?, error: String?) {
         var lines = ipCheckLines
         if let error {

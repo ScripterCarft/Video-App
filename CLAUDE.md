@@ -104,6 +104,15 @@ accepted player-dismissal bug.
   on `readyToPlay` and starts playback only after the seek. The Play button
   shows the play symbol, a capsule `ProgressView` (8 pt) and the remaining
   time ("40m", "1m" under a minute).
+- Library lists (user's decision): History stores the last 50 played
+  videos with all shown metadata including the description (like Podcasts
+  keeps episode data; only the video itself is not stored). Continue
+  Watching is a filter on History (resumable progress, max 8, Home only);
+  finishing a video or "Remove from Continue Watching" clears its progress.
+  Watch Later is a system list (fixed ID, not deletable) that drops a video
+  once finished, not when started. Launch refreshes only Continue Watching;
+  History, Saved and playlists refresh when opened, once per video per
+  launch, keeping stored data on screen until fresh data replaces it.
 - Detail screen: shows refreshed metadata, prefers the full description,
   MORE sits on the description's second line (TextKit line counting), does
   not bounce when content fits, white tint; its tasks keep finished state

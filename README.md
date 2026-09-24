@@ -35,13 +35,14 @@ The YouTube and Innertube representations stay inside the service and resolver l
 
 Every tab owns one `NavigationStack` and registers the video detail destination once with `videoDestination(transition:)` on its root. Links use `VideoLink`, which scopes the zoom-transition ID to the section a video was tapped in. Do not add further `navigationDestination(for:)` declarations for videos inside pushed screens.
 
-## Continue Watching
+## History and Continue Watching
 
-`LibraryStore` owns Continue Watching and persists it under `apple-videos.recent`.
+`LibraryStore` owns History and persists it under `apple-videos.recent`. Continue Watching is a filter on History.
 
-- A video is added when its player closes after at least ten seconds of actual playback.
-- The list is deduplicated and limited to the eight most recent videos when it is loaded and whenever a video is marked as watched.
-- The app refreshes the saved entries once per launch, from `AppleVideosApp.init`, concurrently through `YouTubeService.refreshedVideo`.
+- A video is added to History when its player closes after at least ten seconds of actual playback. History is deduplicated and keeps the 50 most recent videos.
+- Continue Watching shows History videos with resumable progress, at most eight, on Home only. Finishing a video or choosing Remove from Continue Watching clears its progress; the video stays in History.
+- Watch Later is a system playlist with a fixed ID that cannot be deleted. A video leaves it when played to the end, applied when the player closes.
+- At launch, from `AppleVideosApp.init`, only the Continue Watching videos are refreshed. History, Saved and playlists refresh when opened. Each video is requested at most once per launch, four at a time, through `YouTubeService.refreshedVideo`; stored data stays on screen until fresh data replaces it.
 - Title, channel, duration, description, views, thumbnail, badges, and publication information are refreshed when YouTube supplies them.
 - Videos store their publish date (`publishedAt`). Relative labels such as “8 days ago” are formatted at display time, so they never go stale. Search results carry an approximate date derived from YouTube's relative text; opening a video's detail screen stores the exact date and current metadata in every library list that contains it.
 - Refresh preserves the original order. If one request fails or omits a field, the stored value for that video is retained.

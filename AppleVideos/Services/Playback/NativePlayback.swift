@@ -13,6 +13,8 @@ final class NativePlayback: NSObject {
         case fallback(diagnostic: String)
         case cancelled
         case unavailable
+        /// Use Mobile Data is off in Settings and the device is on mobile data.
+        case mobileDataOff
     }
 
     /// How a presented playback ended.
@@ -70,11 +72,18 @@ final class NativePlayback: NSObject {
         onProgress: @escaping @MainActor (_ position: Double, _ duration: Double) -> Void,
         onFinish: @escaping @MainActor (Ending) -> Void
     ) async -> Outcome {
+        let settings = StreamingSettings.current()
+        if isMobileDataBlocked(settings) {
+            return .mobileDataOff
+        }
+        // Also stops loading if the network switches to mobile data while playing.
+        let assetOptions = [AVURLAssetAllowsCellularAccessKey: settings.useMobileData]
+
         let item: AVPlayerItem
         switch video.source {
         case .direct:
             guard let url = video.playbackURL else { return .unavailable }
-            item = AVPlayerItem(url: url)
+            item = AVPlayerItem(asset: AVURLAsset(url: url, options: assetOptions))
 
         case .youtube:
             do {
@@ -89,9 +98,9 @@ final class NativePlayback: NSObject {
                 // The player is presented right away; AVKit shows its own loading
                 // state while the stream starts. A stream that cannot play is
                 // reported through the item's status after presentation.
-                item = AVPlayerItem(url: variant.url)
+                item = AVPlayerItem(asset: AVURLAsset(url: variant.url, options: assetOptions))
                 if variant.transport == .hls {
-                    applyStreamingOptions(StreamingSettings.current(), to: item)
+                    applyStreamingOptions(settings, to: item)
                 }
             } catch {
                 // URLSession reports cancellation as URLError.cancelled.
@@ -117,6 +126,13 @@ final class NativePlayback: NSObject {
             onFinish: onFinish
         )
         return playback.present() ? .presented : .unavailable
+    }
+
+    /// True when Use Mobile Data is off in Settings and the device is on
+    /// mobile data. Also checked before the embedded fallback, which cannot
+    /// be kept off mobile data.
+    static func isMobileDataBlocked(_ settings: StreamingSettings = .current()) -> Bool {
+        !settings.useMobileData && NetworkConditions.shared.usesCellular
     }
 
     /// Applies the Streaming Options to an HLS item. AVPlayer applies the

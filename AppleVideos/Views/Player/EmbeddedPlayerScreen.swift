@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// Full-screen embedded YouTube player, used when native playback has no
 /// compatible source.
@@ -60,6 +61,22 @@ extension View {
             if starter.isPreparing {
                 starter.cancel()
             }
+        }
+        .alert(
+            "Mobile Data Is Turned Off",
+            isPresented: Binding(
+                get: { starter.isShowingMobileDataAlert },
+                set: { starter.isShowingMobileDataAlert = $0 }
+            )
+        ) {
+            Button("Settings") {
+                if let url = URL(string: UIApplication.openSettingsURLString) {
+                    UIApplication.shared.open(url)
+                }
+            }
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Turn on Use Mobile Data in Settings to stream videos over mobile data.")
         }
     }
 }

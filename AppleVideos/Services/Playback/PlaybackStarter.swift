@@ -13,6 +13,8 @@ final class PlaybackStarter {
 
     private(set) var isPreparing = false
     var fallback: Fallback?
+    /// Shown when Use Mobile Data is off and the device is on mobile data.
+    var isShowingMobileDataAlert = false
     @ObservationIgnored private var task: Task<Void, Never>?
 
     func start(_ video: Video, description: String?, library: LibraryStore) {
@@ -35,16 +37,31 @@ final class PlaybackStarter {
                             library.markWatched(video)
                         }
                     case let .failed(diagnostic):
-                        self?.fallback = Fallback(video: video, diagnostic: diagnostic)
+                        self?.fallBack(to: video, diagnostic: diagnostic)
                     }
                 }
             )
             guard !Task.isCancelled else { return }
             isPreparing = false
             task = nil
-            if case let .fallback(diagnostic) = outcome {
-                fallback = Fallback(video: video, diagnostic: diagnostic)
+            switch outcome {
+            case let .fallback(diagnostic):
+                fallBack(to: video, diagnostic: diagnostic)
+            case .mobileDataOff:
+                isShowingMobileDataAlert = true
+            case .presented, .cancelled, .unavailable:
+                break
             }
+        }
+    }
+
+    /// Shows the embedded player, unless it would stream over mobile data that
+    /// the Streaming Options do not allow (the web player cannot be kept off it).
+    private func fallBack(to video: Video, diagnostic: String) {
+        if NativePlayback.isMobileDataBlocked() {
+            isShowingMobileDataAlert = true
+        } else {
+            fallback = Fallback(video: video, diagnostic: diagnostic)
         }
     }
 

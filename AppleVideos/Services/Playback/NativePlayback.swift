@@ -244,6 +244,10 @@ final class NativePlayback: NSObject {
         if Self.current === self {
             Self.current = nil
         }
+        // TEST (do not merge)
+        if case .closed = ending {
+            presentPlaybackReport()
+        }
     }
 
     private static func topViewController() -> UIViewController? {
@@ -527,5 +531,115 @@ private extension NativePlayback {
         let position = reachedEnd ? duration : player.currentTime().seconds
         onProgress(position, duration)
         lastProgressSave = .now
+    }
+}
+
+// MARK: - TEST (do not merge): playback report
+
+private extension NativePlayback {
+    struct LogEntry: Sendable {
+        let indicatedBitrate: Double
+        let observedBitrate: Double
+        let bytes: Int64
+        let seconds: Double
+        let droppedFrames: Int
+        let stalls: Int
+    }
+
+    /// Shows which HLS variants AVPlayer played, with codec, data used and
+    /// dropped frames, so quality settings can be based on measurements.
+    func presentPlaybackReport() {
+        let entries = (item.accessLog()?.events ?? []).map { event in
+            LogEntry(
+                indicatedBitrate: event.indicatedBitrate,
+                observedBitrate: event.observedBitrate,
+                bytes: max(event.numberOfBytesTransferred, 0),
+                seconds: max(event.durationWatched, 0),
+                droppedFrames: event.numberOfDroppedVideoFrames,
+                stalls: event.numberOfStalls
+            )
+        }
+        let size = item.presentationSize
+        let cap = item.preferredMaximumResolution
+        let expensiveCap = item.preferredMaximumResolutionForExpensiveNetworks
+        let header = [
+            video.title,
+            "",
+            "Low Data Mode: \(NetworkConditions.shared.isConstrained ? "on" : "off") · "
+                + "Low Power Mode: \(ProcessInfo.processInfo.isLowPowerModeEnabled ? "on" : "off")",
+            "Cap: \(Self.size(cap)) · on cellular: \(Self.size(expensiveCap))",
+            "Last frame: \(Self.size(size))",
+            ""
+        ]
+        let asset = item.asset as? AVURLAsset
+
+        Task {
+            let text = await Self.report(asset: asset, entries: entries, header: header)
+            // Let the player finish closing first.
+            try? await Task.sleep(for: .milliseconds(700))
+            let alert = UIAlertController(title: "Playback Report (TEST)", message: text, preferredStyle: .alert)
+            alert.addAction(UIAlertAction(title: "Copy", style: .default) { _ in
+                UIPasteboard.general.string = text
+            })
+            alert.addAction(UIAlertAction(title: "OK", style: .cancel))
+            Self.topViewController()?.present(alert, animated: true)
+        }
+    }
+
+    nonisolated static func report(asset: AVURLAsset?, entries: [LogEntry], header: [String]) async -> String {
+        let variants = (try? await asset?.load(.variants)) ?? []
+        var lines = header
+
+        var totalBytes: Int64 = 0
+        var totalSeconds = 0.0
+        for (index, entry) in entries.enumerated() {
+            totalBytes += entry.bytes
+            totalSeconds += entry.seconds
+            let variant = variants.min {
+                abs(($0.peakBitRate ?? 0) - entry.indicatedBitrate) < abs(($1.peakBitRate ?? 0) - entry.indicatedBitrate)
+            }
+            lines.append("#\(index + 1) \(variant.map(describe) ?? mbit(entry.indicatedBitrate))")
+            lines.append(
+                "   \(Int(entry.seconds)) s · \(megabytes(entry.bytes)) · network \(mbit(entry.observedBitrate))"
+                    + " · dropped \(entry.droppedFrames) · stalls \(entry.stalls)"
+            )
+        }
+        if totalSeconds > 0 {
+            let gigabytesPerHour = Double(totalBytes) / totalSeconds * 3600 / 1_000_000_000
+            lines.append("")
+            lines.append(
+                "Total \(megabytes(totalBytes)) in \(Int(totalSeconds)) s ≈ "
+                    + String(format: "%.2f GB/hour", gigabytesPerHour)
+            )
+        }
+        if let best = variants.max(by: { ($0.peakBitRate ?? 0) < ($1.peakBitRate ?? 0) }) {
+            lines.append("Best offered: \(describe(best))")
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    nonisolated static func describe(_ variant: AVAssetVariant) -> String {
+        let video = variant.videoAttributes
+        let size = video.map { Self.size($0.presentationSize) } ?? "?"
+        let fps = video?.nominalFrameRate.map { " \(Int($0.rounded()))fps" } ?? ""
+        let codecs = video?.codecTypes.map(fourCC).joined(separator: "+") ?? "?"
+        return "\(size)\(fps) \(codecs) · peak \(mbit(variant.peakBitRate ?? 0))"
+    }
+
+    nonisolated static func fourCC(_ code: FourCharCode) -> String {
+        let bytes = [24, 16, 8, 0].map { UInt8((code >> $0) & 0xFF) }
+        return String(decoding: bytes, as: UTF8.self)
+    }
+
+    nonisolated static func size(_ size: CGSize) -> String {
+        size == .zero ? "none" : "\(Int(size.width))x\(Int(size.height))"
+    }
+
+    nonisolated static func mbit(_ bitsPerSecond: Double) -> String {
+        String(format: "%.1f Mbit/s", bitsPerSecond / 1_000_000)
+    }
+
+    nonisolated static func megabytes(_ bytes: Int64) -> String {
+        String(format: "%.1f MB", Double(bytes) / 1_000_000)
     }
 }

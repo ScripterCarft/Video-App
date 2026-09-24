@@ -114,8 +114,8 @@ accepted player-dismissal bug.
   video off (the latter two also clear its progress). Launch refreshes the
   first 8 Watchlist videos; Saved and History refresh when opened, once
   per video per launch, keeping stored data until fresh data replaces it.
-- Context menu (user's layout, `VideoLibraryActions`): Save/Unsave,
-  Download and Share side by side on top (`ControlGroup`); then Add to
+- Context menu (user's layout, `VideoLibraryActions`): Download, Save/Unsave
+  and Share side by side on top (`ControlGroup`); then Add to
   Watchlist (plus.circle) / Remove from Watchlist (minus.circle), Mark as
   Watched (rectangle.badge.checkmark, in Watchlist), Remove from Recently
   Watched (trash, in History, hidden while downloaded; the Library still

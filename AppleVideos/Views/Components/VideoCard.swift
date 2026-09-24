@@ -45,6 +45,9 @@ struct VideoCard: View {
         .contextMenu {
             // A control group in a menu shows its buttons side by side.
             ControlGroup {
+                Button("Download", systemImage: "arrow.down") {}
+                    .disabled(!library.canDownload(video))
+
                 Button {
                     withAnimation {
                         library.toggleSaved(video)
@@ -57,9 +60,6 @@ struct VideoCard: View {
                         systemImage: library.isSaved(video) ? "bookmark.slash" : "bookmark"
                     )
                 }
-
-                Button("Download", systemImage: "arrow.down") {}
-                    .disabled(!library.canDownload(video))
 
                 if let url = video.youtubeURL {
                     ShareLink(item: url) {

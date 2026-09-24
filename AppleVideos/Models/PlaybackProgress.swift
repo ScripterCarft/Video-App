@@ -24,10 +24,10 @@ struct PlaybackProgress: Codable, Hashable, Sendable {
         position >= Self.minimumResumePosition && fraction < Self.finishedFraction
     }
 
-    /// Remaining time such as "2h 30m", "40m" or, under a minute, "45s".
+    /// Remaining time in hours and minutes, such as "2h 30m" or "40m". Anything
+    /// under a minute reads "1m".
     var remainingLabel: String {
-        let seconds = Int(remaining.rounded())
-        let units: Set<Duration.UnitsFormatStyle.Unit> = seconds < 60 ? [.seconds] : [.hours, .minutes]
-        return Duration.seconds(seconds).formatted(.units(allowed: units, width: .narrow))
+        let seconds = max(60, Int(remaining.rounded()))
+        return Duration.seconds(seconds).formatted(.units(allowed: [.hours, .minutes], width: .narrow))
     }
 }

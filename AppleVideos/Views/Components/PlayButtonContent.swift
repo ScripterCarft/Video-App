@@ -17,12 +17,9 @@ struct PlayButtonContent: View {
             } else if let progress {
                 HStack(spacing: 8) {
                     Image(systemName: "play.fill")
-                    Gauge(value: progress.fraction) {
-                        EmptyView()
-                    }
-                    .gaugeStyle(.linearCapacity)
-                    .labelsHidden()
-                    .frame(width: 44)
+                    ProgressView(value: progress.fraction)
+                        .progressViewStyle(CapsuleProgressStyle())
+                        .frame(width: 52)
                     Text(progress.remainingLabel)
                         .monospacedDigit()
                 }
@@ -34,5 +31,24 @@ struct PlayButtonContent: View {
             }
         }
         .tint(.black)
+    }
+}
+
+/// A short capsule track with a filled portion, sized to sit inside a button
+/// next to text, like the resume bar in the TV app.
+private struct CapsuleProgressStyle: ProgressViewStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        let fraction = configuration.fractionCompleted ?? 0
+        Capsule()
+            .fill(.tint.opacity(0.22))
+            .overlay(alignment: .leading) {
+                GeometryReader { proxy in
+                    Capsule()
+                        .fill(.tint)
+                        .frame(width: proxy.size.width * fraction)
+                }
+            }
+            .frame(height: 4)
+            .clipShape(Capsule())
     }
 }

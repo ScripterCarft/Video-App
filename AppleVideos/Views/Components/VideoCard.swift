@@ -1,16 +1,8 @@
 import SwiftUI
 
 struct VideoCard: View {
-    /// Removes the video from the list the card is shown in, such as
-    /// "Remove from Watch Later".
-    struct Removal {
-        let title: String
-        let action: @MainActor () -> Void
-    }
-
     let video: Video
     var compact = false
-    var removal: Removal?
 
     @Environment(LibraryStore.self) private var library
     @State private var feedback = 0
@@ -51,40 +43,31 @@ struct VideoCard: View {
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .contentShape(Rectangle())
         .contextMenu {
-            Button {
-                library.toggleSaved(video)
-                feedback += 1
-            } label: {
-                Label(
-                    library.isSaved(video) ? "Remove from Saved" : "Save Video",
-                    systemImage: library.isSaved(video) ? "bookmark.slash" : "bookmark"
-                )
+            Section {
+                Button {
+                    withAnimation {
+                        library.toggleSaved(video)
+                    }
+                    feedback += 1
+                } label: {
+                    Label(
+                        library.isSaved(video) ? "Remove from Saved" : "Save Video",
+                        systemImage: library.isSaved(video) ? "bookmark.slash" : "bookmark"
+                    )
+                }
             }
 
-            if !library.playlists.isEmpty {
-                Menu("Add to Playlist", systemImage: "text.badge.plus") {
-                    ForEach(library.playlists) { playlist in
-                        Button(playlist.name) {
-                            library.add(video, to: playlist.id)
-                            feedback += 1
-                        }
-                    }
+            Section {
+                VideoLibraryActions(video: video) {
+                    feedback += 1
                 }
             }
 
             if let url = video.youtubeURL {
-                ShareLink(item: url) {
-                    Label("Share", systemImage: "square.and.arrow.up")
-                }
-            }
-
-            // Destructive actions go last (HIG, Context menus).
-            if let removal {
-                Button(removal.title, systemImage: "minus.circle", role: .destructive) {
-                    withAnimation {
-                        removal.action()
+                Section {
+                    ShareLink(item: url) {
+                        Label("Share", systemImage: "square.and.arrow.up")
                     }
-                    feedback += 1
                 }
             }
         } preview: {

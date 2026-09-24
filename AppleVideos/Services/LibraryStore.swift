@@ -6,16 +6,24 @@ import Observation
 final class LibraryStore {
     private enum Keys {
         static let saved = "apple-videos.saved"
-        static let playlists = "apple-videos.playlists"
-        static let playlistVideos = "apple-videos.playlist-videos"
+        static let watchlist = "apple-videos.watchlist"
         static let recent = "apple-videos.recent"
         static let progress = "apple-videos.progress"
+        /// Removed playlists, read once to migrate their videos.
+        static let legacyPlaylists = "apple-videos.playlists"
+        static let legacyPlaylistVideos = "apple-videos.playlist-videos"
+    }
+
+    /// A video added to the Watchlist by hand.
+    private struct WatchlistEntry: Codable {
+        var video: Video
+        let addedAt: Date
     }
 
     private(set) var savedVideos: [Video]
-    private(set) var playlists: [VideoPlaylist]
-    private var playlistVideos: [String: Video]
+    /// History, shown as "Recently Watched" in menus.
     private(set) var recentlyWatched: [Video]
+    private var watchlistEntries: [WatchlistEntry]
     /// Watch progress as last shown in the UI. Updated when a player closes, so
     /// nothing re-renders while AVKit is on screen.
     private(set) var progress: [String: PlaybackProgress]
@@ -34,18 +42,12 @@ final class LibraryStore {
         let decodedSaved = Self.decode([Video].self, from: defaults.data(forKey: Keys.saved)) ?? []
         savedVideos = Self.uniqueVideos(decodedSaved)
 
-        let decodedPlaylists = Self.decode(
-            [VideoPlaylist].self,
-            from: defaults.data(forKey: Keys.playlists)
-        ) ?? [
-            VideoPlaylist.watchLater,
-            VideoPlaylist(name: "Favorites")
-        ]
-        playlists = Self.withWatchLater(Self.uniquePlaylists(decodedPlaylists))
-        playlistVideos = Self.decode(
-            [String: Video].self,
-            from: defaults.data(forKey: Keys.playlistVideos)
-        ) ?? [:]
+        let decodedWatchlist = Self.decode(
+            [WatchlistEntry].self,
+            from: defaults.data(forKey: Keys.watchlist)
+        ) ?? []
+        var seenWatchlist = Set<String>()
+        watchlistEntries = decodedWatchlist.filter { seenWatchlist.insert($0.video.id).inserted }
 
         let decodedRecent = Self.decode([Video].self, from: defaults.data(forKey: Keys.recent)) ?? []
         recentlyWatched = Array(Self.uniqueVideos(decodedRecent).prefix(Self.historyLimit))
@@ -57,16 +59,20 @@ final class LibraryStore {
         storedProgress = decodedProgress
         progress = decodedProgress
 
-        // Migrate existing playlists while their videos are still in Saved.
-        for video in savedVideos where playlists.contains(where: { $0.videoIDs.contains(video.id) }) {
-            playlistVideos[video.id] = video
-        }
+        migratePlaylists()
 
         persist(savedVideos, key: Keys.saved)
-        persist(playlists, key: Keys.playlists)
-        persist(playlistVideos, key: Keys.playlistVideos)
+        persist(watchlistEntries, key: Keys.watchlist)
         persist(recentlyWatched, key: Keys.recent)
     }
+
+    /// The copy to store: a screen may hold older metadata than a details
+    /// refresh stored meanwhile, such as the detail screen that started playback.
+    private func freshest(_ video: Video) -> Video {
+        refreshedThisLaunch[video.id] ?? video
+    }
+
+    // MARK: - Saved
 
     func isSaved(_ video: Video) -> Bool {
         savedVideos.contains { $0.id == video.id }
@@ -81,11 +87,9 @@ final class LibraryStore {
         persist(savedVideos, key: Keys.saved)
     }
 
-    /// The copy to store: a screen may hold older metadata than a details
-    /// refresh stored meanwhile, such as the detail screen that started playback.
-    private func freshest(_ video: Video) -> Video {
-        refreshedThisLaunch[video.id] ?? video
-    }
+    // MARK: - History
+
+    private static let historyLimit = 50
 
     func markWatched(_ video: Video) {
         let video = freshest(video)
@@ -95,20 +99,73 @@ final class LibraryStore {
         persist(recentlyWatched, key: Keys.recent)
     }
 
-    /// Videos from History that were started and not finished, newest first.
-    /// Finishing a video clears its progress, which removes it from here while
-    /// it stays in History.
-    var continueWatching: [Video] {
-        Array(recentlyWatched.lazy.filter { self.progress(for: $0) != nil }.prefix(Self.continueWatchingLimit))
+    func isInRecentlyWatched(_ video: Video) -> Bool {
+        recentlyWatched.contains { $0.id == video.id }
     }
 
-    private static let historyLimit = 50
-    private static let continueWatchingLimit = 8
-
-    /// Refreshes Continue Watching metadata. Called once at launch.
-    func refreshContinueWatching() async {
-        await refreshMetadata(of: continueWatching)
+    /// Removes `video` from History. Its saved position goes too, so it also
+    /// leaves the Watchlist unless it was added there by hand.
+    func removeFromRecentlyWatched(_ video: Video) {
+        forgetProgress(of: video)
+        recentlyWatched.removeAll { $0.id == video.id }
+        persist(recentlyWatched, key: Keys.recent)
     }
+
+    // MARK: - Watchlist
+
+    /// Videos added by hand and videos from History that were started and not
+    /// finished, most recent activity first. Finishing a video removes it.
+    var watchlist: [Video] {
+        var latest: [String: (video: Video, date: Date)] = [:]
+        for entry in watchlistEntries {
+            latest[entry.video.id] = (entry.video, entry.addedAt)
+        }
+        for video in recentlyWatched {
+            guard let entry = progress(for: video) else { continue }
+            let added = latest[video.id]?.date ?? .distantPast
+            latest[video.id] = (video, max(entry.updatedAt, added))
+        }
+        return latest.values.sorted { $0.date > $1.date }.map(\.video)
+    }
+
+    func isInWatchlist(_ video: Video) -> Bool {
+        watchlistEntries.contains { $0.video.id == video.id }
+            || (progress(for: video) != nil && isInRecentlyWatched(video))
+    }
+
+    func addToWatchlist(_ video: Video) {
+        guard !watchlistEntries.contains(where: { $0.video.id == video.id }) else { return }
+        watchlistEntries.append(WatchlistEntry(video: freshest(video), addedAt: .now))
+        persist(watchlistEntries, key: Keys.watchlist)
+    }
+
+    /// Removes the entry added by hand and forgets the saved position; the
+    /// video stays in History.
+    func removeFromWatchlist(_ video: Video) {
+        forgetProgress(of: video)
+        removeWatchlistEntries { $0 == video.id }
+    }
+
+    /// Takes `video` off the Watchlist and records it in History as watched.
+    func markAsWatched(_ video: Video) {
+        removeFromWatchlist(video)
+        markWatched(video)
+    }
+
+    private func removeWatchlistEntries(where shouldRemove: (String) -> Bool) {
+        guard watchlistEntries.contains(where: { shouldRemove($0.video.id) }) else { return }
+        watchlistEntries.removeAll { shouldRemove($0.video.id) }
+        persist(watchlistEntries, key: Keys.watchlist)
+    }
+
+    // MARK: - Refreshing metadata
+
+    /// Refreshes the Watchlist cards visible on Home. Called once at launch.
+    func refreshWatchlist() async {
+        await refreshMetadata(of: Array(watchlist.prefix(Self.launchRefreshLimit)))
+    }
+
+    private static let launchRefreshLimit = 8
 
     /// Loads current metadata for stored videos, such as when a library list
     /// is opened. Each video is requested at most once per launch; the stored
@@ -145,11 +202,30 @@ final class LibraryStore {
     /// sending fifty at once.
     private static let concurrentRefreshes = 4
 
-    func createPlaylist(named name: String) {
-        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        playlists.append(VideoPlaylist(name: trimmed))
-        persist(playlists, key: Keys.playlists)
+    /// Replaces every stored copy of `video` (Saved, History, Watchlist) with
+    /// fresher metadata, keeping each list's order. Lists without a change are
+    /// not rewritten.
+    func updateMetadata(of video: Video) {
+        refreshedThisLaunch[video.id] = video
+
+        func replaced(in videos: [Video]) -> [Video]? {
+            guard videos.contains(where: { $0.id == video.id && $0 != video }) else { return nil }
+            return videos.map { $0.id == video.id ? video : $0 }
+        }
+
+        if let updated = replaced(in: savedVideos) {
+            savedVideos = updated
+            persist(savedVideos, key: Keys.saved)
+        }
+        if let updated = replaced(in: recentlyWatched) {
+            recentlyWatched = updated
+            persist(recentlyWatched, key: Keys.recent)
+        }
+        if let index = watchlistEntries.firstIndex(where: { $0.video.id == video.id }),
+           watchlistEntries[index].video != video {
+            watchlistEntries[index].video = video
+            persist(watchlistEntries, key: Keys.watchlist)
+        }
     }
 
     // MARK: - Watch progress
@@ -192,8 +268,8 @@ final class LibraryStore {
         persist(storedProgress, key: Keys.progress)
     }
 
-    /// Shows the saved progress in the UI and removes finished videos from
-    /// Watch Later. Called once a player has closed.
+    /// Shows the saved progress in the UI and takes finished videos off the
+    /// Watchlist. Called once a player has closed.
     func publishProgress() {
         if progress != storedProgress {
             progress = storedProgress
@@ -201,88 +277,59 @@ final class LibraryStore {
 
         let finished = finishedSincePublish
         finishedSincePublish = []
-        if let index = playlists.firstIndex(where: \.isWatchLater),
-           playlists[index].videoIDs.contains(where: { finished.contains($0) }) {
-            playlists[index].videoIDs.removeAll { finished.contains($0) }
-            persist(playlists, key: Keys.playlists)
-            dropUnreferencedPlaylistVideos()
-        }
+        removeWatchlistEntries { finished.contains($0) }
     }
 
     private static let maximumProgressEntries = 200
 
-    /// Forgets the saved position, which removes the video from Continue
-    /// Watching; it stays in History.
-    func removeFromContinueWatching(_ video: Video) {
+    private func forgetProgress(of video: Video) {
         guard storedProgress.removeValue(forKey: video.id) != nil else { return }
         progress[video.id] = nil
         persist(storedProgress, key: Keys.progress)
     }
 
-    /// Replaces every stored copy of `video` (Saved, playlists, Continue
-    /// Watching) with fresher metadata, keeping each list's order. Lists
-    /// without a change are not rewritten.
-    func updateMetadata(of video: Video) {
-        refreshedThisLaunch[video.id] = video
+    // MARK: - Storage
 
-        func replaced(in videos: [Video]) -> [Video]? {
-            guard videos.contains(where: { $0.id == video.id && $0 != video }) else { return nil }
-            return videos.map { $0.id == video.id ? video : $0 }
+    /// Playlists were removed. Watch Later becomes the Watchlist; videos from
+    /// other playlists move to Saved so nothing is lost.
+    private func migratePlaylists() {
+        struct LegacyPlaylist: Decodable {
+            let id: UUID
+            let name: String
+            let videoIDs: [String]
+        }
+        let watchLaterID = UUID(uuidString: "5A1D3C2E-7F4B-4E8A-9C61-0B2D4F6A8E10")
+
+        guard let playlists = Self.decode(
+            [LegacyPlaylist].self,
+            from: defaults.data(forKey: Keys.legacyPlaylists)
+        ) else { return }
+        let stored = Self.decode(
+            [String: Video].self,
+            from: defaults.data(forKey: Keys.legacyPlaylistVideos)
+        ) ?? [:]
+
+        for playlist in playlists {
+            let videos = playlist.videoIDs.compactMap { id in
+                stored[id] ?? savedVideos.first { $0.id == id }
+            }
+            if playlist.id == watchLaterID || playlist.name == "Watch Later" {
+                // Keep the playlist's order, first video newest.
+                for (offset, video) in videos.enumerated()
+                where !watchlistEntries.contains(where: { $0.video.id == video.id }) {
+                    watchlistEntries.append(
+                        WatchlistEntry(video: video, addedAt: .now.addingTimeInterval(-Double(offset)))
+                    )
+                }
+            } else {
+                for video in videos where !isSaved(video) {
+                    savedVideos.append(video)
+                }
+            }
         }
 
-        if let updated = replaced(in: savedVideos) {
-            savedVideos = updated
-            persist(savedVideos, key: Keys.saved)
-        }
-        if let updated = replaced(in: recentlyWatched) {
-            recentlyWatched = updated
-            persist(recentlyWatched, key: Keys.recent)
-        }
-        if let stored = playlistVideos[video.id], stored != video {
-            playlistVideos[video.id] = video
-            persist(playlistVideos, key: Keys.playlistVideos)
-        }
-    }
-
-    /// Deletes user playlists; Watch Later is a system list and stays.
-    func deletePlaylists(at offsets: IndexSet) {
-        for index in offsets.sorted(by: >) where playlists.indices.contains(index) && !playlists[index].isWatchLater {
-            playlists.remove(at: index)
-        }
-        persist(playlists, key: Keys.playlists)
-        dropUnreferencedPlaylistVideos()
-    }
-
-    /// Drops stored videos that no playlist refers to.
-    private func dropUnreferencedPlaylistVideos() {
-        let referencedIDs = Set(playlists.flatMap(\.videoIDs))
-        playlistVideos = playlistVideos.filter { referencedIDs.contains($0.key) }
-        persist(playlistVideos, key: Keys.playlistVideos)
-    }
-
-    func add(_ video: Video, to playlistID: UUID) {
-        guard let index = playlists.firstIndex(where: { $0.id == playlistID }) else { return }
-        playlistVideos[video.id] = freshest(video)
-        persist(playlistVideos, key: Keys.playlistVideos)
-        if !playlists[index].videoIDs.contains(video.id) {
-            playlists[index].videoIDs.append(video.id)
-            persist(playlists, key: Keys.playlists)
-        }
-    }
-
-    func remove(_ video: Video, from playlistID: UUID) {
-        guard let index = playlists.firstIndex(where: { $0.id == playlistID }),
-              playlists[index].videoIDs.contains(video.id)
-        else { return }
-        playlists[index].videoIDs.removeAll { $0 == video.id }
-        persist(playlists, key: Keys.playlists)
-        dropUnreferencedPlaylistVideos()
-    }
-
-    func videos(in playlist: VideoPlaylist) -> [Video] {
-        playlist.videoIDs.compactMap { id in
-            savedVideos.first { $0.id == id } ?? playlistVideos[id]
-        }
+        defaults.removeObject(forKey: Keys.legacyPlaylists)
+        defaults.removeObject(forKey: Keys.legacyPlaylistVideos)
     }
 
     private func persist<T: Encodable>(_ value: T, key: String) {
@@ -295,39 +342,8 @@ final class LibraryStore {
         return videos.filter { seen.insert($0.id).inserted }
     }
 
-    private static func uniquePlaylists(_ playlists: [VideoPlaylist]) -> [VideoPlaylist] {
-        var seenPlaylists = Set<UUID>()
-
-        return playlists.compactMap { playlist in
-            guard seenPlaylists.insert(playlist.id).inserted else { return nil }
-
-            var normalized = playlist
-            var seenVideos = Set<String>()
-            normalized.videoIDs = playlist.videoIDs.filter {
-                seenVideos.insert($0).inserted
-            }
-            return normalized
-        }
-    }
-
-    /// Ensures the Watch Later system list exists. The former default list
-    /// named "Watch Later" becomes it, keeping its videos.
-    private static func withWatchLater(_ playlists: [VideoPlaylist]) -> [VideoPlaylist] {
-        guard !playlists.contains(where: \.isWatchLater) else { return playlists }
-        var playlists = playlists
-        if let index = playlists.firstIndex(where: { $0.name == VideoPlaylist.watchLater.name }) {
-            var watchLater = VideoPlaylist.watchLater
-            watchLater.videoIDs = playlists[index].videoIDs
-            playlists[index] = watchLater
-        } else {
-            playlists.insert(.watchLater, at: 0)
-        }
-        return playlists
-    }
-
     private static func decode<T: Decodable>(_ type: T.Type, from data: Data?) -> T? {
         guard let data else { return nil }
         return try? JSONDecoder().decode(type, from: data)
     }
 }
-

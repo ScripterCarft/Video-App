@@ -32,17 +32,14 @@ struct HomeView: View {
                         .padding(.horizontal, 16)
                     }
 
-                    if !library.continueWatching.isEmpty {
+                    // Shows the Watchlist: started videos and videos added by hand.
+                    let watchlist = library.watchlist
+                    if !watchlist.isEmpty {
                         videoRow(
                             title: "Continue Watching",
                             subtitle: "Pick up where you left off",
-                            videos: library.continueWatching,
-                            sectionID: "continue",
-                            removal: { video in
-                                VideoCard.Removal(title: "Remove from Continue Watching") {
-                                    library.removeFromContinueWatching(video)
-                                }
-                            }
+                            videos: watchlist,
+                            sectionID: "continue"
                         )
                     }
 
@@ -123,13 +120,7 @@ struct HomeView: View {
         .padding(.horizontal, 16)
     }
 
-    private func videoRow(
-        title: String,
-        subtitle: String,
-        videos: [Video],
-        sectionID: String,
-        removal: ((Video) -> VideoCard.Removal)? = nil
-    ) -> some View {
+    private func videoRow(title: String, subtitle: String, videos: [Video], sectionID: String) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             SectionHeader(title: title, subtitle: subtitle)
                 .padding(.horizontal, 16)
@@ -138,7 +129,7 @@ struct HomeView: View {
                 LazyHStack(alignment: .top, spacing: 14) {
                     ForEach(videos) { video in
                         VideoLink(video: video, section: sectionID, transition: transition) {
-                            VideoCard(video: video, compact: true, removal: removal?(video))
+                            VideoCard(video: video, compact: true)
                                 .frame(width: 272, alignment: .top)
                         }
                         .frame(width: 272)

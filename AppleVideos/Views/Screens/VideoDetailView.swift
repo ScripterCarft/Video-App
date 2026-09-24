@@ -53,22 +53,15 @@ struct VideoDetailView: View {
         .toolbar {
             if let url = video.youtubeURL {
                 ToolbarItemGroup(placement: .topBarTrailing) {
-                    // The menu only offers playlists; hide it when there are none.
-                    if !library.playlists.isEmpty {
-                        Menu {
-                            Section("Add to Playlist") {
-                                ForEach(library.playlists) { playlist in
-                                    Button(playlist.name) {
-                                        library.add(video, to: playlist.id)
-                                        feedback += 1
-                                    }
-                                }
-                            }
-                        } label: {
-                            Image(systemName: "ellipsis")
+                    // Saving and sharing have their own buttons.
+                    Menu {
+                        VideoLibraryActions(video: video) {
+                            feedback += 1
                         }
-                        .accessibilityLabel("More options")
+                    } label: {
+                        Image(systemName: "ellipsis")
                     }
+                    .accessibilityLabel("More options")
 
                     ShareLink(item: url) {
                         Image(systemName: "square.and.arrow.up")

@@ -21,6 +21,9 @@ final class LibraryStore {
     private(set) var progress: [String: PlaybackProgress]
     /// Watch progress as last saved, written continuously during playback.
     @ObservationIgnored private var storedProgress: [String: PlaybackProgress]
+    /// The freshest copy of every video refreshed since launch.
+    @ObservationIgnored private var refreshedThisLaunch: [String: Video] = [:]
+    @ObservationIgnored private var refreshingIDs: Set<String> = []
     private let defaults: UserDefaults
 
     init(defaults: UserDefaults = .standard) {
@@ -71,12 +74,19 @@ final class LibraryStore {
         if let index = savedVideos.firstIndex(where: { $0.id == video.id }) {
             savedVideos.remove(at: index)
         } else {
-            savedVideos.insert(video, at: 0)
+            savedVideos.insert(freshest(video), at: 0)
         }
         persist(savedVideos, key: Keys.saved)
     }
 
+    /// The copy to store: a screen may hold older metadata than a details
+    /// refresh stored meanwhile, such as the detail screen that started playback.
+    private func freshest(_ video: Video) -> Video {
+        refreshedThisLaunch[video.id] ?? video
+    }
+
     func markWatched(_ video: Video) {
+        let video = freshest(video)
         recentlyWatched.removeAll { $0.id == video.id }
         recentlyWatched.insert(video, at: 0)
         recentlyWatched = Array(recentlyWatched.prefix(Self.historyLimit))
@@ -95,33 +105,43 @@ final class LibraryStore {
 
     /// Refreshes Continue Watching metadata. Called once at launch.
     func refreshContinueWatching() async {
-        let current = continueWatching
-        guard !current.isEmpty else { return }
-
-        let updates = await withTaskGroup(
-            of: (String, Video?).self,
-            returning: [String: Video].self
-        ) { group in
-            for video in current {
-                group.addTask {
-                    let refreshed = try? await YouTubeService.shared.refreshedVideo(video)
-                    return (video.id, refreshed)
-                }
-            }
-
-            var values: [String: Video] = [:]
-            for await (id, video) in group {
-                if let video {
-                    values[id] = video
-                }
-            }
-            return values
-        }
-
-        // Preserve videos watched while the refresh requests were running.
-        recentlyWatched = recentlyWatched.map { updates[$0.id] ?? $0 }
-        persist(recentlyWatched, key: Keys.recent)
+        await refreshMetadata(of: continueWatching)
     }
+
+    /// Loads current metadata for stored videos, such as when a library list
+    /// is opened. Each video is requested at most once per launch; the stored
+    /// data stays visible and is replaced as each answer arrives, only where
+    /// it differs. A failed or cancelled request is retried the next time.
+    func refreshMetadata(of videos: [Video]) async {
+        let pending = videos.filter {
+            $0.source == .youtube && refreshedThisLaunch[$0.id] == nil && !refreshingIDs.contains($0.id)
+        }
+        guard !pending.isEmpty else { return }
+        let ids = pending.map(\.id)
+        refreshingIDs.formUnion(ids)
+        defer { refreshingIDs.subtract(ids) }
+
+        await withTaskGroup(of: Video?.self) { group in
+            // In list order, so the cards on screen come first.
+            for (index, video) in pending.enumerated() {
+                if index >= Self.concurrentRefreshes, let result = await group.next(), let refreshed = result {
+                    updateMetadata(of: refreshed)
+                }
+                group.addTask {
+                    try? await YouTubeService.shared.refreshedVideo(video)
+                }
+            }
+            for await result in group {
+                if let refreshed = result {
+                    updateMetadata(of: refreshed)
+                }
+            }
+        }
+    }
+
+    /// Enough parallel requests to fill the visible cards quickly without
+    /// sending fifty at once.
+    private static let concurrentRefreshes = 4
 
     func createPlaylist(named name: String) {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -180,6 +200,8 @@ final class LibraryStore {
     /// Watching) with fresher metadata, keeping each list's order. Lists
     /// without a change are not rewritten.
     func updateMetadata(of video: Video) {
+        refreshedThisLaunch[video.id] = video
+
         func replaced(in videos: [Video]) -> [Video]? {
             guard videos.contains(where: { $0.id == video.id && $0 != video }) else { return nil }
             return videos.map { $0.id == video.id ? video : $0 }
@@ -213,7 +235,7 @@ final class LibraryStore {
 
     func add(_ video: Video, to playlistID: UUID) {
         guard let index = playlists.firstIndex(where: { $0.id == playlistID }) else { return }
-        playlistVideos[video.id] = video
+        playlistVideos[video.id] = freshest(video)
         persist(playlistVideos, key: Keys.playlistVideos)
         if !playlists[index].videoIDs.contains(video.id) {
             playlists[index].videoIDs.append(video.id)

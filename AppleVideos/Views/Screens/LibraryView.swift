@@ -154,6 +154,7 @@ private struct PlaylistView: View {
 }
 
 private struct VideoCollectionView: View {
+    @Environment(LibraryStore.self) private var library
     let title: String
     let section: String
     let emptyTitle: String
@@ -179,5 +180,9 @@ private struct VideoCollectionView: View {
             }
         }
         .navigationTitle(title)
+        .task {
+            // Stored data shows right away; cards update as fresh data arrives.
+            await library.refreshMetadata(of: videos)
+        }
     }
 }

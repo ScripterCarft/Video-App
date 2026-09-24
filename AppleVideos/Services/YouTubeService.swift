@@ -147,7 +147,9 @@ actor YouTubeService {
             published: details.publishedText ?? video.publishedText,
             publishedAt: details.publishedAt ?? video.publishedAt,
             views: details.viewCountText ?? video.viewCountText,
-            thumbnailURL: details.thumbnailURL ?? video.thumbnailURL,
+            // Keep a known thumbnail URL. Its image stays current through HTTP
+            // revalidation, and swapping URLs would reload every card.
+            thumbnailURL: video.thumbnailURL ?? details.thumbnailURL,
             description: details.description ?? video.descriptionText,
             badges: details.badges.isEmpty ? video.badges : details.badges
         )
@@ -447,6 +449,9 @@ actor YouTubeService {
         return nil
     }
 
+    /// The largest 16:9 thumbnail listed. Artwork is downsampled to its drawn
+    /// size, so the largest one is the sharpest without costing memory. (A
+    /// 720-pixel limit here picked a 336×188 image from the details response.)
     private static func thumbnailURL(from value: Any?) -> URL? {
         guard let dictionary = value as? [String: Any],
               let thumbnails = dictionary["thumbnails"] as? [[String: Any]]
@@ -458,7 +463,6 @@ actor YouTubeService {
                   let height = thumbnail["height"] as? Int,
                   width > 0,
                   height > 0,
-                  width <= 720,
                   abs((Double(width) / Double(height)) - (16.0 / 9.0)) < 0.04,
                   let url = URL(string: value.hasPrefix("//") ? "https:\(value)" : value)
             else { return nil }

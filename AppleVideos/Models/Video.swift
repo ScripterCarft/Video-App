@@ -74,7 +74,9 @@ struct Video: Identifiable, Hashable, Codable, Sendable {
         let candidates: [ArtworkCandidate?]
         switch quality {
         case .compact, .search:
-            candidates = [listed, hq720, small]
+            // hq720 (1280 wide) matches the drawn size and does not depend on
+            // which thumbnail URL was stored with the video.
+            candidates = [hq720, listed, small]
         case .hero:
             candidates = [maximum, hq720, listed, small]
         }

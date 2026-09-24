@@ -113,6 +113,9 @@ accepted player-dismissal bug.
   once finished, not when started. Launch refreshes only Continue Watching;
   History, Saved and playlists refresh when opened, once per video per
   launch, keeping stored data on screen until fresh data replaces it.
+  Removing from a list (playlist, Watch Later, Continue Watching) is the
+  last, destructive item of the card's context menu inside that list
+  (HIG: destructive items last; the cards are no `List`, so no swipe).
 - Detail screen: shows refreshed metadata, prefers the full description,
   MORE sits on the description's second line (TextKit line counting), does
   not bounce when content fits, white tint; its tasks keep finished state

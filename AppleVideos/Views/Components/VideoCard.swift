@@ -3,6 +3,7 @@ import SwiftUI
 struct VideoCard: View {
     let video: Video
     var compact = false
+    var isInContinueWatching = false
 
     @Environment(LibraryStore.self) private var library
     @State private var feedback = 0
@@ -43,6 +44,13 @@ struct VideoCard: View {
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .contentShape(Rectangle())
         .contextMenu {
+            if isInContinueWatching {
+                Button("Remove from Continue Watching", systemImage: "minus.circle") {
+                    library.removeFromContinueWatching(video)
+                    feedback += 1
+                }
+            }
+
             Button {
                 library.toggleSaved(video)
                 feedback += 1

@@ -196,6 +196,14 @@ final class LibraryStore {
 
     private static let maximumProgressEntries = 200
 
+    /// Forgets the saved position, which removes the video from Continue
+    /// Watching; it stays in History.
+    func removeFromContinueWatching(_ video: Video) {
+        guard storedProgress.removeValue(forKey: video.id) != nil else { return }
+        progress[video.id] = nil
+        persist(storedProgress, key: Keys.progress)
+    }
+
     /// Replaces every stored copy of `video` (Saved, playlists, Continue
     /// Watching) with fresher metadata, keeping each list's order. Lists
     /// without a change are not rewritten.

@@ -37,7 +37,8 @@ struct HomeView: View {
                             title: "Continue Watching",
                             subtitle: "Pick up where you left off",
                             videos: library.continueWatching,
-                            sectionID: "continue"
+                            sectionID: "continue",
+                            isContinueWatching: true
                         )
                     }
 
@@ -118,7 +119,13 @@ struct HomeView: View {
         .padding(.horizontal, 16)
     }
 
-    private func videoRow(title: String, subtitle: String, videos: [Video], sectionID: String) -> some View {
+    private func videoRow(
+        title: String,
+        subtitle: String,
+        videos: [Video],
+        sectionID: String,
+        isContinueWatching: Bool = false
+    ) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             SectionHeader(title: title, subtitle: subtitle)
                 .padding(.horizontal, 16)
@@ -127,7 +134,7 @@ struct HomeView: View {
                 LazyHStack(alignment: .top, spacing: 14) {
                     ForEach(videos) { video in
                         VideoLink(video: video, section: sectionID, transition: transition) {
-                            VideoCard(video: video, compact: true)
+                            VideoCard(video: video, compact: true, isInContinueWatching: isContinueWatching)
                                 .frame(width: 272, alignment: .top)
                         }
                         .frame(width: 272)

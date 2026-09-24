@@ -94,8 +94,24 @@ accepted player-dismissal bug.
   thumbnail URL unless the details list a 1280 image and the stored one is
   smaller. The curated videos carry their known thumbnails.
 - Low Data Mode (`NetworkConditions`): no 1280 artwork, no stream prefetch,
-  HLS capped at 720p on every network; large images are requested with
-  `allowsConstrainedNetworkAccess = false` and fall back quietly.
+  HLS capped at 720p on every network, 60 s buffer; large images are
+  requested with `allowsConstrainedNetworkAccess = false` and fall back
+  quietly.
+- Streaming Options (user's design) live in the Settings app
+  (`Settings.bundle`, read by `StreamingSettings`): Use Mobile Data; Mobile
+  Data High Quality / Automatic (default); Wi-Fi High Quality (default) /
+  Data Saver. Automatic and Data Saver cap at 720p ("about 1 GB/hour";
+  a hard 1 GB would force 480p for 60 fps videos, rejected). 60 s forward
+  buffer on expensive networks, Data Saver and Low Data Mode; Wi-Fi High
+  Quality keeps the automatic buffer (battery first). Use Mobile Data off
+  blocks native and embedded playback on cellular with an alert.
+- Measured on device (test build, reverted): AVPlayer plays only H.264 from
+  YouTube's HLS; the VP9 variants (up to 4K) are not even recognized, so
+  1080p60 is the maximum and codec rewriting is pointless. 720p60 averages
+  2.2–2.6 Mbit/s, 1080p60 4.3. YouTube encodes HD of 60 fps uploads only at
+  60 fps. The automatic buffer loaded 73–109 s ahead, a low-bitrate video
+  entirely. AV1 exists only outside HLS (hardware decode from A17 Pro) and
+  is not worth building now.
 - `Video.publishedAt` stores the publish date; labels are formatted at
   display time. Search results get an approximate date from "N units ago".
 - Watch progress: `LibraryStore` (`apple-videos.progress`, 200 entries),
@@ -137,9 +153,10 @@ accepted player-dismissal bug.
 
 ## Open work
 
-1. **Subtitles (next).** The resolver already parses YouTube caption tracks
-   (manual and auto-generated) but nothing uses them. AVPlayer only shows
-   subtitles that are part of the HLS playlist. Apple's route is to add a
+1. **Subtitles (next).** YouTube's HLS master already carries a WebVTT
+   subtitle group, which AVPlayer shows; the user reports that only part
+   of the tracks appear there. The resolver also parses the caption tracks
+   (manual and auto-generated), unused so far. Apple's route is to add a
    subtitle media group via `AVAssetResourceLoader` (serving a modified
    master playlist and WebVTT from YouTube's timed text). Discuss the plan
    with the user before building.

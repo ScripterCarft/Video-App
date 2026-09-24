@@ -149,6 +149,11 @@ private struct PlaylistView: View {
             emptyTitle: "Playlist is Empty",
             emptyDescription: "Add a video from its context menu.",
             videos: playlist.map { library.videos(in: $0) } ?? [],
+            removal: { video in
+                VideoCard.Removal(title: playlist?.isWatchLater == true ? "Remove from Watch Later" : "Remove from Playlist") {
+                    library.remove(video, from: playlistID)
+                }
+            },
             transition: transition
         )
     }
@@ -161,6 +166,7 @@ private struct VideoCollectionView: View {
     let emptyTitle: String
     let emptyDescription: String
     let videos: [Video]
+    var removal: ((Video) -> VideoCard.Removal)? = nil
     let transition: Namespace.ID
 
     var body: some View {
@@ -172,7 +178,7 @@ private struct VideoCollectionView: View {
                     LazyVStack(spacing: 22) {
                         ForEach(videos) { video in
                             VideoLink(video: video, section: section, transition: transition) {
-                                VideoCard(video: video)
+                                VideoCard(video: video, removal: removal?(video))
                             }
                         }
                     }

@@ -270,6 +270,15 @@ final class LibraryStore {
         }
     }
 
+    func remove(_ video: Video, from playlistID: UUID) {
+        guard let index = playlists.firstIndex(where: { $0.id == playlistID }),
+              playlists[index].videoIDs.contains(video.id)
+        else { return }
+        playlists[index].videoIDs.removeAll { $0 == video.id }
+        persist(playlists, key: Keys.playlists)
+        dropUnreferencedPlaylistVideos()
+    }
+
     func videos(in playlist: VideoPlaylist) -> [Video] {
         playlist.videoIDs.compactMap { id in
             savedVideos.first { $0.id == id } ?? playlistVideos[id]

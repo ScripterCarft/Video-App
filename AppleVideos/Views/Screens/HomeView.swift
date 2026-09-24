@@ -38,7 +38,11 @@ struct HomeView: View {
                             subtitle: "Pick up where you left off",
                             videos: library.continueWatching,
                             sectionID: "continue",
-                            isContinueWatching: true
+                            removal: { video in
+                                VideoCard.Removal(title: "Remove from Continue Watching") {
+                                    library.removeFromContinueWatching(video)
+                                }
+                            }
                         )
                     }
 
@@ -124,7 +128,7 @@ struct HomeView: View {
         subtitle: String,
         videos: [Video],
         sectionID: String,
-        isContinueWatching: Bool = false
+        removal: ((Video) -> VideoCard.Removal)? = nil
     ) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             SectionHeader(title: title, subtitle: subtitle)
@@ -134,7 +138,7 @@ struct HomeView: View {
                 LazyHStack(alignment: .top, spacing: 14) {
                     ForEach(videos) { video in
                         VideoLink(video: video, section: sectionID, transition: transition) {
-                            VideoCard(video: video, compact: true, isInContinueWatching: isContinueWatching)
+                            VideoCard(video: video, compact: true, removal: removal?(video))
                                 .frame(width: 272, alignment: .top)
                         }
                         .frame(width: 272)

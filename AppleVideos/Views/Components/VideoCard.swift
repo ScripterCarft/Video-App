@@ -1,9 +1,16 @@
 import SwiftUI
 
 struct VideoCard: View {
+    /// Removes the video from the list the card is shown in, such as
+    /// "Remove from Watch Later".
+    struct Removal {
+        let title: String
+        let action: @MainActor () -> Void
+    }
+
     let video: Video
     var compact = false
-    var isInContinueWatching = false
+    var removal: Removal?
 
     @Environment(LibraryStore.self) private var library
     @State private var feedback = 0
@@ -44,13 +51,6 @@ struct VideoCard: View {
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .contentShape(Rectangle())
         .contextMenu {
-            if isInContinueWatching {
-                Button("Remove from Continue Watching", systemImage: "minus.circle") {
-                    library.removeFromContinueWatching(video)
-                    feedback += 1
-                }
-            }
-
             Button {
                 library.toggleSaved(video)
                 feedback += 1
@@ -75,6 +75,16 @@ struct VideoCard: View {
             if let url = video.youtubeURL {
                 ShareLink(item: url) {
                     Label("Share", systemImage: "square.and.arrow.up")
+                }
+            }
+
+            // Destructive actions go last (HIG, Context menus).
+            if let removal {
+                Button(removal.title, systemImage: "minus.circle", role: .destructive) {
+                    withAnimation {
+                        removal.action()
+                    }
+                    feedback += 1
                 }
             }
         } preview: {

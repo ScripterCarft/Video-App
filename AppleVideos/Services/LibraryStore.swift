@@ -87,6 +87,24 @@ final class LibraryStore {
         persist(savedVideos, key: Keys.saved)
     }
 
+    // MARK: - Downloads
+
+    /// Downloads are not available yet: this stays empty and every Download
+    /// button is disabled.
+    private(set) var downloadedVideos: [Video] = []
+
+    func canDownload(_ video: Video) -> Bool {
+        false
+    }
+
+    func isDownloaded(_ video: Video) -> Bool {
+        downloadedVideos.contains { $0.id == video.id }
+    }
+
+    func removeDownload(_ video: Video) {
+        downloadedVideos.removeAll { $0.id == video.id }
+    }
+
     // MARK: - History
 
     private static let historyLimit = 50

@@ -53,9 +53,8 @@ struct VideoDetailView: View {
         .toolbar {
             if let url = video.youtubeURL {
                 ToolbarItemGroup(placement: .topBarTrailing) {
-                    // Reserved for downloads, which no video offers yet.
-                    Button("Download", systemImage: "arrow.down.circle") {}
-                        .disabled(true)
+                    Button("Download", systemImage: "arrow.down") {}
+                        .disabled(!library.canDownload(video))
 
                     ShareLink(item: url) {
                         Image(systemName: "square.and.arrow.up")

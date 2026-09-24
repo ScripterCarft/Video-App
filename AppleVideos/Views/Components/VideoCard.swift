@@ -58,6 +58,9 @@ struct VideoCard: View {
                     )
                 }
 
+                Button("Download", systemImage: "arrow.down") {}
+                    .disabled(!library.canDownload(video))
+
                 if let url = video.youtubeURL {
                     ShareLink(item: url) {
                         Label("Share", systemImage: "square.and.arrow.up")
@@ -68,6 +71,17 @@ struct VideoCard: View {
             Section {
                 VideoLibraryActions(video: video) {
                     feedback += 1
+                }
+            }
+
+            if library.isDownloaded(video) {
+                Section {
+                    Button("Remove Download", systemImage: "trash", role: .destructive) {
+                        withAnimation {
+                            library.removeDownload(video)
+                        }
+                        feedback += 1
+                    }
                 }
             }
         } preview: {

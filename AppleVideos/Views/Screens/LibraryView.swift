@@ -3,6 +3,7 @@ import SwiftUI
 struct LibraryView: View {
     private enum Route: Hashable {
         case saved
+        case downloaded
         case history
     }
 
@@ -15,6 +16,10 @@ struct LibraryView: View {
                 Section {
                     NavigationLink(value: Route.saved) {
                         LibraryRow(title: "Saved", subtitle: "^[\(library.savedVideos.count) video](inflect: true)", icon: "bookmark.fill", color: .red)
+                    }
+
+                    NavigationLink(value: Route.downloaded) {
+                        LibraryRow(title: "Downloaded", subtitle: "^[\(library.downloadedVideos.count) video](inflect: true)", icon: "arrow.down.circle.fill", color: .blue)
                     }
 
                     NavigationLink(value: Route.history) {
@@ -30,6 +35,8 @@ struct LibraryView: View {
                 switch route {
                 case .saved:
                     SavedVideosView(transition: transition)
+                case .downloaded:
+                    DownloadedVideosView(transition: transition)
                 case .history:
                     HistoryView(transition: transition)
                 }
@@ -76,6 +83,22 @@ private struct SavedVideosView: View {
             emptyTitle: "No Saved Videos",
             emptyDescription: "Use the bookmark button or a video's context menu to save it.",
             videos: library.savedVideos,
+            transition: transition
+        )
+    }
+}
+
+private struct DownloadedVideosView: View {
+    @Environment(LibraryStore.self) private var library
+    let transition: Namespace.ID
+
+    var body: some View {
+        VideoCollectionView(
+            title: "Downloaded",
+            section: "downloaded",
+            emptyTitle: "No Downloads",
+            emptyDescription: "Downloaded videos will appear here.",
+            videos: library.downloadedVideos,
             transition: transition
         )
     }

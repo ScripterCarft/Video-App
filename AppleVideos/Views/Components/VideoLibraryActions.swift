@@ -23,7 +23,8 @@ struct VideoLibraryActions: View {
             }
         }
 
-        if library.isInRecentlyWatched(video) {
+        // While downloaded, the menu's only trash action is Remove Download.
+        if library.isInRecentlyWatched(video), !library.isDownloaded(video) {
             Button("Remove from Recently Watched", systemImage: "trash") {
                 perform { library.removeFromRecentlyWatched(video) }
             }

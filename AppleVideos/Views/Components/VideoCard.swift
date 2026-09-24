@@ -43,7 +43,8 @@ struct VideoCard: View {
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .contentShape(Rectangle())
         .contextMenu {
-            Section {
+            // A control group in a menu shows its buttons side by side.
+            ControlGroup {
                 Button {
                     withAnimation {
                         library.toggleSaved(video)
@@ -51,23 +52,22 @@ struct VideoCard: View {
                     feedback += 1
                 } label: {
                     Label(
-                        library.isSaved(video) ? "Remove from Saved" : "Save Video",
+                        // Short titles fit the side-by-side buttons, like Podcasts' "Unsave".
+                        library.isSaved(video) ? "Unsave" : "Save",
                         systemImage: library.isSaved(video) ? "bookmark.slash" : "bookmark"
                     )
+                }
+
+                if let url = video.youtubeURL {
+                    ShareLink(item: url) {
+                        Label("Share", systemImage: "square.and.arrow.up")
+                    }
                 }
             }
 
             Section {
                 VideoLibraryActions(video: video) {
                     feedback += 1
-                }
-            }
-
-            if let url = video.youtubeURL {
-                Section {
-                    ShareLink(item: url) {
-                        Label("Share", systemImage: "square.and.arrow.up")
-                    }
                 }
             }
         } preview: {

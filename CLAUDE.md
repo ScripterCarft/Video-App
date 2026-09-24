@@ -115,7 +115,7 @@ accepted player-dismissal bug.
   first 8 Watchlist videos; Saved and History refresh when opened, once
   per video per launch, keeping stored data until fresh data replaces it.
 - Context menu (user's layout, `VideoLibraryActions` shared with the detail
-  menu): Save and Share side by side on top; then Add to / Remove from
+  menu): Save/Unsave and Share side by side on top (`ControlGroup`); then Add to / Remove from
   Watchlist, Mark as Watched (in Watchlist), Remove from Recently Watched
   (trash, in History; the Library still says "History"). Nothing red.
 - Detail screen: shows refreshed metadata, prefers the full description,

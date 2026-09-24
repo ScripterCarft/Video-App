@@ -222,4 +222,13 @@ struct VideoPlaylist: Identifiable, Hashable, Codable, Sendable {
         self.name = name
         self.videoIDs = videoIDs
     }
+
+    /// The system list that always exists and drops videos once finished.
+    static let watchLaterID = UUID(uuidString: "5A1D3C2E-7F4B-4E8A-9C61-0B2D4F6A8E10")!
+
+    static var watchLater: VideoPlaylist {
+        VideoPlaylist(id: watchLaterID, name: "Watch Later")
+    }
+
+    var isWatchLater: Bool { id == Self.watchLaterID }
 }

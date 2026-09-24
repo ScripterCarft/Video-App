@@ -35,6 +35,7 @@ struct LibraryView: View {
                                 color: .purple
                             )
                         }
+                        .deleteDisabled(playlist.isWatchLater)
                     }
                     .onDelete { offsets in
                         library.deletePlaylists(at: offsets)

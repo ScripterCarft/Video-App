@@ -24,6 +24,8 @@ final class LibraryStore {
     /// The freshest copy of every video refreshed since launch.
     @ObservationIgnored private var refreshedThisLaunch: [String: Video] = [:]
     @ObservationIgnored private var refreshingIDs: Set<String> = []
+    /// Videos played to the end in the open player; applied on close.
+    @ObservationIgnored private var finishedSincePublish: Set<String> = []
     private let defaults: UserDefaults
 
     init(defaults: UserDefaults = .standard) {
@@ -36,10 +38,10 @@ final class LibraryStore {
             [VideoPlaylist].self,
             from: defaults.data(forKey: Keys.playlists)
         ) ?? [
-            VideoPlaylist(name: "Watch Later"),
+            VideoPlaylist.watchLater,
             VideoPlaylist(name: "Favorites")
         ]
-        playlists = Self.uniquePlaylists(decodedPlaylists)
+        playlists = Self.withWatchLater(Self.uniquePlaylists(decodedPlaylists))
         playlistVideos = Self.decode(
             [String: Video].self,
             from: defaults.data(forKey: Keys.playlistVideos)
@@ -172,6 +174,9 @@ final class LibraryStore {
         guard position.isFinite, duration.isFinite, duration > 0 else { return }
 
         let entry = PlaybackProgress(position: position, duration: duration, updatedAt: .now)
+        if entry.fraction >= PlaybackProgress.finishedFraction {
+            finishedSincePublish.insert(videoID)
+        }
         if entry.isResumable {
             storedProgress[videoID] = entry
         } else if storedProgress.removeValue(forKey: videoID) == nil {
@@ -187,10 +192,20 @@ final class LibraryStore {
         persist(storedProgress, key: Keys.progress)
     }
 
-    /// Shows the saved progress in the UI. Called once a player has closed.
+    /// Shows the saved progress in the UI and removes finished videos from
+    /// Watch Later. Called once a player has closed.
     func publishProgress() {
         if progress != storedProgress {
             progress = storedProgress
+        }
+
+        let finished = finishedSincePublish
+        finishedSincePublish = []
+        if let index = playlists.firstIndex(where: \.isWatchLater),
+           playlists[index].videoIDs.contains(where: { finished.contains($0) }) {
+            playlists[index].videoIDs.removeAll { finished.contains($0) }
+            persist(playlists, key: Keys.playlists)
+            dropUnreferencedPlaylistVideos()
         }
     }
 
@@ -229,13 +244,17 @@ final class LibraryStore {
         }
     }
 
+    /// Deletes user playlists; Watch Later is a system list and stays.
     func deletePlaylists(at offsets: IndexSet) {
-        for index in offsets.sorted(by: >) where playlists.indices.contains(index) {
+        for index in offsets.sorted(by: >) where playlists.indices.contains(index) && !playlists[index].isWatchLater {
             playlists.remove(at: index)
         }
         persist(playlists, key: Keys.playlists)
+        dropUnreferencedPlaylistVideos()
+    }
 
-        // Drop stored videos that no remaining playlist refers to.
+    /// Drops stored videos that no playlist refers to.
+    private func dropUnreferencedPlaylistVideos() {
         let referencedIDs = Set(playlists.flatMap(\.videoIDs))
         playlistVideos = playlistVideos.filter { referencedIDs.contains($0.key) }
         persist(playlistVideos, key: Keys.playlistVideos)
@@ -280,6 +299,21 @@ final class LibraryStore {
             }
             return normalized
         }
+    }
+
+    /// Ensures the Watch Later system list exists. The former default list
+    /// named "Watch Later" becomes it, keeping its videos.
+    private static func withWatchLater(_ playlists: [VideoPlaylist]) -> [VideoPlaylist] {
+        guard !playlists.contains(where: \.isWatchLater) else { return playlists }
+        var playlists = playlists
+        if let index = playlists.firstIndex(where: { $0.name == VideoPlaylist.watchLater.name }) {
+            var watchLater = VideoPlaylist.watchLater
+            watchLater.videoIDs = playlists[index].videoIDs
+            playlists[index] = watchLater
+        } else {
+            playlists.insert(.watchLater, at: 0)
+        }
+        return playlists
     }
 
     private static func decode<T: Decodable>(_ type: T.Type, from data: Data?) -> T? {

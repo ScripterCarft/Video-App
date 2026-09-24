@@ -32,11 +32,11 @@ struct HomeView: View {
                         .padding(.horizontal, 16)
                     }
 
-                    if !library.recentlyWatched.isEmpty {
+                    if !library.continueWatching.isEmpty {
                         videoRow(
                             title: "Continue Watching",
                             subtitle: "Pick up where you left off",
-                            videos: library.recentlyWatched,
+                            videos: library.continueWatching,
                             sectionID: "continue"
                         )
                     }

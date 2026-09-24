@@ -23,7 +23,7 @@ struct AppleVideosApp: App {
         _library = State(initialValue: library)
         Task {
             await YouTubeWebConfiguration.shared.prewarm()
-            await library.refreshRecentlyWatched()
+            await library.refreshContinueWatching()
         }
     }
 

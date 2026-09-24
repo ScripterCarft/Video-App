@@ -43,7 +43,7 @@ final class LibraryStore {
         ) ?? [:]
 
         let decodedRecent = Self.decode([Video].self, from: defaults.data(forKey: Keys.recent)) ?? []
-        recentlyWatched = Array(Self.uniqueVideos(decodedRecent).prefix(8))
+        recentlyWatched = Array(Self.uniqueVideos(decodedRecent).prefix(Self.historyLimit))
 
         let decodedProgress = Self.decode(
             [String: PlaybackProgress].self,
@@ -79,13 +79,23 @@ final class LibraryStore {
     func markWatched(_ video: Video) {
         recentlyWatched.removeAll { $0.id == video.id }
         recentlyWatched.insert(video, at: 0)
-        recentlyWatched = Array(recentlyWatched.prefix(8))
+        recentlyWatched = Array(recentlyWatched.prefix(Self.historyLimit))
         persist(recentlyWatched, key: Keys.recent)
     }
 
+    /// Videos from History that were started and not finished, newest first.
+    /// Finishing a video clears its progress, which removes it from here while
+    /// it stays in History.
+    var continueWatching: [Video] {
+        Array(recentlyWatched.lazy.filter { self.progress(for: $0) != nil }.prefix(Self.continueWatchingLimit))
+    }
+
+    private static let historyLimit = 50
+    private static let continueWatchingLimit = 8
+
     /// Refreshes Continue Watching metadata. Called once at launch.
-    func refreshRecentlyWatched() async {
-        let current = Array(recentlyWatched.prefix(8))
+    func refreshContinueWatching() async {
+        let current = continueWatching
         guard !current.isEmpty else { return }
 
         let updates = await withTaskGroup(

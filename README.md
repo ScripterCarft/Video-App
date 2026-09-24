@@ -14,7 +14,7 @@ Only `CFBundleDisplayName` is shortened. Do not rename the Xcode target or Swift
 
 - Four native tabs: Home, Explore, Library, and Search
 - Curated Home feed and public YouTube search
-- Saved videos, playlists, and Continue Watching stored on device
+- Saved videos, History, and the Watchlist stored on device
 - Native navigation, context menus, sharing, haptics, and zoom transitions
 - A modular playback resolver behind `PlaybackResolving`
 - Native `AVPlayer` / `AVPlayerViewController` playback when the resolver supplies a compatible stream
@@ -35,14 +35,14 @@ The YouTube and Innertube representations stay inside the service and resolver l
 
 Every tab owns one `NavigationStack` and registers the video detail destination once with `videoDestination(transition:)` on its root. Links use `VideoLink`, which scopes the zoom-transition ID to the section a video was tapped in. Do not add further `navigationDestination(for:)` declarations for videos inside pushed screens.
 
-## History and Continue Watching
+## Saved, History, and Watchlist
 
-`LibraryStore` owns History and persists it under `apple-videos.recent`. Continue Watching is a filter on History.
+`LibraryStore` owns Saved, History (`apple-videos.recent`) and the Watchlist (`apple-videos.watchlist`). Home shows the Watchlist under the title Continue Watching.
 
 - A video is added to History when its player closes after at least ten seconds of actual playback. History is deduplicated and keeps the 50 most recent videos.
-- Continue Watching shows History videos with resumable progress, at most eight, on Home only. Finishing a video or choosing Remove from Continue Watching clears its progress; the video stays in History.
-- Watch Later is a system playlist with a fixed ID that cannot be deleted. A video leaves it when played to the end, applied when the player closes.
-- At launch, from `AppleVideosApp.init`, only the Continue Watching videos are refreshed. History, Saved and playlists refresh when opened. Each video is requested at most once per launch, four at a time, through `YouTubeService.refreshedVideo`; stored data stays on screen until fresh data replaces it.
+- The Watchlist holds videos added by hand plus History videos with resumable progress, most recent activity first. A video leaves it when played to the end (applied when the player closes), on Mark as Watched, or on Remove from Watchlist; the last two also clear its progress. Remove from Recently Watched takes a video out of History and clears its progress.
+- Playlists were removed. On first launch their stored data is migrated once: Watch Later into the Watchlist, other playlists into Saved.
+- At launch, from `AppleVideosApp.init`, only the first eight Watchlist videos are refreshed. Saved and History refresh when opened. Each video is requested at most once per launch, four at a time, through `YouTubeService.refreshedVideo`; stored data stays on screen until fresh data replaces it.
 - Title, channel, duration, description, views, thumbnail, badges, and publication information are refreshed when YouTube supplies them.
 - Videos store their publish date (`publishedAt`). Relative labels such as “8 days ago” are formatted at display time, so they never go stale. Search results carry an approximate date derived from YouTube's relative text; opening a video's detail screen stores the exact date and current metadata in every library list that contains it.
 - Refresh preserves the original order. If one request fails or omits a field, the stored value for that video is retained.

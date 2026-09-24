@@ -104,18 +104,20 @@ accepted player-dismissal bug.
   on `readyToPlay` and starts playback only after the seek. The Play button
   shows the play symbol, a capsule `ProgressView` (8 pt) and the remaining
   time ("40m", "1m" under a minute).
-- Library lists (user's decision): History stores the last 50 played
-  videos with all shown metadata including the description (like Podcasts
-  keeps episode data; only the video itself is not stored). Continue
-  Watching is a filter on History (resumable progress, max 8, Home only);
-  finishing a video or "Remove from Continue Watching" clears its progress.
-  Watch Later is a system list (fixed ID, not deletable) that drops a video
-  once finished, not when started. Launch refreshes only Continue Watching;
-  History, Saved and playlists refresh when opened, once per video per
-  launch, keeping stored data on screen until fresh data replaces it.
-  Removing from a list (playlist, Watch Later, Continue Watching) is the
-  last, destructive item of the card's context menu inside that list
-  (HIG: destructive items last; the cards are no `List`, so no swipe).
+- Library (user's decision): only Saved and History; playlists were
+  removed (Watch Later migrated to the Watchlist, others to Saved). History
+  stores the last 50 played videos with all shown metadata including the
+  description (like Podcasts keeps episode data; only the video itself is
+  not stored). The Watchlist = videos added by hand + started, unfinished
+  History videos, newest activity first; Home shows it titled "Continue
+  Watching". Finishing, Mark as Watched or Remove from Watchlist takes a
+  video off (the latter two also clear its progress). Launch refreshes the
+  first 8 Watchlist videos; Saved and History refresh when opened, once
+  per video per launch, keeping stored data until fresh data replaces it.
+- Context menu (user's layout, `VideoLibraryActions` shared with the detail
+  menu): Save and Share side by side on top; then Add to / Remove from
+  Watchlist, Mark as Watched (in Watchlist), Remove from Recently Watched
+  (trash, in History; the Library still says "History"). Nothing red.
 - Detail screen: shows refreshed metadata, prefers the full description,
   MORE sits on the description's second line (TextKit line counting), does
   not bounce when content fits, white tint; its tasks keep finished state

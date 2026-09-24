@@ -42,6 +42,8 @@ final class NativePlayback: NSObject {
     private var wasPlaying = false
     private var lastProgressSave = Date.distantPast
     private var pendingStartTime: Double?
+    private var isAwaitingResumeSeek = false
+    private var isPresented = false
     private var metadataTask: Task<Void, Never>?
     private var isPictureInPictureActive = false
     private var isFinished = false
@@ -143,9 +145,18 @@ final class NativePlayback: NSObject {
         playerController.player = player
         playerController.delegate = self
         pendingStartTime = startTime
+        isAwaitingResumeSeek = startTime != nil
         statusObservation = item.observe(\.status, options: [.initial, .new]) { [weak self] _, _ in
-            Task { @MainActor [weak self] in
-                self?.itemStatusDidChange()
+            // Handle readiness right away when it arrives on the main thread, so
+            // the resume seek is issued before the first frame is shown.
+            if Thread.isMainThread {
+                MainActor.assumeIsolated {
+                    self?.itemStatusDidChange()
+                }
+            } else {
+                Task { @MainActor [weak self] in
+                    self?.itemStatusDidChange()
+                }
             }
         }
     }
@@ -156,8 +167,9 @@ final class NativePlayback: NSObject {
         Self.current = self
         presenter.present(playerController, animated: true) { [weak self] in
             guard let self else { return }
-            player.play()
+            isPresented = true
             startWatchTracking()
+            startPlaybackIfReady()
         }
         metadataTask = Task { [weak self] in
             await self?.installSupplementalMetadata()
@@ -165,15 +177,36 @@ final class NativePlayback: NSObject {
         return true
     }
 
-    /// Resumes at the saved position once the item is ready. A stream that
-    /// fails before any playback falls back to the embedded player; later
-    /// failures are left to AVKit, which shows its own error state.
+    /// Starts playback once the player is on screen and, when resuming, the
+    /// seek to the saved position has finished, so the first frame shown is
+    /// the saved position rather than the beginning.
+    private func startPlaybackIfReady() {
+        guard isPresented, !isAwaitingResumeSeek, !isFinished else { return }
+        player.play()
+    }
+
+    /// Seeks to the saved position as soon as the item is ready (seeking
+    /// requires `readyToPlay`). A stream that fails before any playback falls
+    /// back to the embedded player; later failures are left to AVKit, which
+    /// shows its own error state.
     private func itemStatusDidChange() {
         guard !isFinished else { return }
 
         if item.status == .readyToPlay, let pendingStartTime {
             self.pendingStartTime = nil
-            player.seek(to: CMTime(seconds: pendingStartTime, preferredTimescale: 600))
+            // Land on the keyframe up to five seconds before the saved position:
+            // faster than an exact seek, and never past where the viewer stopped.
+            player.seek(
+                to: CMTime(seconds: pendingStartTime, preferredTimescale: 600),
+                toleranceBefore: CMTime(seconds: 5, preferredTimescale: 600),
+                toleranceAfter: .zero
+            ) { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    isAwaitingResumeSeek = false
+                    startPlaybackIfReady()
+                }
+            }
             return
         }
         guard item.status == .failed, !hasStartedPlaying else { return }

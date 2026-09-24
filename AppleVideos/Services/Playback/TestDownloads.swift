@@ -22,6 +22,7 @@ final class TestDownloads: NSObject {
     @ObservationIgnored var backgroundCompletion: (() -> Void)?
     @ObservationIgnored private var session: AVAssetDownloadURLSession!
     @ObservationIgnored private var observations: [Int: NSKeyValueObservation] = [:]
+    @ObservationIgnored private var tasks: [String: AVAssetDownloadTask] = [:]
 
     private static let pathsKey = "test.downloads.paths"
 
@@ -88,11 +89,18 @@ final class TestDownloads: NSObject {
                         TestDownloads.shared.updateProgress(videoID, fraction)
                     }
                 }
+                tasks[video.id] = task
                 task.resume()
             } catch {
                 fail(video.id, "Resolving failed: \(error.localizedDescription)")
             }
         }
+    }
+
+    func cancel(_ videoID: String) {
+        tasks[videoID]?.cancel()
+        tasks[videoID] = nil
+        states[videoID] = nil
     }
 
     private func updateProgress(_ videoID: String, _ fraction: Double) {
@@ -110,11 +118,19 @@ final class TestDownloads: NSObject {
         observations[taskID] = nil
         let parts = (description ?? "").split(separator: "|").map(String.init)
         guard let videoID = parts.first else { return }
+        tasks[videoID] = nil
+        // Stopped with the stop button.
+        if states[videoID] == nil { return }
         let started = parts.count > 1 ? Double(parts[1]).map(Date.init(timeIntervalSince1970:)) : nil
         let expires = parts.count > 2 ? Double(parts[2]).map(Date.init(timeIntervalSince1970:)) : nil
 
         if let error {
-            fail(videoID, "Download failed: \(error)")
+            var progress = ""
+            if case let .downloading(fraction) = states[videoID] {
+                progress = " at \(Int(fraction * 100)) %"
+            }
+            let elapsed = started.map { " after \(Int(Date.now.timeIntervalSince($0))) s" } ?? ""
+            fail(videoID, "Download failed\(progress)\(elapsed).\n\(error)")
             return
         }
         guard let url = localURL(for: videoID) else {
@@ -141,6 +157,35 @@ final class TestDownloads: NSObject {
             lines.append("Turn on Airplane Mode and press Play to test offline playback.")
             report = lines.joined(separator: "\n")
         }
+    }
+
+    /// The error chain with every failing URL: host and path kind (master or
+    /// variant playlist, segment, subtitles), to see which request was refused.
+    nonisolated static func diagnostic(_ error: Error) -> String {
+        var lines: [String] = []
+        var current: NSError? = error as NSError
+        var depth = 0
+        while let nsError = current, depth < 5 {
+            lines.append("\(nsError.domain) \(nsError.code): \(nsError.localizedDescription)")
+            let url = nsError.userInfo[NSURLErrorFailingURLErrorKey] as? URL
+                ?? (nsError.userInfo[NSURLErrorFailingURLStringErrorKey] as? String).flatMap { URL(string: $0) }
+            if let url {
+                let path = url.path
+                let kind = ["hls_variant", "hls_playlist", "hls_timedtext_playlist", "timedtext", "videoplayback"]
+                    .first { path.contains($0) } ?? "other"
+                lines.append("   URL: \(url.host ?? "?") · \(kind) · \(String(path.prefix(50)))")
+            }
+            let otherKeys = nsError.userInfo.keys.filter {
+                ![NSUnderlyingErrorKey, NSURLErrorFailingURLErrorKey, NSURLErrorFailingURLStringErrorKey,
+                  NSLocalizedDescriptionKey].contains($0)
+            }
+            for key in otherKeys.sorted() {
+                lines.append("   \(key): \(String(describing: nsError.userInfo[key]!).prefix(120))")
+            }
+            current = nsError.userInfo[NSUnderlyingErrorKey] as? NSError
+            depth += 1
+        }
+        return lines.joined(separator: "\n")
     }
 
     private static func size(of url: URL) -> Int64 {
@@ -175,10 +220,7 @@ extension TestDownloads: AVAssetDownloadDelegate {
     nonisolated func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
         let description = task.taskDescription
         let taskID = task.taskIdentifier
-        let message = error.map { error in
-            let nsError = error as NSError
-            return "\(error.localizedDescription) (\(nsError.domain) \(nsError.code))"
-        }
+        let message = error.map(Self.diagnostic)
         MainActor.assumeIsolated {
             finish(description: description, taskID: taskID, error: message)
         }

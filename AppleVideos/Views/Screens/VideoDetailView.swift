@@ -53,8 +53,23 @@ struct VideoDetailView: View {
         .toolbar {
             if let url = video.youtubeURL {
                 ToolbarItemGroup(placement: .topBarTrailing) {
-                    Button("Download", systemImage: "arrow.down") {}
-                        .disabled(!library.canDownload(video))
+                    // TEST (do not merge): download test instead of the disabled button.
+                    Button {
+                        TestDownloads.shared.download(video)
+                    } label: {
+                        switch TestDownloads.shared.states[video.id] {
+                        case let .downloading(fraction):
+                            Text("\(Int(fraction * 100))%")
+                                .monospacedDigit()
+                        case .finished:
+                            Image(systemName: "checkmark.circle")
+                        case .failed:
+                            Image(systemName: "exclamationmark.circle")
+                        case nil:
+                            Image(systemName: "arrow.down")
+                        }
+                    }
+                    .accessibilityLabel("Download")
 
                     ShareLink(item: url) {
                         Image(systemName: "square.and.arrow.up")
@@ -65,6 +80,21 @@ struct VideoDetailView: View {
         }
         .navigationTransition(.zoom(sourceID: transitionID, in: transition))
         .playbackPresentation(playback)
+        // TEST (do not merge)
+        .alert(
+            "Download Test",
+            isPresented: Binding(
+                get: { TestDownloads.shared.report != nil },
+                set: { if !$0 { TestDownloads.shared.report = nil } }
+            )
+        ) {
+            Button("Copy") {
+                UIPasteboard.general.string = TestDownloads.shared.report
+            }
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(TestDownloads.shared.report ?? "")
+        }
         .sheet(isPresented: $showDescription) {
             DescriptionSheet(video: shown, description: visibleDescription)
                 .tint(.primary)

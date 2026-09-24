@@ -67,6 +67,9 @@ struct VideoDetailView: View {
                                     TestDownloads.shared.download(video, mode: mode)
                                 }
                             }
+                            Button("Check IP addresses") {
+                                TestDownloads.shared.checkIPs(video)
+                            }
                         } label: {
                             switch TestDownloads.shared.states[video.id] {
                             case .finished:

@@ -11,7 +11,7 @@ import Network
 final class TestDownloadProxy {
     static let shared = TestDownloadProxy()
 
-    private static let port: NWEndpoint.Port = 8090
+    nonisolated private static let port: NWEndpoint.Port = 8090
     private var listener: NWListener?
     private(set) var log: [String] = []
     private var counts: [String: Int] = [:]
@@ -141,7 +141,7 @@ final class TestDownloadProxy {
             let (data, response) = try await URLSession.shared.data(for: request)
             let http = response as? HTTPURLResponse
             let status = http?.statusCode ?? 502
-            record("\(status) \(kind)\(headers["range"].map { " range" } ?? "")")
+            record("\(status) \(kind)\(headers["range"].map { _ in " range" } ?? "")")
 
             var body = data
             if let text = String(data: data, encoding: .utf8), text.hasPrefix("#EXTM3U") {

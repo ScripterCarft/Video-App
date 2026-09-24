@@ -19,16 +19,26 @@ final class PlaybackStarter {
         guard !isPreparing else { return }
         isPreparing = true
         task = Task {
-            let outcome = await NativePlayback.play(video, description: description) { [weak self] ending in
-                switch ending {
-                case let .closed(reachedWatchThreshold):
-                    if reachedWatchThreshold {
-                        library.markWatched(video)
+            let outcome = await NativePlayback.play(
+                video,
+                description: description,
+                startTime: library.resumePosition(for: video),
+                onProgress: { position, duration in
+                    library.recordProgress(for: video.id, position: position, duration: duration)
+                },
+                onFinish: { [weak self] ending in
+                    // The player is closed now, so the UI may show the new progress.
+                    library.publishProgress()
+                    switch ending {
+                    case let .closed(reachedWatchThreshold):
+                        if reachedWatchThreshold {
+                            library.markWatched(video)
+                        }
+                    case let .failed(diagnostic):
+                        self?.fallback = Fallback(video: video, diagnostic: diagnostic)
                     }
-                case let .failed(diagnostic):
-                    self?.fallback = Fallback(video: video, diagnostic: diagnostic)
                 }
-            }
+            )
             guard !Task.isCancelled else { return }
             isPreparing = false
             task = nil

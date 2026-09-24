@@ -31,11 +31,17 @@ final class NativePlayback: NSObject {
     private let item: AVPlayerItem
     private let player: AVPlayer
     private let playerController = AVPlayerViewController()
+    private let onProgress: @MainActor (_ position: Double, _ duration: Double) -> Void
     private let onFinish: @MainActor (Ending) -> Void
     private var statusObservation: NSKeyValueObservation?
     private var timeObserver: Any?
+    private var notificationTokens: [NSObjectProtocol] = []
     private var watchedSeconds = 0.0
     private var lastObservedTime: Double?
+    private var hasStartedPlaying = false
+    private var wasPlaying = false
+    private var lastProgressSave = Date.distantPast
+    private var pendingStartTime: Double?
     private var metadataTask: Task<Void, Never>?
     private var isPictureInPictureActive = false
     private var isFinished = false
@@ -50,12 +56,16 @@ final class NativePlayback: NSObject {
         return try? await YouTubeInnertubePlaybackResolver.shared.resolve(PlaybackRequest(videoID: video.id))
     }
 
-    /// Resolves and presents native playback. `onFinish` runs once, after the
-    /// player has been dismissed, Picture in Picture has been closed, or the
-    /// stream failed before playback started.
+    /// Resolves and presents native playback, starting at `startTime` when
+    /// given. `onProgress` receives the position to save: periodically, on
+    /// pause, at the end, on close and when the app goes to the background.
+    /// `onFinish` runs once, after the player has been dismissed, Picture in
+    /// Picture has been closed, or the stream failed before playback started.
     static func play(
         _ video: Video,
         description: String?,
+        startTime: Double?,
+        onProgress: @escaping @MainActor (_ position: Double, _ duration: Double) -> Void,
         onFinish: @escaping @MainActor (Ending) -> Void
     ) async -> Outcome {
         let item: AVPlayerItem
@@ -102,7 +112,14 @@ final class NativePlayback: NSObject {
         // Only one native playback at a time (for example while one is in PiP).
         current?.finish(.closed(reachedWatchThreshold: current?.reachedWatchThreshold ?? false))
 
-        let playback = NativePlayback(video: video, description: description, item: item, onFinish: onFinish)
+        let playback = NativePlayback(
+            video: video,
+            description: description,
+            item: item,
+            startTime: startTime,
+            onProgress: onProgress,
+            onFinish: onFinish
+        )
         return playback.present() ? .presented : .unavailable
     }
 
@@ -110,11 +127,14 @@ final class NativePlayback: NSObject {
         video: Video,
         description: String?,
         item: AVPlayerItem,
+        startTime: Double?,
+        onProgress: @escaping @MainActor (Double, Double) -> Void,
         onFinish: @escaping @MainActor (Ending) -> Void
     ) {
         self.video = video
         videoDescription = description?.collapsedWhitespace
         self.item = item
+        self.onProgress = onProgress
         self.onFinish = onFinish
         player = AVPlayer(playerItem: item)
         super.init()
@@ -122,7 +142,8 @@ final class NativePlayback: NSObject {
         item.externalMetadata = playerMetadata(description: videoDescription)
         playerController.player = player
         playerController.delegate = self
-        statusObservation = item.observe(\.status) { [weak self] _, _ in
+        pendingStartTime = startTime
+        statusObservation = item.observe(\.status, options: [.initial, .new]) { [weak self] _, _ in
             Task { @MainActor [weak self] in
                 self?.itemStatusDidChange()
             }
@@ -144,10 +165,18 @@ final class NativePlayback: NSObject {
         return true
     }
 
-    /// A stream that fails before any playback falls back to the embedded
-    /// player. Later failures are left to AVKit, which shows its own error state.
+    /// Resumes at the saved position once the item is ready. A stream that
+    /// fails before any playback falls back to the embedded player; later
+    /// failures are left to AVKit, which shows its own error state.
     private func itemStatusDidChange() {
-        guard !isFinished, item.status == .failed, watchedSeconds == 0 else { return }
+        guard !isFinished else { return }
+
+        if item.status == .readyToPlay, let pendingStartTime {
+            self.pendingStartTime = nil
+            player.seek(to: CMTime(seconds: pendingStartTime, preferredTimescale: 600))
+            return
+        }
+        guard item.status == .failed, !hasStartedPlaying else { return }
 
         let diagnostic = item.error.map { error in
             let nsError = error as NSError
@@ -166,6 +195,9 @@ final class NativePlayback: NSObject {
 
         statusObservation?.invalidate()
         statusObservation = nil
+        if case .closed = ending {
+            saveProgress()
+        }
         stopWatchTracking()
         metadataTask?.cancel()
         if item.status == .failed {
@@ -370,15 +402,18 @@ extension NativePlayback: @preconcurrency AVPlayerViewControllerDelegate {
     }
 }
 
-// MARK: - Watch history
+// MARK: - Watch history and progress
 
 private extension NativePlayback {
     static let watchThreshold: Double = 10
+    /// How often the position is saved while playing. Pausing, reaching the
+    /// end, closing the player and backgrounding the app save immediately.
+    static let progressSaveInterval: TimeInterval = 5
 
     var reachedWatchThreshold: Bool { watchedSeconds >= Self.watchThreshold }
 
     /// AVPlayer reports playback time through its periodic time observer, which
-    /// also fires on seeks and rate changes; only advancing playback counts.
+    /// also fires when time jumps and when playback starts or stops.
     func startWatchTracking() {
         timeObserver = player.addPeriodicTimeObserver(
             forInterval: CMTime(seconds: 1, preferredTimescale: 600),
@@ -388,6 +423,29 @@ private extension NativePlayback {
                 self?.recordPlayback(at: time.seconds)
             }
         }
+
+        let center = NotificationCenter.default
+        notificationTokens = [
+            center.addObserver(
+                forName: AVPlayerItem.didPlayToEndTimeNotification,
+                object: item,
+                queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    self?.saveProgress(reachedEnd: true)
+                }
+            },
+            // iOS may terminate a backgrounded app without further notice.
+            center.addObserver(
+                forName: UIApplication.didEnterBackgroundNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    self?.saveProgress()
+                }
+            }
+        ]
     }
 
     func stopWatchTracking() {
@@ -395,11 +453,27 @@ private extension NativePlayback {
             player.removeTimeObserver(timeObserver)
             self.timeObserver = nil
         }
+        notificationTokens.forEach(NotificationCenter.default.removeObserver)
+        notificationTokens = []
     }
 
     func recordPlayback(at seconds: Double) {
         defer { self.lastObservedTime = seconds.isFinite ? seconds : nil }
-        guard player.timeControlStatus == .playing,
+
+        let isPlaying = player.timeControlStatus == .playing
+        if isPlaying {
+            hasStartedPlaying = true
+        }
+        if isPlaying != wasPlaying {
+            wasPlaying = isPlaying
+            if !isPlaying {
+                saveProgress()
+            }
+        } else if isPlaying, Date.now.timeIntervalSince(lastProgressSave) >= Self.progressSaveInterval {
+            saveProgress()
+        }
+
+        guard isPlaying,
               let previous = lastObservedTime,
               seconds.isFinite
         else { return }
@@ -409,5 +483,16 @@ private extension NativePlayback {
         if elapsed > 0 && elapsed < 2.5 {
             watchedSeconds += min(elapsed, 1.5)
         }
+    }
+
+    /// Reports the current position. Nothing is reported before playback has
+    /// actually started, so opening and quickly closing a video (or a stream
+    /// that fails) never overwrites saved progress.
+    func saveProgress(reachedEnd: Bool = false) {
+        guard hasStartedPlaying || reachedEnd else { return }
+        let duration = item.duration.seconds
+        let position = reachedEnd ? duration : player.currentTime().seconds
+        onProgress(position, duration)
+        lastProgressSave = .now
     }
 }

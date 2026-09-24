@@ -206,6 +206,8 @@ struct VideoDetailView: View {
                 .shadow(color: .black.opacity(0.62), radius: 9, y: 2)
 
                 HStack(spacing: 10) {
+                    let resume = library.progress(for: video)
+
                     Spacer(minLength: 0)
 
                     Button {
@@ -230,10 +232,22 @@ struct VideoDetailView: View {
                             .font(.headline)
                             .foregroundStyle(.black)
                             .padding(.horizontal, 26)
-                            .frame(minWidth: 190, minHeight: 50)
+                            // Narrower when the progress row needs the space.
+                            .frame(minWidth: resume == nil ? 190 : 120, minHeight: 50)
                             .background(.white, in: Capsule())
                     }
                     .buttonStyle(.plain)
+
+                    if let resume, !playback.isPreparing {
+                        ProgressView(value: resume.fraction)
+                            .progressViewStyle(.linear)
+                            .tint(.white)
+                            .frame(width: 64)
+                        Text(resume.remainingLabel)
+                            .font(.footnote.weight(.semibold).monospacedDigit())
+                            .foregroundStyle(.white.opacity(0.8))
+                            .accessibilityLabel("\(resume.remainingLabel) remaining")
+                    }
 
                     Button {
                         library.toggleSaved(video)

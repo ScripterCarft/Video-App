@@ -9,12 +9,18 @@ final class LibraryStore {
         static let playlists = "apple-videos.playlists"
         static let playlistVideos = "apple-videos.playlist-videos"
         static let recent = "apple-videos.recent"
+        static let progress = "apple-videos.progress"
     }
 
     private(set) var savedVideos: [Video]
     private(set) var playlists: [VideoPlaylist]
     private var playlistVideos: [String: Video]
     private(set) var recentlyWatched: [Video]
+    /// Watch progress as last shown in the UI. Updated when a player closes, so
+    /// nothing re-renders while AVKit is on screen.
+    private(set) var progress: [String: PlaybackProgress]
+    /// Watch progress as last saved, written continuously during playback.
+    @ObservationIgnored private var storedProgress: [String: PlaybackProgress]
     private let defaults: UserDefaults
 
     init(defaults: UserDefaults = .standard) {
@@ -38,6 +44,13 @@ final class LibraryStore {
 
         let decodedRecent = Self.decode([Video].self, from: defaults.data(forKey: Keys.recent)) ?? []
         recentlyWatched = Array(Self.uniqueVideos(decodedRecent).prefix(8))
+
+        let decodedProgress = Self.decode(
+            [String: PlaybackProgress].self,
+            from: defaults.data(forKey: Keys.progress)
+        ) ?? [:]
+        storedProgress = decodedProgress
+        progress = decodedProgress
 
         // Migrate existing playlists while their videos are still in Saved.
         for video in savedVideos where playlists.contains(where: { $0.videoIDs.contains(video.id) }) {
@@ -106,6 +119,52 @@ final class LibraryStore {
         playlists.append(VideoPlaylist(name: trimmed))
         persist(playlists, key: Keys.playlists)
     }
+
+    // MARK: - Watch progress
+
+    /// Where to resume `video`, if it was started and not finished.
+    func resumePosition(for video: Video) -> Double? {
+        guard let entry = storedProgress[video.id], entry.isResumable else { return nil }
+        return entry.position
+    }
+
+    /// The progress to show for `video`, if it can be resumed.
+    func progress(for video: Video) -> PlaybackProgress? {
+        guard let entry = progress[video.id], entry.isResumable else { return nil }
+        return entry
+    }
+
+    /// Saves the playback position. Called repeatedly during playback, so it
+    /// writes to storage right away (surviving a crash or a terminated app)
+    /// but does not update the UI; see `publishProgress()`. Positions near
+    /// the start or the end remove the entry.
+    func recordProgress(for videoID: String, position: Double, duration: Double) {
+        guard position.isFinite, duration.isFinite, duration > 0 else { return }
+
+        let entry = PlaybackProgress(position: position, duration: duration, updatedAt: .now)
+        if entry.isResumable {
+            storedProgress[videoID] = entry
+        } else if storedProgress.removeValue(forKey: videoID) == nil {
+            return
+        }
+
+        if storedProgress.count > Self.maximumProgressEntries {
+            let kept = storedProgress
+                .sorted { $0.value.updatedAt > $1.value.updatedAt }
+                .prefix(Self.maximumProgressEntries)
+            storedProgress = Dictionary(uniqueKeysWithValues: kept.map { ($0.key, $0.value) })
+        }
+        persist(storedProgress, key: Keys.progress)
+    }
+
+    /// Shows the saved progress in the UI. Called once a player has closed.
+    func publishProgress() {
+        if progress != storedProgress {
+            progress = storedProgress
+        }
+    }
+
+    private static let maximumProgressEntries = 200
 
     /// Replaces every stored copy of `video` (Saved, playlists, Continue
     /// Watching) with fresher metadata, keeping each list's order. Lists

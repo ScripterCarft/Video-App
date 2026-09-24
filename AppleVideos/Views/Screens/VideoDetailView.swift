@@ -53,15 +53,9 @@ struct VideoDetailView: View {
         .toolbar {
             if let url = video.youtubeURL {
                 ToolbarItemGroup(placement: .topBarTrailing) {
-                    // Saving and sharing have their own buttons.
-                    Menu {
-                        VideoLibraryActions(video: video) {
-                            feedback += 1
-                        }
-                    } label: {
-                        Image(systemName: "ellipsis")
-                    }
-                    .accessibilityLabel("More options")
+                    // Reserved for downloads, which no video offers yet.
+                    Button("Download", systemImage: "arrow.down.circle") {}
+                        .disabled(true)
 
                     ShareLink(item: url) {
                         Image(systemName: "square.and.arrow.up")

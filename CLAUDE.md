@@ -114,10 +114,13 @@ accepted player-dismissal bug.
   video off (the latter two also clear its progress). Launch refreshes the
   first 8 Watchlist videos; Saved and History refresh when opened, once
   per video per launch, keeping stored data until fresh data replaces it.
-- Context menu (user's layout, `VideoLibraryActions` shared with the detail
-  menu): Save/Unsave and Share side by side on top (`ControlGroup`); then Add to / Remove from
-  Watchlist, Mark as Watched (in Watchlist), Remove from Recently Watched
+- Context menu (user's layout, `VideoLibraryActions`): Save/Unsave and
+  Share side by side on top (`ControlGroup`); then Add to Watchlist
+  (plus.circle) / Remove from Watchlist (minus.circle), Mark as Watched
+  (rectangle.badge.checkmark, in Watchlist), Remove from Recently Watched
   (trash, in History; the Library still says "History"). Nothing red.
+  The detail toolbar has a Download button that stays disabled until
+  downloads exist; it replaced the "…" menu.
 - Detail screen: shows refreshed metadata, prefers the full description,
   MORE sits on the description's second line (TextKit line counting), does
   not bounce when content fits, white tint; its tasks keep finished state

@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// The Watchlist and History actions for a video, shared by the card's context
-/// menu and the detail screen's menu. Each appears only when it applies.
+/// The Watchlist and History actions for a video in the card's context
+/// menu. Each appears only when it applies.
 struct VideoLibraryActions: View {
     let video: Video
     /// Called after an action, for haptic feedback.
@@ -11,14 +11,14 @@ struct VideoLibraryActions: View {
 
     var body: some View {
         if library.isInWatchlist(video) {
-            Button("Remove from Watchlist", systemImage: "minus") {
+            Button("Remove from Watchlist", systemImage: "minus.circle") {
                 perform { library.removeFromWatchlist(video) }
             }
-            Button("Mark as Watched", systemImage: "checkmark.circle") {
+            Button("Mark as Watched", systemImage: "rectangle.badge.checkmark") {
                 perform { library.markAsWatched(video) }
             }
         } else {
-            Button("Add to Watchlist", systemImage: "plus") {
+            Button("Add to Watchlist", systemImage: "plus.circle") {
                 perform { library.addToWatchlist(video) }
             }
         }

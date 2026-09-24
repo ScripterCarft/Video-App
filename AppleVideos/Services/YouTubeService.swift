@@ -147,9 +147,7 @@ actor YouTubeService {
             published: details.publishedText ?? video.publishedText,
             publishedAt: details.publishedAt ?? video.publishedAt,
             views: details.viewCountText ?? video.viewCountText,
-            // Keep a known thumbnail URL. Its image stays current through HTTP
-            // revalidation, and swapping URLs would reload every card.
-            thumbnailURL: video.thumbnailURL ?? details.thumbnailURL,
+            thumbnailURL: Self.preferredThumbnail(stored: video.thumbnailURL, fresh: details.thumbnailURL),
             description: details.description ?? video.descriptionText,
             badges: details.badges.isEmpty ? video.badges : details.badges
         )
@@ -447,6 +445,18 @@ actor YouTubeService {
             return combined.isEmpty ? nil : combined
         }
         return nil
+    }
+
+    /// Keeps a stored thumbnail URL, whose image stays current through HTTP
+    /// revalidation, so refreshing does not reload every card. A 1280 thumbnail
+    /// from the details replaces a smaller stored one, which also repairs
+    /// entries that earlier stored a small crop although a 1280 size exists.
+    private static func preferredThumbnail(stored: URL?, fresh: URL?) -> URL? {
+        guard let stored else { return fresh }
+        if !Video.isLargeThumbnail(stored), Video.isLargeThumbnail(fresh) {
+            return fresh
+        }
+        return stored
     }
 
     /// The largest 16:9 thumbnail listed. Artwork is downsampled to its drawn

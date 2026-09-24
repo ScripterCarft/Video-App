@@ -51,34 +51,50 @@ struct Video: Identifiable, Hashable, Codable, Sendable {
         return URL(string: "https://www.youtube.com/watch?v=\(id)")
     }
 
+    /// YouTube's 1280×720 thumbnail names. They exist only for some videos.
+    static let largeThumbnailNames: Set<String> = ["hq720", "maxresdefault"]
+
+    /// Whether `url` is one of YouTube's 1280×720 thumbnails.
+    static func isLargeThumbnail(_ url: URL?) -> Bool {
+        guard let url else { return false }
+        return largeThumbnailNames.contains(url.deletingPathExtension().lastPathComponent)
+    }
+
     /// Artwork URLs to try in order, sharpest useful first.
     ///
-    /// YouTube's 16:9 sizes are 320×180 (`mqdefault`), up to 720 wide (the
-    /// search result's own thumbnail) and 1280×720 (`hq720`, `maxresdefault`,
-    /// not available for every video). Cards and search rows are drawn up to
-    /// ~1300 pixels wide, so the small 320 version looks soft; it is only the
-    /// last resort. In Low Data Mode the 1280 variants are left out.
+    /// YouTube's 16:9 sizes are 320×180 (`mqdefault`), a listed thumbnail and
+    /// 1280×720 (`hq720`, `maxresdefault`). YouTube lists a 1280 size in search
+    /// results and details only when it exists, so the stored thumbnail URL
+    /// tells which sizes to request and nothing is fetched just to find out it
+    /// is missing. Only videos without a stored thumbnail (such as the curated
+    /// ones) try `hq720` first. In Low Data Mode the 1280 sizes are left out.
     func artworkCandidates(for quality: ArtworkQuality, lowData: Bool) -> [ArtworkCandidate] {
         guard source == .youtube else {
             return [thumbnailURL].compactMap { $0 }.map { ArtworkCandidate(url: $0, isLarge: false) }
         }
 
-        func image(_ name: String) -> URL? {
-            URL(string: "https://i.ytimg.com/vi/\(id)/\(name).jpg")
+        func image(_ name: String) -> ArtworkCandidate? {
+            URL(string: "https://i.ytimg.com/vi/\(id)/\(name).jpg").map {
+                ArtworkCandidate(url: $0, isLarge: Self.largeThumbnailNames.contains(name))
+            }
         }
-        let small = image("mqdefault").map { ArtworkCandidate(url: $0, isLarge: false) }
-        let listed = thumbnailURL.map { ArtworkCandidate(url: $0, isLarge: false) }
-        let hq720 = image("hq720").map { ArtworkCandidate(url: $0, isLarge: true) }
-        let maximum = image("maxresdefault").map { ArtworkCandidate(url: $0, isLarge: true) }
+        let small = image("mqdefault")
 
         let candidates: [ArtworkCandidate?]
-        switch quality {
-        case .compact, .search:
-            // hq720 (1280 wide) matches the drawn size and does not depend on
-            // which thumbnail URL was stored with the video.
-            candidates = [hq720, listed, small]
-        case .hero:
-            candidates = [maximum, hq720, listed, small]
+        if let thumbnailURL {
+            let listedName = thumbnailURL.deletingPathExtension().lastPathComponent
+            // The full-size file of a listed 1280 thumbnail (listed URLs are
+            // often cropped smaller); nil when YouTube has no 1280 size.
+            let large = Self.largeThumbnailNames.contains(listedName) ? image(listedName) : nil
+            let listed = ArtworkCandidate(url: thumbnailURL, isLarge: false)
+            candidates = [large, listed, small]
+        } else {
+            switch quality {
+            case .compact, .search:
+                candidates = [image("hq720"), small]
+            case .hero:
+                candidates = [image("maxresdefault"), image("hq720"), small]
+            }
         }
 
         var seen = Set<URL>()

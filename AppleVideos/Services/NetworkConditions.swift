@@ -2,8 +2,10 @@ import Foundation
 import Network
 import os
 
-/// Tracks whether the current network path is constrained (Low Data Mode),
-/// so optional downloads can be skipped or reduced, as Apple recommends.
+/// Tracks the current network path: whether it is constrained (Low Data
+/// Mode), so optional downloads can be skipped or reduced, as Apple
+/// recommends, and whether it is expensive (mobile data or a hotspot) or
+/// cellular, for the Streaming Options.
 /// Requests that are merely nice to have should also set
 /// `allowsConstrainedNetworkAccess = false` and fall back when they fail.
 final class NetworkConditions: @unchecked Sendable {
@@ -11,18 +13,40 @@ final class NetworkConditions: @unchecked Sendable {
     // is configured once in init and never touched afterwards.
     static let shared = NetworkConditions()
 
+    private struct State {
+        var isConstrained = false
+        var isExpensive = false
+        var usesCellular = false
+    }
+
     private let monitor = NWPathMonitor()
-    private let constrained = OSAllocatedUnfairLock(initialState: false)
+    private let state = OSAllocatedUnfairLock(initialState: State())
 
     private init() {
-        monitor.pathUpdateHandler = { [constrained] path in
-            constrained.withLock { $0 = path.isConstrained }
+        monitor.pathUpdateHandler = { [state] path in
+            state.withLock {
+                $0 = State(
+                    isConstrained: path.isConstrained,
+                    isExpensive: path.isExpensive,
+                    usesCellular: path.usesInterfaceType(.cellular)
+                )
+            }
         }
         monitor.start(queue: DispatchQueue(label: "NetworkConditions", qos: .utility))
     }
 
     /// True while Low Data Mode applies to the current network.
     var isConstrained: Bool {
-        constrained.withLock { $0 }
+        state.withLock { $0.isConstrained }
+    }
+
+    /// True on mobile data and on a personal hotspot.
+    var isExpensive: Bool {
+        state.withLock { $0.isExpensive }
+    }
+
+    /// True while the current path goes over mobile data.
+    var usesCellular: Bool {
+        state.withLock { $0.usesCellular }
     }
 }

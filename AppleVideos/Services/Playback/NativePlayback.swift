@@ -91,13 +91,7 @@ final class NativePlayback: NSObject {
                 // reported through the item's status after presentation.
                 item = AVPlayerItem(url: variant.url)
                 if variant.transport == .hls {
-                    let cap = CGSize(width: 1_280, height: 720)
-                    item.preferredMaximumResolutionForExpensiveNetworks = cap
-                    // Low Data Mode asks apps to reduce streaming quality on any
-                    // network, not only on cellular.
-                    if NetworkConditions.shared.isConstrained {
-                        item.preferredMaximumResolution = cap
-                    }
+                    applyStreamingOptions(StreamingSettings.current(), to: item)
                 }
             } catch {
                 // URLSession reports cancellation as URLError.cancelled.
@@ -123,6 +117,37 @@ final class NativePlayback: NSObject {
             onFinish: onFinish
         )
         return playback.present() ? .presented : .unavailable
+    }
+
+    /// Applies the Streaming Options to an HLS item. AVPlayer applies the
+    /// resolution limits to whichever network it is on while playing; the
+    /// forward buffer is chosen for the network playback starts on.
+    ///
+    /// Measured on device: AVPlayer plays only H.264 (it skips YouTube's VP9
+    /// variants), so 1080p60 is the highest quality; 720p60 averages about
+    /// 2.2–2.6 Mbit/s, roughly 1 GB/hour. With the automatic buffer it loaded
+    /// 73–109 s ahead, for a low-bitrate video the whole video, which is lost
+    /// when a video is closed early.
+    private static func applyStreamingOptions(_ settings: StreamingSettings, to item: AVPlayerItem) {
+        let network = NetworkConditions.shared
+        let hd = CGSize(width: 1_280, height: 720)
+        // Low Data Mode asks apps to reduce streaming quality on any network.
+        let isLowData = network.isConstrained
+
+        if isLowData || settings.wifiQuality == .dataSaver {
+            item.preferredMaximumResolution = hd
+        }
+        if isLowData || settings.mobileDataQuality == .automatic {
+            item.preferredMaximumResolutionForExpensiveNetworks = hd
+        }
+
+        // 60 s bounds what an early close throws away while AVPlayer still
+        // loads in large bursts, so the radio can sleep in between. Wi-Fi at
+        // High Quality keeps the automatic buffer: Wi-Fi data is not limited,
+        // and long bursts are the cheapest for the radio.
+        if isLowData || network.isExpensive || settings.wifiQuality == .dataSaver {
+            item.preferredForwardBufferDuration = 60
+        }
     }
 
     private init(

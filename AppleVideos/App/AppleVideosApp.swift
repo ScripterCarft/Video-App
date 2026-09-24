@@ -19,6 +19,7 @@ struct AppleVideosApp: App {
         // refresh the Watchlist exactly once.
         // Start watching for Low Data Mode before the first images load.
         _ = NetworkConditions.shared
+        StreamingSettings.registerDefaults()
         let library = LibraryStore()
         _library = State(initialValue: library)
         Task {

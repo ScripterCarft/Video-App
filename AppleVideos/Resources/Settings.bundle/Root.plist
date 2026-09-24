@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>PreferenceSpecifiers</key>
+	<array>
+		<dict>
+			<key>Type</key>
+			<string>PSGroupSpecifier</string>
+			<key>Title</key>
+			<string>Streaming Options</string>
+			<key>FooterText</key>
+			<string>Automatic and Data Saver stream about 1 GB/hour. High Quality uses more data.</string>
+		</dict>
+		<dict>
+			<key>Type</key>
+			<string>PSToggleSwitchSpecifier</string>
+			<key>Title</key>
+			<string>Use Mobile Data</string>
+			<key>Key</key>
+			<string>streaming.useMobileData</string>
+			<key>DefaultValue</key>
+			<true/>
+		</dict>
+		<dict>
+			<key>Type</key>
+			<string>PSMultiValueSpecifier</string>
+			<key>Title</key>
+			<string>Mobile Data</string>
+			<key>Key</key>
+			<string>streaming.mobileDataQuality</string>
+			<key>DefaultValue</key>
+			<string>automatic</string>
+			<key>Titles</key>
+			<array>
+				<string>High Quality</string>
+				<string>Automatic</string>
+			</array>
+			<key>Values</key>
+			<array>
+				<string>high</string>
+				<string>automatic</string>
+			</array>
+		</dict>
+		<dict>
+			<key>Type</key>
+			<string>PSMultiValueSpecifier</string>
+			<key>Title</key>
+			<string>Wi-Fi</string>
+			<key>Key</key>
+			<string>streaming.wifiQuality</string>
+			<key>DefaultValue</key>
+			<string>high</string>
+			<key>Titles</key>
+			<array>
+				<string>High Quality</string>
+				<string>Data Saver</string>
+			</array>
+			<key>Values</key>
+			<array>
+				<string>high</string>
+				<string>dataSaver</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>

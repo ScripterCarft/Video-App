@@ -12,7 +12,7 @@ struct VideoArtwork: View {
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
             FallbackThumbnailImage(
-                candidates: video.artworkCandidates(for: quality, lowData: NetworkConditions.shared.isConstrained),
+                candidates: video.artworkCandidates(lowData: NetworkConditions.shared.isConstrained),
                 maxPixelWidth: quality.displayWidth * displayScale,
                 requiresSixteenByNine: video.source == .youtube
             ) { image in
@@ -58,7 +58,7 @@ struct VideoHeroArtwork: View {
 
     var body: some View {
         FallbackThumbnailImage(
-            candidates: video.artworkCandidates(for: .hero, lowData: NetworkConditions.shared.isConstrained),
+            candidates: video.artworkCandidates(lowData: NetworkConditions.shared.isConstrained),
             maxPixelWidth: ArtworkQuality.hero.displayWidth * displayScale,
             requiresSixteenByNine: video.source == .youtube
         ) { image in

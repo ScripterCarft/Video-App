@@ -60,15 +60,16 @@ struct Video: Identifiable, Hashable, Codable, Sendable {
         return largeThumbnailNames.contains(url.deletingPathExtension().lastPathComponent)
     }
 
-    /// Artwork URLs to try in order, sharpest useful first.
+    /// Artwork URLs to try in order, sharpest available first.
     ///
-    /// YouTube's 16:9 sizes are 320×180 (`mqdefault`), a listed thumbnail and
-    /// 1280×720 (`hq720`, `maxresdefault`). YouTube lists a 1280 size in search
-    /// results and details only when it exists, so the stored thumbnail URL
-    /// tells which sizes to request and nothing is fetched just to find out it
-    /// is missing. Only videos without a stored thumbnail (such as the curated
-    /// ones) try `hq720` first. In Low Data Mode the 1280 sizes are left out.
-    func artworkCandidates(for quality: ArtworkQuality, lowData: Bool) -> [ArtworkCandidate] {
+    /// YouTube's 16:9 sizes are 320×180 (`mqdefault`, always there), a listed
+    /// thumbnail and 1280×720 (`hq720`, `maxresdefault`). Search results and
+    /// details list a 1280 size exactly when it exists, and every video keeps
+    /// the best one listed as `thumbnailURL`. So the first request normally
+    /// succeeds: the 1280 file when it exists, otherwise the listed image.
+    /// Nothing is requested just to find out it is missing. The later entries
+    /// only matter if a request fails. In Low Data Mode 1280 sizes are left out.
+    func artworkCandidates(lowData: Bool) -> [ArtworkCandidate] {
         guard source == .youtube else {
             return [thumbnailURL].compactMap { $0 }.map { ArtworkCandidate(url: $0, isLarge: false) }
         }
@@ -89,12 +90,8 @@ struct Video: Identifiable, Hashable, Codable, Sendable {
             let listed = ArtworkCandidate(url: thumbnailURL, isLarge: false)
             candidates = [large, listed, small]
         } else {
-            switch quality {
-            case .compact, .search:
-                candidates = [image("hq720"), small]
-            case .hero:
-                candidates = [image("maxresdefault"), image("hq720"), small]
-            }
+            // Without listed sizes, only the size that always exists.
+            candidates = [small]
         }
 
         var seen = Set<URL>()
@@ -144,9 +141,10 @@ extension Video {
             id: "UebSfjmQNvs",
             title: "Do You Have a Free Will?",
             channel: "Kurzgesagt – In a Nutshell",
-            duration: "12:44",
+            duration: "12:18",
             published: "Featured",
             views: "Science & ideas",
+            thumbnailURL: URL(string: "https://i.ytimg.com/vi/UebSfjmQNvs/hq720.jpg"),
             description: "What if every decision you make is the inevitable result of everything that came before? Kurzgesagt explores one of philosophy’s oldest questions through science and animation.",
             badges: ["HD", "CC"]
         ),
@@ -157,6 +155,7 @@ extension Video {
             duration: "22:08",
             published: "Editor’s pick",
             views: "Mathematics",
+            thumbnailURL: URL(string: "https://i.ytimg.com/vi/d6iQrh2TK98/mqdefault.jpg"),
             description: "Veritasium follows a surprising mathematical constant through geometry, probability, and the patterns hidden in the world around us.",
             badges: ["HD", "CC"]
         ),
@@ -167,6 +166,7 @@ extension Video {
             duration: "7:55",
             published: "Essential",
             views: "Animated story",
+            thumbnailURL: URL(string: "https://i.ytimg.com/vi/h6fcK_fRYaI/hq720.jpg"),
             description: "A short animated story about life, identity, and the connections between people, adapted by Kurzgesagt.",
             badges: ["HD", "CC"]
         ),
@@ -177,6 +177,7 @@ extension Video {
             duration: "22:09",
             published: "Staff pick",
             views: "Mathematics",
+            thumbnailURL: URL(string: "https://i.ytimg.com/vi/pTn6Ewhb27k/hq720.jpg"),
             description: "A deceptively simple mathematical problem leads to patterns that have resisted a complete explanation for decades.",
             badges: ["HD", "CC"]
         )

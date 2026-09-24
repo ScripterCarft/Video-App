@@ -263,7 +263,7 @@ final class NativePlayback: NSObject {
     private func loadArtworkData() async -> Data? {
         // 1280 pixels wide gives the 720×720 square artwork its full height.
         guard let image = await ArtworkLoader.firstImage(
-            from: video.artworkCandidates(for: .hero, lowData: NetworkConditions.shared.isConstrained),
+            from: video.artworkCandidates(lowData: NetworkConditions.shared.isConstrained),
             requiresSixteenByNine: video.source == .youtube,
             maxPixelWidth: 1280
         ) else {

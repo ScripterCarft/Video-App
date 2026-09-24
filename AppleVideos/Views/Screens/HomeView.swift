@@ -64,17 +64,10 @@ struct HomeView: View {
     }
 
     private var featuredPlayLabel: some View {
-        Group {
-            if playback.isPreparing {
-                HStack(spacing: 6) {
-                    ProgressView()
-                        .tint(.black)
-                    Text("Cancel")
-                }
-            } else {
-                Label("Play", systemImage: "play.fill")
-            }
-        }
+        PlayButtonContent(
+            progress: library.progress(for: featured),
+            isPreparing: playback.isPreparing
+        )
         .font(.subheadline.weight(.semibold))
         .foregroundStyle(.black)
         .padding(.horizontal, 15)

@@ -544,7 +544,6 @@ private extension NativePlayback {
         let seconds: Double
         let droppedFrames: Int
         let stalls: Int
-        let averageVideoBitrate: Double
     }
 
     /// Shows which HLS variants AVPlayer played, with codec, data used and
@@ -557,13 +556,9 @@ private extension NativePlayback {
                 bytes: max(event.numberOfBytesTransferred, 0),
                 seconds: max(event.durationWatched, 0),
                 droppedFrames: event.numberOfDroppedVideoFrames,
-                stalls: event.numberOfStalls,
-                averageVideoBitrate: event.averageVideoBitrate
+                stalls: event.numberOfStalls
             )
         }
-        let position = player.currentTime().seconds
-        let bufferedEnd = item.loadedTimeRanges.map { $0.timeRangeValue.end.seconds }.max() ?? position
-        let bufferedAhead = max(0, bufferedEnd - position)
         let size = item.presentationSize
         let cap = item.preferredMaximumResolution
         let expensiveCap = item.preferredMaximumResolutionForExpensiveNetworks
@@ -574,8 +569,6 @@ private extension NativePlayback {
                 + "Low Power Mode: \(ProcessInfo.processInfo.isLowPowerModeEnabled ? "on" : "off")",
             "Cap: \(Self.size(cap)) · on cellular: \(Self.size(expensiveCap))",
             "Last frame: \(Self.size(size))",
-            "Buffered ahead at close: \(Int(bufferedAhead)) s · forward buffer setting: "
-                + (item.preferredForwardBufferDuration == 0 ? "automatic" : "\(Int(item.preferredForwardBufferDuration)) s"),
             ""
         ]
         let asset = item.asset as? AVURLAsset
@@ -607,16 +600,16 @@ private extension NativePlayback {
             }
             lines.append("#\(index + 1) \(variant.map(describe) ?? mbit(entry.indicatedBitrate))")
             lines.append(
-                "   \(Int(entry.seconds)) s · \(megabytes(entry.bytes)) loaded · video avg \(mbit(entry.averageVideoBitrate))"
-                    + " · network \(mbit(entry.observedBitrate)) · dropped \(entry.droppedFrames) · stalls \(entry.stalls)"
+                "   \(Int(entry.seconds)) s · \(megabytes(entry.bytes)) · network \(mbit(entry.observedBitrate))"
+                    + " · dropped \(entry.droppedFrames) · stalls \(entry.stalls)"
             )
         }
         if totalSeconds > 0 {
             let gigabytesPerHour = Double(totalBytes) / totalSeconds * 3600 / 1_000_000_000
             lines.append("")
             lines.append(
-                "Loaded \(megabytes(totalBytes)) for \(Int(totalSeconds)) s watched ≈ "
-                    + String(format: "%.2f GB/hour incl. buffer", gigabytesPerHour)
+                "Total \(megabytes(totalBytes)) in \(Int(totalSeconds)) s ≈ "
+                    + String(format: "%.2f GB/hour", gigabytesPerHour)
             )
         }
         if let best = variants.max(by: { ($0.peakBitRate ?? 0) < ($1.peakBitRate ?? 0) }) {

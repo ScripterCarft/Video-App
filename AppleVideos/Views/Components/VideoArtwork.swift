@@ -190,14 +190,17 @@ private struct FallbackThumbnailImage<Content: View, Placeholder: View>: View {
             // under a full-screen player's interactive dismissal). Keep a finished
             // load for the same request instead of loading again.
             guard loadedRequest != request else { return }
-            if loadedImage != nil { loadedImage = nil }
+            // When the artwork URL changes (for example after a metadata
+            // refresh), keep showing the current image until the new one is ready.
             let image = await ArtworkLoader.firstImage(
                 from: request.candidates,
                 requiresSixteenByNine: requiresSixteenByNine,
                 maxPixelWidth: request.maxPixelWidth
             )
             guard !Task.isCancelled else { return }
-            loadedImage = image
+            if let image {
+                loadedImage = image
+            }
             loadedRequest = request
         }
     }

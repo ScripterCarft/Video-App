@@ -2,6 +2,10 @@ import UIKit
 
 /// Downloads video artwork, trying candidates in order, and keeps
 /// display-ready images in memory.
+///
+/// Downloads belong to the loader, not to the view that asked: a card that
+/// scrolls out of view does not cancel its download, and a card that asks
+/// for the same artwork again joins the download already in flight.
 @MainActor
 enum ArtworkLoader {
     /// Prepared images by candidate list and target width. Rows that scroll
@@ -12,6 +16,8 @@ enum ArtworkLoader {
         cache.countLimit = 200
         return cache
     }()
+
+    private static var inFlight: [NSString: Task<UIImage?, Never>] = [:]
 
     /// The image already prepared for these candidates and width, if any.
     static func cachedImage(for candidates: [ArtworkCandidate], maxPixelWidth: CGFloat) -> UIImage? {
@@ -30,15 +36,37 @@ enum ArtworkLoader {
         if let cached = cache.object(forKey: key) {
             return cached
         }
+        if let running = inFlight[key] {
+            return await running.value
+        }
 
-        for candidate in candidates {
-            guard !Task.isCancelled else { return nil }
-
-            var request = URLRequest(
-                url: candidate.url,
-                cachePolicy: .returnCacheDataElseLoad,
-                timeoutInterval: 20
+        // Unstructured on purpose: the download outlives the view that started it.
+        let task = Task {
+            let image = await download(
+                candidates,
+                requiresSixteenByNine: requiresSixteenByNine,
+                maxPixelWidth: maxPixelWidth
             )
+            if let image {
+                cache.setObject(image, forKey: key)
+            }
+            inFlight[key] = nil
+            return image
+        }
+        inFlight[key] = task
+        return await task.value
+    }
+
+    private static func download(
+        _ candidates: [ArtworkCandidate],
+        requiresSixteenByNine: Bool,
+        maxPixelWidth: CGFloat
+    ) async -> UIImage? {
+        for candidate in candidates {
+            // The default cache policy follows YouTube's Cache-Control (fresh for
+            // two hours) and then revalidates with the ETag, so a changed
+            // thumbnail appears while an unchanged one costs only a 304.
+            var request = URLRequest(url: candidate.url, timeoutInterval: 20)
             request.setValue("image/avif,image/webp,image/*,*/*;q=0.8", forHTTPHeaderField: "Accept")
             // Large variants are optional. In Low Data Mode the system refuses
             // them and the next, smaller candidate is used instead.
@@ -63,9 +91,7 @@ enum ArtworkLoader {
 
             // Decode (and shrink to the drawn size) in the background, so the
             // main thread never stalls on a large JPEG and memory stays small.
-            let prepared = await prepared(image, maxPixelWidth: maxPixelWidth) ?? image
-            cache.setObject(prepared, forKey: key)
-            return prepared
+            return await prepared(image, maxPixelWidth: maxPixelWidth) ?? image
         }
         return nil
     }

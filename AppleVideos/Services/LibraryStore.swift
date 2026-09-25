@@ -111,6 +111,18 @@ final class LibraryStore {
         persist(recentlyWatched, key: Keys.recent)
     }
 
+    /// Empties History. Like removing one video, it forgets the saved
+    /// positions, so started videos leave the Watchlist unless added by hand.
+    func removeAllFromRecentlyWatched() {
+        for video in recentlyWatched {
+            storedProgress[video.id] = nil
+            progress[video.id] = nil
+        }
+        persist(storedProgress, key: Keys.progress)
+        recentlyWatched = []
+        persist(recentlyWatched, key: Keys.recent)
+    }
+
     // MARK: - Watchlist
 
     /// Videos added by hand and videos from History that were started and not

@@ -116,7 +116,11 @@ accepted player-dismissal bug.
   display time. Search results get an approximate date from "N units ago".
 - Watch progress: `LibraryStore` (`apple-videos.progress`, 200 entries),
   saved every 5 s and on pause, end, close and background; under 10 s or
-  past 95 % is not kept (thresholds chosen by us, not Apple). Resume seeks
+  past 95 % is not kept (thresholds chosen by us, not Apple). One rule
+  (user's decision): a video counts as started after 10 s of actual
+  playback (seeking does not count) or when it continues a saved
+  position; only then is progress saved and the video added to History.
+  Resume seeks
   on `readyToPlay` and starts playback only after the seek. The Play button
   shows the play symbol, a capsule `ProgressView` (8 pt) and the remaining
   time ("40m", "1m" under a minute).

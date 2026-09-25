@@ -40,7 +40,7 @@ Every tab owns one `NavigationStack` and registers the video detail destination 
 
 `LibraryStore` owns Saved, History (`apple-videos.recent`) and the Watchlist (`apple-videos.watchlist`). Home shows the Watchlist under the title Continue Watching.
 
-- A video is added to History when its player closes after at least ten seconds of actual playback. History is deduplicated and keeps the 50 most recent videos.
+- A video is added to History when its player closes after at least ten seconds of actual playback; seeking does not count. The same rule decides when its position is first saved, so every video with a saved position is in History. History is deduplicated and keeps the 50 most recent videos.
 - The Watchlist holds videos added by hand plus History videos with resumable progress, most recent activity first. A video leaves it when played to the end (applied when the player closes), on Mark as Watched, or on Remove from Watchlist; the last two also clear its progress. Remove from Recently Watched takes a video out of History and clears its progress.
 - Playlists were removed. On first launch their stored data is migrated once: Watch Later into the Watchlist, other playlists into Saved.
 - At launch, from `AppleVideosApp.init`, only the first eight Watchlist videos are refreshed. Saved and History refresh when opened. Each video is requested at most once per launch, four at a time, through `YouTubeService.refreshedVideo`; stored data stays on screen until fresh data replaces it.

@@ -44,6 +44,9 @@ final class NativePlayback: NSObject {
     private var wasPlaying = false
     private var lastProgressSave = Date.distantPast
     private var pendingStartTime: Double?
+    /// The video continues from a saved position, so it already counts as
+    /// started and every new position is saved.
+    private let continuesSavedProgress: Bool
     private var isAwaitingResumeSeek = false
     private var isPresented = false
     private var metadataTask: Task<Void, Never>?
@@ -184,6 +187,7 @@ final class NativePlayback: NSObject {
         self.item = item
         self.onProgress = onProgress
         self.onFinish = onFinish
+        continuesSavedProgress = startTime != nil
         player = AVPlayer(playerItem: item)
         super.init()
 
@@ -564,11 +568,14 @@ private extension NativePlayback {
         }
     }
 
-    /// Reports the current position. Nothing is reported before playback has
-    /// actually started, so opening and quickly closing a video (or a stream
-    /// that fails) never overwrites saved progress.
+    /// Reports the current position once the video counts as started, the
+    /// same rule that adds it to History: after 10 s of actual playback
+    /// (seeking does not count), or at once when it continues from a saved
+    /// position. Opening a video briefly, or a stream that fails, never saves
+    /// or overwrites progress.
     func saveProgress(reachedEnd: Bool = false) {
-        guard hasStartedPlaying || reachedEnd else { return }
+        let countsAsStarted = reachedWatchThreshold || (continuesSavedProgress && hasStartedPlaying)
+        guard countsAsStarted || reachedEnd else { return }
         let duration = item.duration.seconds
         let position = reachedEnd ? duration : player.currentTime().seconds
         onProgress(position, duration)

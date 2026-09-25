@@ -132,7 +132,6 @@ final class TestDownloads: NSObject {
         case appleSample = "Apple sample stream"
         case youtubeViaProxy = "YouTube through the app"
         case youtubeH264 = "YouTube H.264 only (direct)"
-        case youtubePlaylistViaApp = "YouTube, only playlist through the app"
     }
 
     private static let appleSampleURL = URL(
@@ -158,8 +157,7 @@ final class TestDownloads: NSObject {
                         fail(video.id, "No HLS stream for this video.")
                         return
                     }
-                    if mode == .youtubeViaProxy || mode == .youtubePlaylistViaApp {
-                        TestDownloadProxy.shared.servesMasterOnly = mode == .youtubePlaylistViaApp
+                    if mode == .youtubeViaProxy {
                         guard let proxied = TestDownloadProxy.shared.proxiedURL(for: variant.url) else {
                             fail(video.id, "Could not start the local proxy.")
                             return
@@ -302,7 +300,7 @@ final class TestDownloads: NSObject {
 
     /// The proxy's request log, when the download went through the app.
     private var proxySummary: String {
-        guard currentMode == .youtubeViaProxy || currentMode == .youtubePlaylistViaApp else { return "" }
+        guard currentMode == .youtubeViaProxy else { return "" }
         let summary = TestDownloadProxy.shared.summary
         TestDownloadProxy.shared.stop()
         return "\n\n" + summary

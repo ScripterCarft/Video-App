@@ -177,7 +177,8 @@ accepted player-dismissal bug.
   the place to add that route.
 - Detail screen: shows refreshed metadata, prefers the full description
   (two lines, MORE below), does not bounce when content fits, white tint,
-  top scroll edge effect hidden; its tasks keep finished state so nothing
+  keeps the system scroll edge effect (user: needed for legibility); its
+  tasks keep finished state so nothing
   reloads when AVKit re-adds the screen.
 - Keep screens that take part in the zoom transition cheap to draw: the
   zoom redraws the live screen every frame. Proved on device: blurred,

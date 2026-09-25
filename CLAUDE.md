@@ -175,10 +175,18 @@ accepted player-dismissal bug.
   pass-through proxy in the app (the app fetches every playlist and
   segment) downloads reliably. Cause unknown; `DownloadURLProviding` is
   the place to add that route.
-- Detail screen: shows refreshed metadata, prefers the full description,
-  MORE sits on the description's second line (TextKit line counting), does
-  not bounce when content fits, white tint; its tasks keep finished state
-  so nothing reloads when AVKit re-adds the screen.
+- Detail screen: shows refreshed metadata, prefers the full description
+  (two lines, MORE below), does not bounce when content fits, white tint,
+  top scroll edge effect hidden; its tasks keep finished state so nothing
+  reloads when AVKit re-adds the screen.
+- Keep screens that take part in the zoom transition cheap to draw: the
+  zoom redraws the live screen every frame. Proved on device: blurred,
+  masked hero copies, text shadows, a material button and TextKit
+  measuring made closing slow and left the app unresponsive (taps even
+  hit the old Play button). The hero is the 16:9 thumbnail centered on
+  system gray (dark on detail). No blurs, masks, shadows or materials on
+  these screens without measuring.
+- Home title: `toolbarTitleDisplayMode(.inlineLarge)` (compared on device).
 - Home shelves: `scrollClipDisabled()` and `viewAligned` snapping.
 - Removed on purpose: the empty Profile button (App Review rejects
   non-functional UI). "Up Next" stays at the user's

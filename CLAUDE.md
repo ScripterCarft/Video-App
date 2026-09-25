@@ -137,16 +137,33 @@ accepted player-dismissal bug.
   Watched (trash, in History, hidden while downloaded; the Library still
   says "History"). Only when downloaded: a separate, red Remove Download
   (trash), so there is never more than one trash item.
-- Downloads are prepared, not built: `LibraryStore.canDownload` is false,
-  `downloadedVideos` stays empty, Download buttons (menu and detail
-  toolbar, `arrow.down`) are disabled, Library has a "Downloaded" row.
+- Downloads (`Services/Downloads`, user's design, personal use; App Store
+  guideline 5.2.3 forbids them): `DownloadManager` uses background
+  `AVAssetDownloadURLSession`s (Wi-Fi only / with mobile data), pins the
+  best H.264 variant with `AVAssetVariantQualifier(variant:)`, resolves a
+  fresh link first, keeps only complete packages and plays them offline.
+  Download Options in the Settings app: Use Mobile Data (default off, then
+  downloads wait for Wi-Fi), Wi-Fi High Quality 1080p / Fast Downloads
+  720p (default); mobile data always 720p. No HDR/Atmos line (YouTube HLS
+  has neither). UI: detail toolbar button with `DownloadProgressRing` (tap
+  stops), a downloaded video's button opens "Download Again to Renew" /
+  red "Remove Download"; context menu Download / Stop; download symbol
+  beside the duration; Library > Downloaded with Remove All.
+- Download investigation (test builds, reverted): the direct system
+  download gets HTTP 401 from YouTube for many videos, immediately, while
+  the same requests from the app succeed. Ruled out: headers, cookies,
+  IP/IPv4-vs-IPv6 and HTTP version (webhook.site capture, same for app,
+  AVPlayer and download service), subtitles, VP9 in the playlist. A local
+  pass-through proxy in the app (the app fetches every playlist and
+  segment) downloads reliably. Cause unknown; `DownloadURLProviding` is
+  the place to add that route.
 - Detail screen: shows refreshed metadata, prefers the full description,
   MORE sits on the description's second line (TextKit line counting), does
   not bounce when content fits, white tint; its tasks keep finished state
   so nothing reloads when AVKit re-adds the screen.
 - Home shelves: `scrollClipDisabled()` and `viewAligned` snapping.
-- Removed on purpose: the empty Profile button and the Downloads placeholder
-  (App Review rejects non-functional UI). "Up Next" stays at the user's
+- Removed on purpose: the empty Profile button (App Review rejects
+  non-functional UI). "Up Next" stays at the user's
   request.
 - Language mixing (UI English, YouTube texts in the device language) is left
   as is on the user's decision.

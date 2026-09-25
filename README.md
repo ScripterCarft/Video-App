@@ -15,6 +15,7 @@ Only `CFBundleDisplayName` is shortened. Do not rename the Xcode target or Swift
 - Four native tabs: Home, Explore, Library, and Search
 - Curated Home feed and public YouTube search
 - Saved videos, History, and the Watchlist stored on device
+- Offline downloads (H.264 HLS through a background `AVAssetDownloadURLSession`), see Downloads
 - Native navigation, context menus, sharing, haptics, and zoom transitions
 - A modular playback resolver behind `PlaybackResolving`
 - Native `AVPlayer` / `AVPlayerViewController` playback when the resolver supplies a compatible stream
@@ -63,6 +64,17 @@ Playback follows Apple's AVKit guidance:
 - Dismissal is reported by `playerViewController(_:willEndFullScreenPresentationWithAnimationCoordinator:)`. The detail screen hears back exactly once, after the player or Picture in Picture has closed. Restoring from Picture in Picture presents the same controller again.
 - The app is portrait only; only `AVPlayerViewController` may rotate (`AppDelegate.application(_:supportedInterfaceOrientationsFor:)`).
 - When the resolver has no compatible source, the embedded YouTube player is shown as a separate full-screen SwiftUI overlay.
+
+## Downloads
+
+`DownloadManager` (`Services/Downloads`) downloads videos for offline playback the way the TV app does:
+
+- Background `AVAssetDownloadURLSession`s, one Wi-Fi only and one allowing mobile data. Downloads continue while the app is suspended or closed; the app reconnects at launch and completes the system's background events (`AppDelegate`).
+- Before each download a fresh stream link is resolved (`DownloadURLProviding`, today `DirectDownloadURLProvider`). The best H.264 variant up to the chosen quality is pinned with `AVAssetVariantQualifier(variant:)`; VP9 variants are never downloaded because AVFoundation cannot play them.
+- Only complete packages are kept. Stopping, failing or an interrupted download deletes the partial package. Finished downloads are stored under `apple-videos.downloads` with their video metadata, so they show and play offline; packages that disappear are dropped at launch.
+- Download Options in the Settings app: Use Mobile Data (off by default; downloads then wait for Wi-Fi) and Wi-Fi High Quality (1080p) / Fast Downloads (720p, default). Mobile data always uses 720p.
+- A downloaded video plays from its package, without network or data. The detail button of a downloaded video offers Download Again to Renew and Remove Download; Library > Downloaded offers Remove All.
+- Known limitation: YouTube refuses the direct system download for many videos with HTTP 401, although the same requests succeed from the app. See CLAUDE.md for what was ruled out.
 
 Do not add a custom pan gesture, transform private AVKit subviews, or stack a second player overlay over Apple's controls. Keep player changes on public AVKit APIs and validate them on a physical device. See [KNOWN_ISSUES.md](KNOWN_ISSUES.md) for the open interactive-dismissal backdrop issue.
 

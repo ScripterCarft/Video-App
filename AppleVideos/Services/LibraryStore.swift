@@ -1,69 +1,51 @@
 import Foundation
 import Observation
+import SwiftData
 
+/// Saved, History, the Watchlist and watch progress, stored in SwiftData with
+/// one `StoredVideo` per video. The lists published here are read from the
+/// store after each change and after every save of the shared context.
+///
+/// Watch progress is written to the store during playback (it survives a
+/// crash) but `progress`, which the UI reads, changes only when a player has
+/// closed, so nothing re-renders while AVKit is on screen.
 @MainActor
 @Observable
 final class LibraryStore {
-    private enum Keys {
-        static let saved = "apple-videos.saved"
-        static let watchlist = "apple-videos.watchlist"
-        static let recent = "apple-videos.recent"
-        static let progress = "apple-videos.progress"
-        /// Removed playlists, read once to migrate their videos.
-        static let legacyPlaylists = "apple-videos.playlists"
-        static let legacyPlaylistVideos = "apple-videos.playlist-videos"
-    }
-
-    /// A video added to the Watchlist by hand.
-    private struct WatchlistEntry: Codable {
-        var video: Video
-        let addedAt: Date
-    }
-
-    private(set) var savedVideos: [Video]
+    private(set) var savedVideos: [Video] = []
     /// History, shown as "Recently Watched" in menus.
-    private(set) var recentlyWatched: [Video]
-    private var watchlistEntries: [WatchlistEntry]
-    /// Watch progress as last shown in the UI. Updated when a player closes, so
-    /// nothing re-renders while AVKit is on screen.
-    private(set) var progress: [String: PlaybackProgress]
-    /// Watch progress as last saved, written continuously during playback.
-    @ObservationIgnored private var storedProgress: [String: PlaybackProgress]
+    private(set) var recentlyWatched: [Video] = []
+    /// Videos added to the Watchlist by hand, with the date they were added.
+    private var manualWatchlist: [(video: Video, addedAt: Date)] = []
+    /// Watch progress as last shown in the UI.
+    private(set) var progress: [String: PlaybackProgress] = [:]
+
     /// The freshest copy of every video refreshed since launch.
     @ObservationIgnored private var refreshedThisLaunch: [String: Video] = [:]
     @ObservationIgnored private var refreshingIDs: Set<String> = []
     /// Videos played to the end in the open player; applied on close.
     @ObservationIgnored private var finishedSincePublish: Set<String> = []
-    private let defaults: UserDefaults
+    @ObservationIgnored private var saveObserver: NSObjectProtocol?
 
-    init(defaults: UserDefaults = .standard) {
-        self.defaults = defaults
+    private static let historyLimit = 50
+    private static let maximumProgressEntries = 200
 
-        let decodedSaved = Self.decode([Video].self, from: defaults.data(forKey: Keys.saved)) ?? []
-        savedVideos = Self.uniqueVideos(decodedSaved)
+    init() {
+        reloadLists()
+        progress = Self.storedProgress()
 
-        let decodedWatchlist = Self.decode(
-            [WatchlistEntry].self,
-            from: defaults.data(forKey: Keys.watchlist)
-        ) ?? []
-        var seenWatchlist = Set<String>()
-        watchlistEntries = decodedWatchlist.filter { seenWatchlist.insert($0.video.id).inserted }
-
-        let decodedRecent = Self.decode([Video].self, from: defaults.data(forKey: Keys.recent)) ?? []
-        recentlyWatched = Array(Self.uniqueVideos(decodedRecent).prefix(Self.historyLimit))
-
-        let decodedProgress = Self.decode(
-            [String: PlaybackProgress].self,
-            from: defaults.data(forKey: Keys.progress)
-        ) ?? [:]
-        storedProgress = decodedProgress
-        progress = decodedProgress
-
-        migratePlaylists()
-
-        persist(savedVideos, key: Keys.saved)
-        persist(watchlistEntries, key: Keys.watchlist)
-        persist(recentlyWatched, key: Keys.recent)
+        // Downloads share the store; reload when anything is saved. Unchanged
+        // lists are not reassigned, so progress saves during playback do not
+        // re-render anything.
+        saveObserver = NotificationCenter.default.addObserver(
+            forName: ModelContext.didSave,
+            object: LibraryDatabase.context,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.reloadLists()
+            }
+        }
     }
 
     /// The copy to store: a screen may hold older metadata than a details
@@ -79,24 +61,19 @@ final class LibraryStore {
     }
 
     func toggleSaved(_ video: Video) {
-        if let index = savedVideos.firstIndex(where: { $0.id == video.id }) {
-            savedVideos.remove(at: index)
-        } else {
-            savedVideos.insert(freshest(video), at: 0)
-        }
-        persist(savedVideos, key: Keys.saved)
+        let record = LibraryDatabase.record(for: freshest(video))
+        record.savedAt = record.savedAt == nil ? .now : nil
+        commit(record)
     }
 
     // MARK: - History
 
-    private static let historyLimit = 50
-
     func markWatched(_ video: Video) {
-        let video = freshest(video)
-        recentlyWatched.removeAll { $0.id == video.id }
-        recentlyWatched.insert(video, at: 0)
-        recentlyWatched = Array(recentlyWatched.prefix(Self.historyLimit))
-        persist(recentlyWatched, key: Keys.recent)
+        let record = LibraryDatabase.record(for: freshest(video))
+        record.update(from: freshest(video))
+        record.watchedAt = .now
+        trimHistory()
+        commit(record)
     }
 
     func isInRecentlyWatched(_ video: Video) -> Bool {
@@ -106,23 +83,36 @@ final class LibraryStore {
     /// Removes `video` from History. Its saved position goes too, so it also
     /// leaves the Watchlist unless it was added there by hand.
     func removeFromRecentlyWatched(_ video: Video) {
-        forgetProgress(of: video)
-        recentlyWatched.removeAll { $0.id == video.id }
-        persist(recentlyWatched, key: Keys.recent)
+        guard let record = LibraryDatabase.record(id: video.id) else { return }
+        record.watchedAt = nil
+        record.setProgress(nil)
+        progress[video.id] = nil
+        commit(record)
     }
 
     /// Empties History except the videos `keeping` returns true for, such as
     /// downloads. Like removing one video, it forgets the removed videos'
     /// saved positions, so they leave the Watchlist unless added by hand.
     func removeAllFromRecentlyWatched(keeping: (Video) -> Bool) {
-        let removed = recentlyWatched.filter { !keeping($0) }
-        for video in removed {
-            storedProgress[video.id] = nil
-            progress[video.id] = nil
+        for record in LibraryDatabase.allRecords() where record.watchedAt != nil && !keeping(record.video) {
+            record.watchedAt = nil
+            record.setProgress(nil)
+            progress[record.id] = nil
+            LibraryDatabase.deleteIfUnused(record)
         }
-        persist(storedProgress, key: Keys.progress)
-        recentlyWatched.removeAll { !keeping($0) }
-        persist(recentlyWatched, key: Keys.recent)
+        LibraryDatabase.save()
+        reloadLists()
+    }
+
+    /// Keeps the most recent videos in History; older ones leave it.
+    private func trimHistory() {
+        let watched = LibraryDatabase.allRecords()
+            .filter { $0.watchedAt != nil }
+            .sorted { $0.watchedAt! > $1.watchedAt! }
+        for record in watched.dropFirst(Self.historyLimit) {
+            record.watchedAt = nil
+            LibraryDatabase.deleteIfUnused(record)
+        }
     }
 
     // MARK: - Watchlist
@@ -131,7 +121,7 @@ final class LibraryStore {
     /// finished, most recent activity first. Finishing a video removes it.
     var watchlist: [Video] {
         var latest: [String: (video: Video, date: Date)] = [:]
-        for entry in watchlistEntries {
+        for entry in manualWatchlist {
             latest[entry.video.id] = (entry.video, entry.addedAt)
         }
         for video in recentlyWatched {
@@ -143,33 +133,31 @@ final class LibraryStore {
     }
 
     func isInWatchlist(_ video: Video) -> Bool {
-        watchlistEntries.contains { $0.video.id == video.id }
+        manualWatchlist.contains { $0.video.id == video.id }
             || (progress(for: video) != nil && isInRecentlyWatched(video))
     }
 
     func addToWatchlist(_ video: Video) {
-        guard !watchlistEntries.contains(where: { $0.video.id == video.id }) else { return }
-        watchlistEntries.append(WatchlistEntry(video: freshest(video), addedAt: .now))
-        persist(watchlistEntries, key: Keys.watchlist)
+        let record = LibraryDatabase.record(for: freshest(video))
+        guard record.watchlistAddedAt == nil else { return }
+        record.watchlistAddedAt = .now
+        commit(record)
     }
 
     /// Removes the entry added by hand and forgets the saved position; the
     /// video stays in History.
     func removeFromWatchlist(_ video: Video) {
-        forgetProgress(of: video)
-        removeWatchlistEntries { $0 == video.id }
+        guard let record = LibraryDatabase.record(id: video.id) else { return }
+        record.watchlistAddedAt = nil
+        record.setProgress(nil)
+        progress[video.id] = nil
+        commit(record)
     }
 
     /// Takes `video` off the Watchlist and records it in History as watched.
     func markAsWatched(_ video: Video) {
         removeFromWatchlist(video)
         markWatched(video)
-    }
-
-    private func removeWatchlistEntries(where shouldRemove: (String) -> Bool) {
-        guard watchlistEntries.contains(where: { shouldRemove($0.video.id) }) else { return }
-        watchlistEntries.removeAll { shouldRemove($0.video.id) }
-        persist(watchlistEntries, key: Keys.watchlist)
     }
 
     // MARK: - Refreshing metadata
@@ -216,37 +204,20 @@ final class LibraryStore {
     /// sending fifty at once.
     private static let concurrentRefreshes = 4
 
-    /// Replaces every stored copy of `video` (Saved, History, Watchlist) with
-    /// fresher metadata, keeping each list's order. Lists without a change are
-    /// not rewritten.
+    /// Stores fresher metadata for `video`. It is kept once, so every list
+    /// showing it updates; nothing is written when nothing changed or the
+    /// video is not stored.
     func updateMetadata(of video: Video) {
         refreshedThisLaunch[video.id] = video
-
-        func replaced(in videos: [Video]) -> [Video]? {
-            guard videos.contains(where: { $0.id == video.id && $0 != video }) else { return nil }
-            return videos.map { $0.id == video.id ? video : $0 }
-        }
-
-        if let updated = replaced(in: savedVideos) {
-            savedVideos = updated
-            persist(savedVideos, key: Keys.saved)
-        }
-        if let updated = replaced(in: recentlyWatched) {
-            recentlyWatched = updated
-            persist(recentlyWatched, key: Keys.recent)
-        }
-        if let index = watchlistEntries.firstIndex(where: { $0.video.id == video.id }),
-           watchlistEntries[index].video != video {
-            watchlistEntries[index].video = video
-            persist(watchlistEntries, key: Keys.watchlist)
-        }
+        guard let record = LibraryDatabase.record(id: video.id), record.update(from: video) else { return }
+        commit(record)
     }
 
     // MARK: - Watch progress
 
     /// Where to resume `video`, if it was started and not finished.
     func resumePosition(for video: Video) -> Double? {
-        guard let entry = storedProgress[video.id], entry.isResumable else { return nil }
+        guard let entry = LibraryDatabase.record(id: video.id)?.progress, entry.isResumable else { return nil }
         return entry.position
     }
 
@@ -257,107 +228,176 @@ final class LibraryStore {
     }
 
     /// Saves the playback position. Called repeatedly during playback, so it
-    /// writes to storage right away (surviving a crash or a terminated app)
+    /// writes to the store right away (surviving a crash or a terminated app)
     /// but does not update the UI; see `publishProgress()`. Positions near
     /// the start or the end remove the entry.
-    func recordProgress(for videoID: String, position: Double, duration: Double) {
+    func recordProgress(for video: Video, position: Double, duration: Double) {
         guard position.isFinite, duration.isFinite, duration > 0 else { return }
 
         let entry = PlaybackProgress(position: position, duration: duration, updatedAt: .now)
         if entry.fraction >= PlaybackProgress.finishedFraction {
-            finishedSincePublish.insert(videoID)
+            finishedSincePublish.insert(video.id)
         }
         if entry.isResumable {
-            storedProgress[videoID] = entry
-        } else if storedProgress.removeValue(forKey: videoID) == nil {
+            LibraryDatabase.record(for: freshest(video)).setProgress(entry)
+            trimProgress()
+        } else if let record = LibraryDatabase.record(id: video.id), record.progressPosition != nil {
+            record.setProgress(nil)
+            LibraryDatabase.deleteIfUnused(record)
+        } else {
             return
         }
-
-        if storedProgress.count > Self.maximumProgressEntries {
-            let kept = storedProgress
-                .sorted { $0.value.updatedAt > $1.value.updatedAt }
-                .prefix(Self.maximumProgressEntries)
-            storedProgress = Dictionary(uniqueKeysWithValues: kept.map { ($0.key, $0.value) })
-        }
-        persist(storedProgress, key: Keys.progress)
+        LibraryDatabase.save()
     }
 
     /// Shows the saved progress in the UI and takes finished videos off the
     /// Watchlist. Called once a player has closed.
     func publishProgress() {
-        if progress != storedProgress {
-            progress = storedProgress
+        let stored = Self.storedProgress()
+        if progress != stored {
+            progress = stored
         }
 
         let finished = finishedSincePublish
         finishedSincePublish = []
-        removeWatchlistEntries { finished.contains($0) }
+        for id in finished {
+            guard let record = LibraryDatabase.record(id: id), record.watchlistAddedAt != nil else { continue }
+            record.watchlistAddedAt = nil
+            LibraryDatabase.deleteIfUnused(record)
+        }
+        LibraryDatabase.save()
+        reloadLists()
     }
 
-    private static let maximumProgressEntries = 200
+    /// Keeps the most recent saved positions.
+    private func trimProgress() {
+        let withProgress = LibraryDatabase.allRecords()
+            .filter { $0.progressUpdatedAt != nil }
+            .sorted { $0.progressUpdatedAt! > $1.progressUpdatedAt! }
+        for record in withProgress.dropFirst(Self.maximumProgressEntries) {
+            record.setProgress(nil)
+            LibraryDatabase.deleteIfUnused(record)
+        }
+    }
 
-    private func forgetProgress(of video: Video) {
-        guard storedProgress.removeValue(forKey: video.id) != nil else { return }
-        progress[video.id] = nil
-        persist(storedProgress, key: Keys.progress)
+    private static func storedProgress() -> [String: PlaybackProgress] {
+        var result: [String: PlaybackProgress] = [:]
+        for record in LibraryDatabase.allRecords() {
+            if let entry = record.progress {
+                result[record.id] = entry
+            }
+        }
+        return result
     }
 
     // MARK: - Storage
 
-    /// Playlists were removed. Watch Later becomes the Watchlist; videos from
-    /// other playlists move to Saved so nothing is lost.
-    private func migratePlaylists() {
-        struct LegacyPlaylist: Decodable {
-            let id: UUID
-            let name: String
-            let videoIDs: [String]
-        }
-        let watchLaterID = UUID(uuidString: "5A1D3C2E-7F4B-4E8A-9C61-0B2D4F6A8E10")
+    /// Saves a change to `record`, drops it when nothing needs it any more and
+    /// updates the published lists.
+    private func commit(_ record: StoredVideo) {
+        LibraryDatabase.deleteIfUnused(record)
+        LibraryDatabase.save()
+        reloadLists()
+    }
 
-        guard let playlists = Self.decode(
-            [LegacyPlaylist].self,
-            from: defaults.data(forKey: Keys.legacyPlaylists)
-        ) else { return }
-        let stored = Self.decode(
-            [String: Video].self,
-            from: defaults.data(forKey: Keys.legacyPlaylistVideos)
-        ) ?? [:]
+    /// Reads the lists from the store. A list is only reassigned when it
+    /// changed, so observers re-render only for real changes.
+    private func reloadLists() {
+        let records = LibraryDatabase.allRecords()
 
-        for playlist in playlists {
-            let videos = playlist.videoIDs.compactMap { id in
-                stored[id] ?? savedVideos.first { $0.id == id }
-            }
-            if playlist.id == watchLaterID || playlist.name == "Watch Later" {
-                // Keep the playlist's order, first video newest.
-                for (offset, video) in videos.enumerated()
-                where !watchlistEntries.contains(where: { $0.video.id == video.id }) {
-                    watchlistEntries.append(
-                        WatchlistEntry(video: video, addedAt: .now.addingTimeInterval(-Double(offset)))
-                    )
-                }
-            } else {
-                for video in videos where !isSaved(video) {
-                    savedVideos.append(video)
-                }
-            }
+        let saved = records
+            .filter { $0.savedAt != nil }
+            .sorted { $0.savedAt! > $1.savedAt! }
+            .map(\.video)
+        if saved != savedVideos {
+            savedVideos = saved
         }
 
-        defaults.removeObject(forKey: Keys.legacyPlaylists)
-        defaults.removeObject(forKey: Keys.legacyPlaylistVideos)
+        let watched = records
+            .filter { $0.watchedAt != nil }
+            .sorted { $0.watchedAt! > $1.watchedAt! }
+            .map(\.video)
+        if watched != recentlyWatched {
+            recentlyWatched = watched
+        }
+
+        let manual = records
+            .compactMap { record in record.watchlistAddedAt.map { (video: record.video, addedAt: $0) } }
+            .sorted { $0.addedAt > $1.addedAt }
+        if manual.map(\.video) != manualWatchlist.map(\.video)
+            || manual.map(\.addedAt) != manualWatchlist.map(\.addedAt) {
+            manualWatchlist = manual
+        }
+    }
+}
+
+/// Moves the library that earlier versions kept as JSON in UserDefaults into
+/// SwiftData, once. Order is kept by spacing the dates a second apart.
+@MainActor
+enum LegacyLibraryMigration {
+    private enum Keys {
+        static let saved = "apple-videos.saved"
+        static let watchlist = "apple-videos.watchlist"
+        static let recent = "apple-videos.recent"
+        static let progress = "apple-videos.progress"
+        static let downloads = "apple-videos.downloads"
+        static let legacyPlaylists = "apple-videos.playlists"
+        static let legacyPlaylistVideos = "apple-videos.playlist-videos"
     }
 
-    private func persist<T: Encodable>(_ value: T, key: String) {
-        guard let data = try? JSONEncoder().encode(value) else { return }
-        defaults.set(data, forKey: key)
+    private struct WatchlistEntry: Decodable {
+        let video: Video
+        let addedAt: Date
     }
 
-    private static func uniqueVideos(_ videos: [Video]) -> [Video] {
-        var seen = Set<String>()
-        return videos.filter { seen.insert($0.id).inserted }
+    private struct DownloadRecord: Decodable {
+        let video: Video
+        let path: String
+        let downloadedAt: Date
     }
 
-    private static func decode<T: Decodable>(_ type: T.Type, from data: Data?) -> T? {
-        guard let data else { return nil }
-        return try? JSONDecoder().decode(type, from: data)
+    static func run(defaults: UserDefaults = .standard) {
+        let keys = [Keys.saved, Keys.watchlist, Keys.recent, Keys.progress, Keys.downloads]
+        guard keys.contains(where: { defaults.object(forKey: $0) != nil }) else { return }
+        let now = Date.now
+
+        for (offset, video) in decode([Video].self, Keys.saved, defaults).enumerated() {
+            let record = LibraryDatabase.record(for: video)
+            record.savedAt = record.savedAt ?? now.addingTimeInterval(-Double(offset))
+        }
+        for (offset, video) in decode([Video].self, Keys.recent, defaults).prefix(50).enumerated() {
+            let record = LibraryDatabase.record(for: video)
+            record.watchedAt = record.watchedAt ?? now.addingTimeInterval(-Double(offset))
+        }
+        for entry in decode([WatchlistEntry].self, Keys.watchlist, defaults) {
+            let record = LibraryDatabase.record(for: entry.video)
+            record.watchlistAddedAt = record.watchlistAddedAt ?? entry.addedAt
+        }
+        for entry in decode([DownloadRecord].self, Keys.downloads, defaults) {
+            let record = LibraryDatabase.record(for: entry.video)
+            record.downloadPath = entry.path
+            record.downloadedAt = entry.downloadedAt
+        }
+        // Positions only for stored videos: a record needs the video's metadata.
+        if let data = defaults.data(forKey: Keys.progress),
+           let entries = try? JSONDecoder().decode([String: PlaybackProgress].self, from: data) {
+            for (id, entry) in entries {
+                LibraryDatabase.record(id: id)?.setProgress(entry)
+            }
+        }
+
+        LibraryDatabase.save()
+        for key in keys + [Keys.legacyPlaylists, Keys.legacyPlaylistVideos] {
+            defaults.removeObject(forKey: key)
+        }
+    }
+
+    private static func decode<T: Decodable & RangeReplaceableCollection>(
+        _ type: T.Type,
+        _ key: String,
+        _ defaults: UserDefaults
+    ) -> T {
+        guard let data = defaults.data(forKey: key) else { return T() }
+        return (try? JSONDecoder().decode(type, from: data)) ?? T()
     }
 }

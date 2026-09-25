@@ -21,6 +21,9 @@ struct AppleVideosApp: App {
         _ = NetworkConditions.shared
         StreamingSettings.registerDefaults()
         DownloadSettings.registerDefaults()
+        // Moves the library from earlier UserDefaults storage into SwiftData
+        // once, before anything reads the store.
+        LegacyLibraryMigration.run()
         // Reconnects to downloads that kept running while the app was closed.
         _ = DownloadManager.shared
         let library = LibraryStore()
@@ -37,6 +40,7 @@ struct AppleVideosApp: App {
                 .downloadFailureAlert()
                 .environment(library)
                 .environment(DownloadManager.shared)
+                .modelContainer(LibraryDatabase.container)
         }
     }
 }

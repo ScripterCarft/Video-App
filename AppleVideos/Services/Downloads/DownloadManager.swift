@@ -1,5 +1,6 @@
 import AVFoundation
 import Observation
+import SwiftData
 
 /// Offline downloads, the way the TV app downloads: a background
 /// `AVAssetDownloadURLSession` stores the HLS stream as a package the system
@@ -36,25 +37,22 @@ final class DownloadManager: NSObject {
         let message: String
     }
 
-    private struct Record: Codable {
-        var video: Video
-        /// Relative to the home directory, which changes between installs.
-        let path: String
-        let downloadedAt: Date
-    }
-
+    /// A running download's bookkeeping until it finishes; small and
+    /// short-lived, so it stays in UserDefaults.
     private struct Pending: Codable {
         let video: Video
         var path: String?
     }
 
     private enum Keys {
-        static let records = "apple-videos.downloads"
         static let pending = "apple-videos.downloads.pending"
     }
 
-    /// Finished downloads, newest first.
-    private var records: [Record]
+    /// Finished downloads, newest first, read from the shared store
+    /// (`StoredVideo.downloadPath`).
+    private(set) var videos: [Video] = []
+    /// Package paths by video ID, relative to the home directory.
+    private var paths: [String: String] = [:]
     private(set) var activities: [String: Activity] = [:]
     var failure: Failure?
 
@@ -70,14 +68,31 @@ final class DownloadManager: NSObject {
     private let provider: any DownloadURLProviding = DirectDownloadURLProvider()
     private let defaults = UserDefaults.standard
 
+    @ObservationIgnored private var saveObserver: NSObjectProtocol?
+
     override private init() {
-        records = Self.decode([Record].self, forKey: Keys.records) ?? []
         pending = Self.decode([String: Pending].self, forKey: Keys.pending) ?? [:]
         super.init()
 
         // Packages can disappear, for example when a backup is restored.
-        records.removeAll { !Self.packageExists(atPath: $0.path) }
-        persistRecords()
+        for record in LibraryDatabase.allRecords() {
+            guard let path = record.downloadPath, !Self.packageExists(atPath: path) else { continue }
+            record.downloadPath = nil
+            record.downloadedAt = nil
+            LibraryDatabase.deleteIfUnused(record)
+        }
+        LibraryDatabase.save()
+        reloadDownloads()
+        // The library shares the store; its saves may refresh a video's metadata.
+        saveObserver = NotificationCenter.default.addObserver(
+            forName: ModelContext.didSave,
+            object: LibraryDatabase.context,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.reloadDownloads()
+            }
+        }
 
         wifiSession = makeSession(identifier: "com.scriptercarft.AppleVideos.downloads", allowsMobileData: false)
         mobileDataSession = makeSession(
@@ -102,17 +117,12 @@ final class DownloadManager: NSObject {
 
     // MARK: - State
 
-    /// Finished downloads, newest first.
-    var videos: [Video] {
-        records.map(\.video)
-    }
-
     func canDownload(_ video: Video) -> Bool {
         video.source == .youtube
     }
 
     func isDownloaded(_ video: Video) -> Bool {
-        records.contains { $0.video.id == video.id }
+        paths[video.id] != nil
     }
 
     func activity(for video: Video) -> Activity? {
@@ -121,8 +131,7 @@ final class DownloadManager: NSObject {
 
     /// The downloaded package to play instead of streaming.
     func localURL(for video: Video) -> URL? {
-        guard let record = records.first(where: { $0.video.id == video.id }) else { return nil }
-        return Self.url(forPath: record.path)
+        paths[video.id].flatMap(Self.url(forPath:))
     }
 
     // MARK: - Actions
@@ -173,25 +182,51 @@ final class DownloadManager: NSObject {
     }
 
     func remove(_ video: Video) {
-        guard let index = records.firstIndex(where: { $0.video.id == video.id }) else { return }
-        Self.deletePackage(atPath: records[index].path)
-        records.remove(at: index)
-        persistRecords()
+        guard let record = LibraryDatabase.record(id: video.id), record.downloadPath != nil else { return }
+        removeDownload(of: record)
+        LibraryDatabase.save()
+        reloadDownloads()
     }
 
     func removeAll() {
-        for record in records {
-            Self.deletePackage(atPath: record.path)
+        for record in LibraryDatabase.allRecords() where record.downloadPath != nil {
+            removeDownload(of: record)
         }
-        records = []
-        persistRecords()
+        LibraryDatabase.save()
+        reloadDownloads()
+    }
+
+    private func removeDownload(of record: StoredVideo) {
+        if let path = record.downloadPath {
+            Self.deletePackage(atPath: path)
+        }
+        record.downloadPath = nil
+        record.downloadedAt = nil
+        LibraryDatabase.deleteIfUnused(record)
     }
 
     /// Deletes the download and loads the video again with a fresh link.
     func renew(_ video: Video) {
-        let stored = records.first { $0.video.id == video.id }?.video ?? video
+        let stored = LibraryDatabase.record(id: video.id)?.video ?? video
         remove(video)
         download(stored)
+    }
+
+    /// Reads the finished downloads from the store; reassigns only changes.
+    private func reloadDownloads() {
+        let downloaded = LibraryDatabase.allRecords()
+            .filter { $0.downloadPath != nil }
+            .sorted { ($0.downloadedAt ?? .distantPast) > ($1.downloadedAt ?? .distantPast) }
+        let newVideos = downloaded.map(\.video)
+        if newVideos != videos {
+            videos = newVideos
+        }
+        let newPaths = Dictionary(uniqueKeysWithValues: downloaded.compactMap { record in
+            record.downloadPath.map { (record.id, $0) }
+        })
+        if newPaths != paths {
+            paths = newPaths
+        }
     }
 
     // MARK: - Tasks
@@ -251,9 +286,11 @@ final class DownloadManager: NSObject {
             return
         }
 
-        records.removeAll { $0.video.id == videoID }
-        records.insert(Record(video: entry.video, path: path, downloadedAt: .now), at: 0)
-        persistRecords()
+        let record = LibraryDatabase.record(for: entry.video)
+        record.downloadPath = path
+        record.downloadedAt = .now
+        LibraryDatabase.save()
+        reloadDownloads()
     }
 
     // MARK: - Variant choice
@@ -299,12 +336,6 @@ final class DownloadManager: NSObject {
     private static func deletePackage(atPath path: String) {
         guard let url = url(forPath: path) else { return }
         try? FileManager.default.removeItem(at: url)
-    }
-
-    private func persistRecords() {
-        if let data = try? JSONEncoder().encode(records) {
-            defaults.set(data, forKey: Keys.records)
-        }
     }
 
     private func persistPending() {

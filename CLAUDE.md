@@ -78,12 +78,13 @@ accepted player-dismissal bug.
   are the only way screens start playback.
 - Audio session category is set once at launch (`AppDelegate`). The app is
   portrait only; only `AVPlayerViewController` may rotate.
-- Storage: SwiftData (`StoredVideo`, `LibraryDatabase`), one record per
-  video with its metadata once, list membership (saved, watched, added to
-  the Watchlist), progress and download path; lists are queries, unused
-  records are deleted. `LibraryStore`/`DownloadManager` publish lists read
-  from it and reassign only changes (progress saves during playback must
-  not re-render). Earlier UserDefaults data is migrated once at launch.
+- Storage: SwiftData (`LibraryDatabase`): one `StoredVideo` per video
+  (metadata once, list membership, download path) and one `WatchProgress`
+  per started video, kept apart so queries over videos do not update while
+  a video plays. Library screens use `@Query`; `LibraryStore` and
+  `DownloadManager` do the writes and publish what other screens read.
+  Earlier UserDefaults data and positions on video records are migrated
+  once at launch.
 - Detail loading (user's design): one task loads the details first; the
   description and info line are placeholders until then and everything
   appears in one animation; only afterwards is the stream prefetched (Play
@@ -215,9 +216,12 @@ accepted player-dismissal bug.
    (`VideoCells`) and one context menu (`VideoContextMenus`); SwiftUI stays
    for the shell (tabs, navigation, sheets) and for cell content via
    `UIHostingConfiguration`. Phases, one commit per step, tested on device:
-   1. Foundation: shared cell + menu (done), a router per tab with slim
-      typed routes (video ID, restorable path), views reading SwiftData
-      (`@Query` where AVKit is not affected), one video model.
+   1. Foundation (done): shared cell + menu (`VideoCells`,
+      `VideoContextMenus`); slim `VideoRoute` (ID + section) with
+      `VideoCatalog` and `RestorableNavigationStack` per tab; watch progress
+      as its own model; library lists via `@Query`. `Video` (value type for
+      network results and routes) and `StoredVideo` (persistence) stay two
+      types on purpose.
    2. Detail screen as a scrolling collection view: hero section, real
       shelves (related videos from Innertube `next`) instead of the "Up
       Next" placeholder, hero under the bar with `backgroundExtensionEffect`.

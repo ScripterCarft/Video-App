@@ -119,9 +119,7 @@ final class TestDownloads: NSObject {
 
     func localURL(for videoID: String) -> URL? {
         guard let path = Self.paths[videoID] else { return nil }
-        let url = path.hasPrefix("/")
-            ? URL(fileURLWithPath: path)
-            : URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(path)
+        let url = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(path)
         return FileManager.default.fileExists(atPath: url.path) ? url : nil
     }
 
@@ -242,11 +240,7 @@ final class TestDownloads: NSObject {
             return
         }
         guard let url = localURL(for: videoID) else {
-            fail(
-                videoID,
-                "Download finished, but no package was found at \(Self.paths[videoID] ?? "no stored path")."
-                    + proxySummary
-            )
+            fail(videoID, "Download finished, but no package was found.")
             return
         }
         states[videoID] = .finished
@@ -342,10 +336,8 @@ extension TestDownloads: AVAssetDownloadDelegate, URLSessionDownloadDelegate {
         MainActor.assumeIsolated {
             guard let first = description?.split(separator: "|").first else { return }
             let videoID = String(first)
-            // iOS may report /private/var/… while the home directory reads
-            // /var/…; store the part from Library/ on, relative to home.
-            let full = location.path
-            let path = full.range(of: "/Library/").map { String(full[$0.lowerBound...].dropFirst()) } ?? full
+            let home = NSHomeDirectory()
+            let path = location.path.hasPrefix(home) ? String(location.path.dropFirst(home.count + 1)) : location.path
             var paths = Self.paths
             paths[videoID] = path
             Self.paths = paths

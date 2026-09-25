@@ -125,29 +125,33 @@ struct HomeView: View {
             SectionHeader(title: title, subtitle: subtitle)
                 .padding(.horizontal, 16)
 
-            ScrollView(.horizontal) {
-                // Not lazy: a shelf holds a handful of cards, and a lazy stack
-                // sizes the row from the cards it has loaded, which squeezed a
-                // card with a longer title. This row is as tall as its tallest
-                // card and every card keeps its own height.
-                HStack(alignment: .top, spacing: 14) {
-                    ForEach(videos) { video in
-                        VideoLink(video: video, section: sectionID, transition: transition) {
-                            VideoCard(video: video, compact: true)
-                                .frame(width: 272, alignment: .top)
+            // A lazy stack sizes the row from the cards it has loaded, which
+            // squeezed a card with a longer title. The row always has the
+            // height of a card with a two-line title; each card keeps its own
+            // height inside it.
+            VideoCard.CompactHeightTemplate()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .overlay(alignment: .top) {
+                    ScrollView(.horizontal) {
+                        LazyHStack(alignment: .top, spacing: 14) {
+                            ForEach(videos) { video in
+                                VideoLink(video: video, section: sectionID, transition: transition) {
+                                    VideoCard(video: video, compact: true)
+                                        .frame(width: 272, alignment: .top)
+                                }
+                                .frame(width: 272)
+                            }
                         }
-                        .frame(width: 272)
+                        .scrollTargetLayout()
                     }
+                    .contentMargins(.horizontal, 16, for: .scrollContent)
+                    // Shelves snap to cards like the App Store and TV app.
+                    .scrollTargetBehavior(.viewAligned)
+                    // Scroll views clip their content by default, which cut off a
+                    // card lifted for its context menu at the edge of the row.
+                    .scrollClipDisabled()
+                    .scrollIndicators(.hidden)
                 }
-                .scrollTargetLayout()
-            }
-            .contentMargins(.horizontal, 16, for: .scrollContent)
-            // Shelves snap to cards like the App Store and TV app.
-            .scrollTargetBehavior(.viewAligned)
-            // Scroll views clip their content by default, which cut off a card
-            // lifted for its context menu at the edge of the row.
-            .scrollClipDisabled()
-            .scrollIndicators(.hidden)
         }
     }
 

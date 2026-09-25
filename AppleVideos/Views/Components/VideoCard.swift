@@ -15,7 +15,7 @@ struct VideoCard: View {
                 cornerRadius: 14,
                 quality: compact ? .compact : .search
             )
-            .frame(height: compact ? 153 : nil)
+            .frame(height: compact ? Self.compactArtworkHeight : nil)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(video.title)
@@ -93,5 +93,33 @@ struct VideoCard: View {
         .sensoryFeedback(.selection, trigger: feedback)
         .accessibilityElement(children: .combine)
         .accessibilityHint("Opens video details")
+    }
+}
+
+extension VideoCard {
+    static let compactArtworkHeight: CGFloat = 153
+
+    /// Takes the height of a compact card with a two-line title, a channel
+    /// line and a metadata line at the current text size, and shows nothing.
+    /// Mirrors the layout above; shelves use it as their height so a lazily
+    /// loaded card with a long title is never squeezed.
+    struct CompactHeightTemplate: View {
+        var body: some View {
+            VStack(alignment: .leading, spacing: 10) {
+                Color.clear
+                    .frame(height: VideoCard.compactArtworkHeight)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(verbatim: "X\nX")
+                        .font(.headline)
+                        .lineLimit(2)
+                    Text(verbatim: "X")
+                        .font(.subheadline)
+                    Text(verbatim: "X")
+                        .font(.caption)
+                }
+            }
+            .hidden()
+            .accessibilityHidden(true)
+        }
     }
 }

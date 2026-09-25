@@ -189,7 +189,15 @@ accepted player-dismissal bug.
   segment) downloads reliably. Cause unknown; `DownloadURLProviding` is
   the place to add that route.
 - Detail screen: shows refreshed metadata, prefers the full description
-  (two lines, MORE below), does not bounce when content fits, white tint,
+  (two lines, MORE below), white tint, two layers like the TV app (user's
+  description): the artwork (`DetailArtwork`, a hosting controller behind
+  the collection view) stands still at the top edge; the clear hero cell
+  (fixed 2:3 height, `.ignoresSafeArea()`, else the cell pushed it under
+  the bars and relaid it out while bouncing) slides over it with a dark
+  gray gradient (plain gradient, no material) fading upward; Up Next has an
+  opaque section background. Pulling down scales only the artwork from its
+  top edge (`scrollViewDidScroll` + transform, no SwiftUI redraw); the page
+  always bounces for that. Page color `DetailBackground` (white 0.09),
   keeps the system scroll edge effect (user: needed for legibility); its
   tasks keep finished state so nothing
   reloads when AVKit re-adds the screen.
@@ -228,6 +236,9 @@ accepted player-dismissal bug.
       videos (WEB `next`, `lockupViewModel`; 4:3 `hqdefault` cropped to
       16:9). Hero under the bar via `contentInsetAdjustmentBehavior =
       .never`, not `backgroundExtensionEffect` (that is for SwiftUI views).
+      Structure and layering tested on device; the two-layer artwork with
+      pull-down zoom followed (awaiting device test). Known, accepted for
+      now: the screen lingers about 1 s when swiped away.
       Play and + solid. Related videos open through the `openVideo`
       environment action each tab stack provides.
    3. Explore, Search and the Library's video lists on the same collection

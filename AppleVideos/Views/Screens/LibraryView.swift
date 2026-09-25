@@ -126,6 +126,7 @@ private struct DownloadedVideosView: View {
 
 private struct HistoryView: View {
     @Environment(LibraryStore.self) private var library
+    @Environment(DownloadManager.self) private var downloads
     @State private var isConfirmingRemoveAll = false
     let transition: Namespace.ID
 
@@ -150,11 +151,11 @@ private struct HistoryView: View {
         .confirmationDialog("Remove All from History", isPresented: $isConfirmingRemoveAll, titleVisibility: .hidden) {
             Button("Remove All from History", role: .destructive) {
                 withAnimation {
-                    library.removeAllFromRecentlyWatched()
+                    library.removeAllFromRecentlyWatched(keeping: downloads.isDownloaded)
                 }
             }
         } message: {
-            Text("Your watch history and the saved positions of these videos will be removed.")
+            Text("Your watch history and the saved positions of these videos will be removed. Downloaded videos stay.")
         }
     }
 }

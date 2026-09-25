@@ -111,15 +111,17 @@ final class LibraryStore {
         persist(recentlyWatched, key: Keys.recent)
     }
 
-    /// Empties History. Like removing one video, it forgets the saved
-    /// positions, so started videos leave the Watchlist unless added by hand.
-    func removeAllFromRecentlyWatched() {
-        for video in recentlyWatched {
+    /// Empties History except the videos `keeping` returns true for, such as
+    /// downloads. Like removing one video, it forgets the removed videos'
+    /// saved positions, so they leave the Watchlist unless added by hand.
+    func removeAllFromRecentlyWatched(keeping: (Video) -> Bool) {
+        let removed = recentlyWatched.filter { !keeping($0) }
+        for video in removed {
             storedProgress[video.id] = nil
             progress[video.id] = nil
         }
         persist(storedProgress, key: Keys.progress)
-        recentlyWatched = []
+        recentlyWatched.removeAll { !keeping($0) }
         persist(recentlyWatched, key: Keys.recent)
     }
 

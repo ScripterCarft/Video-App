@@ -117,7 +117,9 @@ final class DetailCollectionController: UIViewController, UICollectionViewDelega
     }
 
     private static func heroSection() -> NSCollectionLayoutSection {
-        let size = NSCollectionLayoutSize(widthDimension: .fractionalWidth(1), heightDimension: .estimated(700))
+        // Fixed 2:3, the hero's own shape, so it is not measured again while
+        // scrolling or bouncing.
+        let size = NSCollectionLayoutSize(widthDimension: .fractionalWidth(1), heightDimension: .fractionalWidth(1.5))
         let group = NSCollectionLayoutGroup.vertical(layoutSize: size, subitems: [NSCollectionLayoutItem(layoutSize: size)])
         return NSCollectionLayoutSection(group: group)
     }
@@ -188,6 +190,9 @@ final class DetailCollectionController: UIViewController, UICollectionViewDelega
                 )
                 .environment(library)
                 .environment(downloads)
+                // The cell starts under the bars; without this, SwiftUI
+                // pushed the artwork down by the safe area.
+                .ignoresSafeArea()
             }
             .margins(.all, 0)
 

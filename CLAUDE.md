@@ -222,10 +222,14 @@ accepted player-dismissal bug.
       as its own model; library lists via `@Query`. `Video` (value type for
       network results and routes) and `StoredVideo` (persistence) stay two
       types on purpose.
-   2. Detail screen as a scrolling collection view: hero section, real
-      shelves (related videos from Innertube `next`) instead of the "Up
-      Next" placeholder, hero under the bar with `backgroundExtensionEffect`.
-      Play and + stay solid, not glass (like the TV app).
+   2. Detail screen (done, awaiting device test): `DetailCollection`, a
+      scrolling collection view with the hero cell (`DetailHero` reading the
+      `@Observable` `VideoDetailModel`) and an Up Next shelf of related
+      videos (WEB `next`, `lockupViewModel`; 4:3 `hqdefault` cropped to
+      16:9). Hero under the bar via `contentInsetAdjustmentBehavior =
+      .never`, not `backgroundExtensionEffect` (that is for SwiftUI views).
+      Play and + solid. Related videos open through the `openVideo`
+      environment action each tab stack provides.
    3. Explore, Search and the Library's video lists on the same collection
       view. Search gets `Tab(role: .search)` but must stay a normal tab in
       the bar, not separated (research the iOS 27 option first); recent
@@ -240,8 +244,6 @@ accepted player-dismissal bug.
       refresh, App Intents, Spotlight, Handoff, widget.
    Keep as is (already Apple's way): `AVPlayerViewController` full screen,
    `AVAssetDownloadURLSession`, Settings.bundle, `ArtworkLoader`.
-   The detail screen is temporarily always scrollable (TEST commit
-   ef911a8, revert once phase 2 makes it a scrolling collection view).
 1. **Subtitles.** YouTube's HLS master already carries a WebVTT
    subtitle group, which AVPlayer shows; the user reports that only part
    of the tracks appear there. The resolver also parses the caption tracks

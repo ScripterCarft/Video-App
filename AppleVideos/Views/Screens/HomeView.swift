@@ -56,6 +56,8 @@ struct HomeView: View {
             }
             .background(Color(uiColor: .systemBackground))
             .navigationTitle("Home")
+            // The large title sits in the bar at the leading edge, like the TV app.
+            .toolbarTitleDisplayMode(.inlineLarge)
             .videoDestination(transition: transition)
             .playbackPresentation(playback)
             .task {

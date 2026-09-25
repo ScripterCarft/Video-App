@@ -31,6 +31,7 @@ actor YouTubeService {
 
     private var cachedSearches: [String: [Video]] = [:]
     private var cachedDetails: [String: VideoDetails] = [:]
+    private var cachedRelated: [String: [Video]] = [:]
 
     func search(_ query: String, bypassingCache: Bool = false) async throws -> [Video] {
         let normalized = query.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -133,6 +134,103 @@ actor YouTubeService {
         )
         cachedDetails[videoID] = details
         return details
+    }
+
+    /// The videos YouTube suggests next to `videoID` (its "Up next" list), from
+    /// the WEB `next` request its watch page makes. Verified with real
+    /// responses: the list arrives as `lockupViewModel` items.
+    func relatedVideos(for videoID: String) async throws -> [Video] {
+        if let cached = cachedRelated[videoID] { return cached }
+
+        let configuration = try await YouTubeWebConfiguration.shared.values()
+        guard let endpoint = URL(string: "https://www.youtube.com/youtubei/v1/next?key=\(configuration.apiKey)&prettyPrint=false") else {
+            throw SearchError.configurationUnavailable
+        }
+
+        var request = URLRequest(url: endpoint)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("https://www.youtube.com", forHTTPHeaderField: "Origin")
+        request.setValue("https://www.youtube.com/", forHTTPHeaderField: "Referer")
+        request.httpBody = try JSONSerialization.data(withJSONObject: [
+            "context": [
+                "client": [
+                    "clientName": "WEB",
+                    "clientVersion": configuration.clientVersion,
+                    "hl": Locale.current.language.languageCode?.identifier ?? "en",
+                    "gl": Locale.current.region?.identifier ?? "US"
+                ]
+            ],
+            "videoId": videoID
+        ])
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse, 200..<300 ~= http.statusCode,
+              let root = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else {
+            await YouTubeWebConfiguration.shared.invalidate()
+            throw SearchError.invalidResponse
+        }
+
+        let results = (((((root["contents"] as? [String: Any])?["twoColumnWatchNextResults"] as? [String: Any])?
+            ["secondaryResults"] as? [String: Any])?["secondaryResults"] as? [String: Any])?["results"] as? [[String: Any]]) ?? []
+        var seen: Set<String> = [videoID]
+        let videos = results
+            .compactMap { $0["lockupViewModel"] as? [String: Any] }
+            .compactMap(Self.video(fromLockup:))
+            .filter { seen.insert($0.id).inserted }
+        cachedRelated[videoID] = videos
+        return videos
+    }
+
+    /// A video from YouTube's `lockupViewModel`: title, a channel row and a
+    /// row with views and age ("4.8M", "1y ago"), the duration badge and the
+    /// listed thumbnail.
+    private static func video(fromLockup lockup: [String: Any]) -> Video? {
+        guard lockup["contentType"] as? String == "LOCKUP_CONTENT_TYPE_VIDEO",
+              let id = lockup["contentId"] as? String,
+              let metadata = (lockup["metadata"] as? [String: Any])?["lockupMetadataViewModel"] as? [String: Any],
+              let title = (metadata["title"] as? [String: Any])?["content"] as? String
+        else { return nil }
+
+        let rows = (((metadata["metadata"] as? [String: Any])?["contentMetadataViewModel"] as? [String: Any])?
+            ["metadataRows"] as? [[String: Any]]) ?? []
+        let rowParts: [[String]] = rows.map { row in
+            ((row["metadataParts"] as? [[String: Any]]) ?? []).compactMap { part in
+                ((part["text"] as? [String: Any])?["content"] as? String)?.collapsedWhitespace
+            }
+            .filter { !$0.isEmpty }
+        }
+        let details = rowParts.dropFirst().flatMap { $0 }
+        let published = details.first { $0.localizedCaseInsensitiveContains("ago") }
+        let views = details.first { $0 != published && $0.first?.isNumber == true }
+
+        let thumbnail = (lockup["contentImage"] as? [String: Any])?["thumbnailViewModel"] as? [String: Any]
+        let sources = ((thumbnail?["image"] as? [String: Any])?["sources"] as? [[String: Any]]) ?? []
+        let thumbnailURL = (sources.last?["url"] as? String)
+            .flatMap { URLComponents(string: $0) }
+            .map { components -> URLComponents in
+                var components = components
+                components.query = nil
+                return components
+            }?
+            .url
+        let badgeTexts = ((thumbnail?["overlays"] as? [[String: Any]]) ?? []).flatMap { overlay -> [String] in
+            let badges = ((overlay["thumbnailBottomOverlayViewModel"] as? [String: Any])?["badges"] as? [[String: Any]]) ?? []
+            return badges.compactMap { ($0["thumbnailBadgeViewModel"] as? [String: Any])?["text"] as? String }
+        }
+        let duration = badgeTexts.first { $0.contains(":") && $0.allSatisfy { $0.isNumber || $0 == ":" } }
+
+        return .youtube(
+            id: id,
+            title: title,
+            channel: rowParts.first?.first ?? "YouTube",
+            duration: duration,
+            published: published,
+            publishedAt: published.flatMap(approximatePublishDate),
+            views: views.map { "\($0) views" },
+            thumbnailURL: thumbnailURL
+        )
     }
 
     func refreshedVideo(_ video: Video) async throws -> Video {
@@ -362,8 +460,10 @@ actor YouTubeService {
     /// video's detail screen replaces it with the exact publish date. Returns
     /// nil for other phrasings, which then keep their text.
     private static func approximatePublishDate(from text: String) -> Date? {
+        // Long ("3 days ago") and compact ("3d ago", "2mo ago") forms; the
+        // compact one comes with YouTube's newer lockup items.
         guard let regex = try? NSRegularExpression(
-                pattern: #"(\d+)\s+(second|minute|hour|day|week|month|year)s?\s+ago"#,
+                pattern: #"(\d+)\s*(second|minute|hour|day|week|month|year|mo|min|s|m|h|d|w|y)s?\s+ago"#,
                 options: .caseInsensitive
               ),
               let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
@@ -374,12 +474,12 @@ actor YouTubeService {
 
         let component: Calendar.Component
         switch text[unitRange].lowercased() {
-        case "second": component = .second
-        case "minute": component = .minute
-        case "hour": component = .hour
-        case "day": component = .day
-        case "week": component = .weekOfYear
-        case "month": component = .month
+        case "second", "s": component = .second
+        case "minute", "min", "m": component = .minute
+        case "hour", "h": component = .hour
+        case "day", "d": component = .day
+        case "week", "w": component = .weekOfYear
+        case "month", "mo": component = .month
         default: component = .year
         }
         return Calendar.current.date(byAdding: component, value: -value, to: .now)

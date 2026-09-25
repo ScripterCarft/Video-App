@@ -1,3 +1,4 @@
+import SwiftData
 import SwiftUI
 
 struct LibraryView: View {
@@ -74,7 +75,10 @@ private struct LibraryRow: View {
 }
 
 private struct SavedVideosView: View {
-    @Environment(LibraryStore.self) private var library
+    @Query(
+        filter: #Predicate<StoredVideo> { $0.savedAt != nil },
+        sort: [SortDescriptor(\StoredVideo.savedAt, order: .reverse)]
+    ) private var saved: [StoredVideo]
     let transition: Namespace.ID
 
     var body: some View {
@@ -83,7 +87,7 @@ private struct SavedVideosView: View {
             section: "saved",
             emptyTitle: "No Saved Videos",
             emptyDescription: "Use the bookmark button or a video's context menu to save it.",
-            videos: library.savedVideos,
+            videos: saved.map(\.video),
             transition: transition
         )
     }
@@ -91,6 +95,10 @@ private struct SavedVideosView: View {
 
 private struct DownloadedVideosView: View {
     @Environment(DownloadManager.self) private var downloads
+    @Query(
+        filter: #Predicate<StoredVideo> { $0.downloadPath != nil },
+        sort: [SortDescriptor(\StoredVideo.downloadedAt, order: .reverse)]
+    ) private var downloaded: [StoredVideo]
     let transition: Namespace.ID
 
     var body: some View {
@@ -99,11 +107,11 @@ private struct DownloadedVideosView: View {
             section: "downloaded",
             emptyTitle: "No Downloads",
             emptyDescription: "Use the download button or a video's context menu to watch it offline.",
-            videos: downloads.videos,
+            videos: downloaded.map(\.video),
             transition: transition
         )
         .toolbar {
-            if !downloads.videos.isEmpty {
+            if !downloaded.isEmpty {
                 ToolbarItem(placement: .topBarTrailing) {
                     // The confirmation opens from the button as a system menu.
                     Menu("Remove All") {
@@ -126,6 +134,10 @@ private struct DownloadedVideosView: View {
 private struct HistoryView: View {
     @Environment(LibraryStore.self) private var library
     @Environment(DownloadManager.self) private var downloads
+    @Query(
+        filter: #Predicate<StoredVideo> { $0.watchedAt != nil },
+        sort: [SortDescriptor(\StoredVideo.watchedAt, order: .reverse)]
+    ) private var watched: [StoredVideo]
     let transition: Namespace.ID
 
     var body: some View {
@@ -134,11 +146,11 @@ private struct HistoryView: View {
             section: "history",
             emptyTitle: "No Watch History",
             emptyDescription: "Videos you play will appear here.",
-            videos: library.recentlyWatched,
+            videos: watched.map(\.video),
             transition: transition
         )
         .toolbar {
-            if !library.recentlyWatched.isEmpty {
+            if !watched.isEmpty {
                 ToolbarItem(placement: .topBarTrailing) {
                     // The confirmation opens from the button as a system menu.
                     Menu("Remove All") {

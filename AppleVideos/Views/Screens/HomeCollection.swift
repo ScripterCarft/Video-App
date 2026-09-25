@@ -46,6 +46,7 @@ final class HomeCollectionController: UIViewController, UICollectionViewDelegate
     }
 
     private static let cardWidth: CGFloat = 272
+    private static let previewWidth: CGFloat = 320
     private static let spotlightTitle = "Apple Videos Spotlight"
     private static let spotlightSubtitle = "Beautiful stories, selected by hand"
 
@@ -168,7 +169,7 @@ final class HomeCollectionController: UIViewController, UICollectionViewDelegate
                 self?.configure(cell, for: item)
             }
         }
-        let headerRegistration = UICollectionView.SupplementaryRegistration<UICollectionViewListCell>(
+        let headerRegistration = UICollectionView.SupplementaryRegistration<UICollectionViewCell>(
             elementKind: UICollectionView.elementKindSectionHeader
         ) { [weak self] header, _, indexPath in
             MainActor.assumeIsolated {
@@ -221,8 +222,7 @@ final class HomeCollectionController: UIViewController, UICollectionViewDelegate
         }
     }
 
-    private func configure(_ header: UICollectionViewListCell, at indexPath: IndexPath) {
-        header.backgroundConfiguration = .clear()
+    private func configure(_ header: UICollectionViewCell, at indexPath: IndexPath) {
         let title: String
         let subtitle: String
         switch dataSource.sectionIdentifier(for: indexPath.section) {
@@ -298,7 +298,21 @@ final class HomeCollectionController: UIViewController, UICollectionViewDelegate
               let video = video(in: shelf, id: id)
         else { return nil }
 
-        return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { [weak self] _ in
+        // The preview is the thumbnail alone, as in the cards' SwiftUI menu: a
+        // small preview leaves room for the menu below it.
+        let preview = {
+            let controller = UIHostingController(
+                rootView: VideoArtwork(video: video, cornerRadius: 18, quality: .search)
+                    .frame(width: Self.previewWidth)
+                    .padding()
+            )
+            controller.preferredContentSize = CGSize(
+                width: Self.previewWidth + 32,
+                height: Self.previewWidth * 9 / 16 + 32
+            )
+            return controller
+        }
+        return UIContextMenuConfiguration(identifier: nil, previewProvider: preview) { [weak self] _ in
             self?.menu(for: video, at: indexPath)
         }
     }

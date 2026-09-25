@@ -54,31 +54,25 @@ struct VideoDetailView: View {
             if let url = video.youtubeURL {
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     // TEST (do not merge): download test instead of the disabled button.
-                    if case let .downloading(fraction) = TestDownloads.shared.states[video.id] {
-                        Button {
+                    Button {
+                        if case .downloading = TestDownloads.shared.states[video.id] {
                             TestDownloads.shared.cancel(video.id)
-                        } label: {
+                        } else {
+                            TestDownloads.shared.download(video)
+                        }
+                    } label: {
+                        switch TestDownloads.shared.states[video.id] {
+                        case let .downloading(fraction):
                             DownloadProgressRing(progress: fraction)
+                        case .finished:
+                            Image(systemName: "checkmark.circle")
+                        case .failed:
+                            Image(systemName: "exclamationmark.circle")
+                        case nil:
+                            Image(systemName: "arrow.down")
                         }
-                    } else {
-                        Menu {
-                            ForEach([TestDownloads.Mode.youtube, .youtubeWithoutSubtitles, .appleSample], id: \.self) { mode in
-                                Button(mode.rawValue) {
-                                    TestDownloads.shared.download(video, mode: mode)
-                                }
-                            }
-                        } label: {
-                            switch TestDownloads.shared.states[video.id] {
-                            case .finished:
-                                Image(systemName: "checkmark.circle")
-                            case .failed:
-                                Image(systemName: "exclamationmark.circle")
-                            default:
-                                Image(systemName: "arrow.down")
-                            }
-                        }
-                        .accessibilityLabel("Download")
                     }
+                    .accessibilityLabel("Download")
 
                     ShareLink(item: url) {
                         Image(systemName: "square.and.arrow.up")

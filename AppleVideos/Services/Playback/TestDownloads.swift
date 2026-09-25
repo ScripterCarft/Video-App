@@ -23,7 +23,6 @@ final class TestDownloads: NSObject {
     @ObservationIgnored private var session: AVAssetDownloadURLSession!
     @ObservationIgnored private var observations: [Int: NSKeyValueObservation] = [:]
     @ObservationIgnored private var tasks: [String: AVAssetDownloadTask] = [:]
-    @ObservationIgnored private var currentMode: Mode = .youtube
 
     private static let pathsKey = "test.downloads.paths"
 
@@ -53,50 +52,24 @@ final class TestDownloads: NSObject {
         return FileManager.default.fileExists(atPath: url.path) ? url : nil
     }
 
-    /// Three attempts that narrow down the HTTP 401.
-    enum Mode: String {
-        case youtube = "YouTube"
-        case youtubeWithoutSubtitles = "YouTube without subtitles"
-        case appleSample = "Apple sample stream"
-    }
-
-    private static let appleSampleURL = URL(
-        string: "https://devstreaming-cdn.apple.com/videos/streaming/examples/img_bipbop_adv_example_fmp4/master.m3u8"
-    )!
-
-    func download(_ video: Video, mode: Mode) {
+    func download(_ video: Video) {
         if case .downloading = states[video.id] { return }
+        if case .finished = states[video.id] { return }
         states[video.id] = .downloading(0)
-        currentMode = mode
 
         Task {
             do {
-                let url: URL
-                var expiresAt = Date.distantFuture
-                if mode == .appleSample {
-                    url = Self.appleSampleURL
-                } else {
-                    let source = try await YouTubeInnertubePlaybackResolver.shared.resolve(
-                        PlaybackRequest(videoID: video.id)
-                    )
-                    guard let variant = source.variants.first(where: { $0.transport == .hls }) else {
-                        fail(video.id, "No HLS stream for this video.")
-                        return
-                    }
-                    url = variant.url
-                    expiresAt = variant.expiresAt
+                let source = try await YouTubeInnertubePlaybackResolver.shared.resolve(
+                    PlaybackRequest(videoID: video.id)
+                )
+                guard let variant = source.variants.first(where: { $0.transport == .hls }) else {
+                    fail(video.id, "No HLS stream for this video.")
+                    return
                 }
-                let asset = AVURLAsset(url: url)
-                let configuration = AVAssetDownloadConfiguration(asset: asset, title: video.title)
-                if mode == .youtubeWithoutSubtitles {
-                    // Audio and video only: deselect the subtitle group.
-                    let selection = try await asset.load(.preferredMediaSelection)
-                    if let mutable = selection.mutableCopy() as? AVMutableMediaSelection,
-                       let legible = try await asset.loadMediaSelectionGroup(for: .legible) {
-                        mutable.select(nil, in: legible)
-                        configuration.primaryContentConfiguration.mediaSelections = [mutable]
-                    }
-                }
+                let configuration = AVAssetDownloadConfiguration(
+                    asset: AVURLAsset(url: variant.url),
+                    title: video.title
+                )
                 // Up to 720p, as "Fast Downloads" would be.
                 configuration.primaryContentConfiguration.variantQualifiers = [
                     AVAssetVariantQualifier(
@@ -108,7 +81,7 @@ final class TestDownloads: NSObject {
                 ]
                 let task = session.makeAssetDownloadTask(downloadConfiguration: configuration)
                 // Survives a relaunch, unlike an in-memory map.
-                task.taskDescription = "\(video.id)|\(Date.now.timeIntervalSince1970)|\(expiresAt.timeIntervalSince1970)"
+                task.taskDescription = "\(video.id)|\(Date.now.timeIntervalSince1970)|\(variant.expiresAt.timeIntervalSince1970)"
                 let videoID = video.id
                 observations[task.taskIdentifier] = task.progress.observe(\.fractionCompleted) { progress, _ in
                     let fraction = progress.fractionCompleted
@@ -157,7 +130,7 @@ final class TestDownloads: NSObject {
                 progress = " at \(Int(fraction * 100)) %"
             }
             let elapsed = started.map { " after \(Int(Date.now.timeIntervalSince($0))) s" } ?? ""
-            fail(videoID, "\(currentMode.rawValue): download failed\(progress)\(elapsed).\n\(error)")
+            fail(videoID, "Download failed\(progress)\(elapsed).\n\(error)")
             return
         }
         guard let url = localURL(for: videoID) else {
@@ -172,7 +145,6 @@ final class TestDownloads: NSObject {
         Task {
             let duration = (try? await AVURLAsset(url: url).load(.duration).seconds) ?? 0
             var lines = [
-                "\(currentMode.rawValue): download finished.",
                 String(format: "Size: %.1f MB", Double(bytes) / 1_000_000),
                 "Took: \(Int(seconds)) s",
                 "Stream link valid for: \(validity.map { "\($0) min" } ?? "?") after start"

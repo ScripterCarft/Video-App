@@ -151,7 +151,7 @@ private struct HistoryView: View {
         .confirmationDialog("Remove All from History", isPresented: $isConfirmingRemoveAll, titleVisibility: .hidden) {
             Button("Remove All from History", role: .destructive) {
                 withAnimation {
-                    library.removeAllFromRecentlyWatched(keeping: downloads.isDownloaded)
+                    library.removeAllFromRecentlyWatched { downloads.isDownloaded($0) }
                 }
             }
         } message: {

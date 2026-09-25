@@ -9,18 +9,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         // Set the playback category once at launch, as Apple recommends for media
         // apps. AVPlayer activates the session itself when playback starts.
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
-        // TEST (do not merge): reconnect to downloads that ran in the background.
-        _ = TestDownloads.shared
         return true
-    }
-
-    // TEST (do not merge)
-    func application(
-        _ application: UIApplication,
-        handleEventsForBackgroundURLSession identifier: String,
-        completionHandler: @escaping () -> Void
-    ) {
-        TestDownloads.shared.backgroundCompletion = completionHandler
     }
 
     /// The app itself is portrait only; only the full-screen player may rotate.

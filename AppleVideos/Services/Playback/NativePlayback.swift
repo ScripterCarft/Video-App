@@ -73,9 +73,7 @@ final class NativePlayback: NSObject {
         onFinish: @escaping @MainActor (Ending) -> Void
     ) async -> Outcome {
         let settings = StreamingSettings.current()
-        // TEST (do not merge): a test download plays offline.
-        let testDownload = TestDownloads.shared.localURL(for: video.id)
-        if testDownload == nil, isMobileDataBlocked(settings) {
+        if isMobileDataBlocked(settings) {
             return .mobileDataOff
         }
         // Also stops loading if the network switches to mobile data while playing.
@@ -86,10 +84,6 @@ final class NativePlayback: NSObject {
         case .direct:
             guard let url = video.playbackURL else { return .unavailable }
             item = AVPlayerItem(asset: AVURLAsset(url: url, options: assetOptions))
-
-        // TEST (do not merge)
-        case .youtube where testDownload != nil:
-            item = AVPlayerItem(asset: AVURLAsset(url: testDownload!))
 
         case .youtube:
             do {

@@ -57,9 +57,11 @@ struct VideoArtwork: View {
     }
 }
 
-/// A taller presentation for editorial and detail screens. The complete 16:9
-/// thumbnail stays visible while a blurred copy extends its own colors into
-/// the additional vertical space.
+/// A taller presentation for the detail screen and Home's featured card: the
+/// complete 16:9 thumbnail, centered on a calm gray stage. One plain image on
+/// a solid color is cheap to draw, so the zoom transition, which redraws the
+/// live screen in every frame, stays smooth. (Blurred, masked copies of the
+/// image made opening and closing slow and unresponsive, measured on device.)
 struct VideoHeroArtwork: View {
     let video: Video
     var cornerRadius: CGFloat = 0
@@ -73,65 +75,16 @@ struct VideoHeroArtwork: View {
             maxPixelWidth: ArtworkQuality.hero.displayWidth * displayScale,
             requiresSixteenByNine: video.source == .youtube
         ) { image in
-            GeometryReader { proxy in
-                let imageFraction = min(1, stageAspectRatio / (16.0 / 9.0))
-                let imageEdge = (1 - imageFraction) / 2
-
-                ZStack {
-                    image
-                        .resizable()
-                        .scaledToFill()
-                        .frame(width: proxy.size.width, height: proxy.size.height)
-                        .clipped()
-                        .blur(radius: 28)
-                        .scaleEffect(1.16)
-                        .saturation(0.92)
-
-                    Color.black.opacity(0.12)
-
-                    image
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: proxy.size.width, height: proxy.size.height)
-                        .scaleEffect(1.08)
-                        .blur(radius: 11)
-                        .opacity(0.78)
-                        .mask {
-                            LinearGradient(
-                                stops: [
-                                    .init(color: .clear, location: max(0, imageEdge - 0.12)),
-                                    .init(color: .black, location: min(0.5, imageEdge + 0.07)),
-                                    .init(color: .black, location: max(0.5, 1 - imageEdge - 0.07)),
-                                    .init(color: .clear, location: min(1, 1 - imageEdge + 0.12))
-                                ],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
-                        }
-
-                    image
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: proxy.size.width, height: proxy.size.height)
-                        .mask {
-                            LinearGradient(
-                                stops: [
-                                    .init(color: .clear, location: max(0, imageEdge - 0.035)),
-                                    .init(color: .black, location: min(0.5, imageEdge + 0.115)),
-                                    .init(color: .black, location: max(0.5, 1 - imageEdge - 0.115)),
-                                    .init(color: .clear, location: min(1, 1 - imageEdge + 0.035))
-                                ],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
-                        }
-                }
-            }
+            image
+                .resizable()
+                .scaledToFit()
         } placeholder: {
             ArtworkPlaceholder()
+                .aspectRatio(16 / 9, contentMode: .fit)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .aspectRatio(stageAspectRatio, contentMode: .fit)
-        .background(.quaternary)
+        .background(Color(uiColor: .systemGray5))
         .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)

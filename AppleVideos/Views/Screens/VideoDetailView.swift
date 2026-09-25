@@ -1,5 +1,4 @@
 import SwiftUI
-import UIKit
 
 struct VideoDetailView: View {
     let video: Video
@@ -156,6 +155,8 @@ struct VideoDetailView: View {
             ZStack(alignment: .bottomLeading) {
                 VideoHeroArtwork(video: video, stageAspectRatio: 2.0 / 3.0)
                     .frame(width: geometry.size.width, height: stageHeight)
+                    // The detail screen is always dark, so its stage gray is too.
+                    .environment(\.colorScheme, .dark)
 
                 LinearGradient(
                     stops: [
@@ -188,7 +189,6 @@ struct VideoDetailView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .center)
                 .multilineTextAlignment(.center)
-                .shadow(color: .black.opacity(0.62), radius: 9, y: 2)
 
                 HStack(spacing: 10) {
                     Spacer(minLength: 0)
@@ -221,7 +221,7 @@ struct VideoDetailView: View {
                             .font(.headline)
                             .foregroundStyle(.white)
                             .frame(width: 50, height: 50)
-                            .background(.ultraThinMaterial, in: Circle())
+                            .background(Color(white: 0.24), in: Circle())
                             .overlay {
                                 Circle()
                                     .strokeBorder(.white.opacity(0.16), lineWidth: 0.5)
@@ -258,7 +258,6 @@ struct VideoDetailView: View {
                 }
                 .font(.footnote)
                 .minimumScaleFactor(0.86)
-                .shadow(color: .black.opacity(0.56), radius: 7, y: 2)
         }
         .foregroundStyle(.white)
         .padding(.horizontal, 18)
@@ -280,102 +279,25 @@ private struct DescriptionPlaceholder: View {
     }
 }
 
-/// Two lines of description with MORE at the end of the second line. The
-/// shown text is cut at a word so that it ends before MORE; nothing overlaps.
+/// Two lines of description with MORE below them, which opens the full text.
+/// Plain text layout: measuring the text to place MORE on the second line
+/// ran TextKit on every width change, work the zoom transition does not need.
 private struct DescriptionPreview: View {
     let text: String
     let onMore: () -> Void
 
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @State private var width: CGFloat = 0
-
     var body: some View {
-        let preview = Self.preview(of: text, width: width, dynamicTypeSize: dynamicTypeSize)
-
-        Text(preview ?? text)
-            .font(.subheadline)
-            .foregroundStyle(.white.opacity(0.88))
-            .lineLimit(2)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .overlay(alignment: Alignment(horizontal: .trailing, vertical: .lastTextBaseline)) {
-                if preview != nil {
-                    Button("MORE", action: onMore)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.white)
-                        .buttonStyle(.plain)
-                }
-            }
-            .shadow(color: .black.opacity(0.58), radius: 8, y: 2)
-            .onGeometryChange(for: CGFloat.self) { proxy in
-                proxy.size.width
-            } action: { newWidth in
-                width = newWidth
-            }
-    }
-
-    /// Returns nil when the whole text fits in two lines. Otherwise returns the
-    /// longest word prefix plus an ellipsis that still leaves room for MORE at
-    /// the end of the second line.
-    private static func preview(
-        of text: String,
-        width: CGFloat,
-        dynamicTypeSize: DynamicTypeSize
-    ) -> String? {
-        guard width > 0 else { return nil }
-
-        // Measure with the same Dynamic Type size SwiftUI renders with.
-        let traits = UITraitCollection(preferredContentSizeCategory: UIContentSizeCategory(dynamicTypeSize))
-        let bodyFont = UIFont.preferredFont(forTextStyle: .subheadline, compatibleWith: traits)
-        let moreFont = UIFont.systemFont(
-            ofSize: UIFont.preferredFont(forTextStyle: .caption1, compatibleWith: traits).pointSize,
-            weight: .semibold
-        )
-        // A small margin keeps TextKit's wrapping on the safe side of SwiftUI's.
-        let measuringWidth = max(0, width - 4)
-
-        func fits(_ candidate: String, reservingMore: Bool) -> Bool {
-            let string = NSMutableAttributedString(string: candidate, attributes: [.font: bodyFont])
-            if reservingMore {
-                string.append(NSAttributedString(string: "   MORE", attributes: [.font: moreFont]))
-            }
-            return lineCount(of: string, width: measuringWidth) <= 2
+        VStack(alignment: .leading, spacing: 4) {
+            Text(text)
+                .font(.subheadline)
+                .foregroundStyle(.white.opacity(0.88))
+                .lineLimit(2)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Button("MORE", action: onMore)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.white)
+                .buttonStyle(.plain)
         }
-
-        guard !fits(text, reservingMore: false) else { return nil }
-
-        let words = text.split(separator: " ")
-        var low = 0
-        var high = words.count
-        while low < high {
-            let middle = (low + high + 1) / 2
-            if fits(words.prefix(middle).joined(separator: " ") + "…", reservingMore: true) {
-                low = middle
-            } else {
-                high = middle - 1
-            }
-        }
-        return words.prefix(low).joined(separator: " ") + "…"
-    }
-
-    /// Counts the lines TextKit produces for `string` at `width`. Counting lines
-    /// avoids comparing floating-point heights, which misjudged two lines as three.
-    private static func lineCount(of string: NSAttributedString, width: CGFloat) -> Int {
-        let storage = NSTextStorage(attributedString: string)
-        let container = NSTextContainer(size: CGSize(width: width, height: .greatestFiniteMagnitude))
-        container.lineFragmentPadding = 0
-        let layoutManager = NSLayoutManager()
-        layoutManager.addTextContainer(container)
-        storage.addLayoutManager(layoutManager)
-
-        var lines = 0
-        var glyphIndex = 0
-        while glyphIndex < layoutManager.numberOfGlyphs {
-            var lineRange = NSRange()
-            layoutManager.lineFragmentRect(forGlyphAt: glyphIndex, effectiveRange: &lineRange)
-            glyphIndex = NSMaxRange(lineRange)
-            lines += 1
-        }
-        return lines
     }
 }
 

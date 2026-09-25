@@ -46,16 +46,13 @@ final class HomeCollectionController: UIViewController, UICollectionViewDelegate
     }
 
     private static let cardWidth: CGFloat = 272
-    private static let previewWidth: CGFloat = 320
     private static let spotlightTitle = "Apple Videos Spotlight"
     private static let spotlightSubtitle = "Beautiful stories, selected by hand"
 
     private var content: HomeCollection
     private var dataSource: UICollectionViewDiffableDataSource<Section, Item>!
     private lazy var collectionView = UICollectionView(frame: .zero, collectionViewLayout: makeLayout())
-    /// A menu action that changes a shelf, applied once the menu has closed.
-    private var pendingMenuAction: (@MainActor () -> Void)?
-    private var isShowingMenu = false
+    private lazy var menus = VideoContextMenus(library: content.library, downloads: content.downloads, presenter: self)
 
     init(content: HomeCollection) {
         self.content = content
@@ -204,15 +201,16 @@ final class HomeCollectionController: UIViewController, UICollectionViewDelegate
 
         case let .video(shelf, id):
             guard let video = video(in: shelf, id: id) else { return }
-            let route = VideoRoute(video: video, section: shelf)
-            cell.contentConfiguration = UIHostingConfiguration {
-                VideoCard(video: video, compact: true, providesContextMenu: false)
-                    .frame(width: Self.cardWidth, alignment: .top)
-                    .matchedTransitionSource(id: route.transitionID, in: transition)
-                    .environment(library)
-                    .environment(downloads)
-            }
-            .margins(.all, 0)
+            VideoCells.configure(
+                cell,
+                video: video,
+                compact: true,
+                width: Self.cardWidth,
+                route: VideoRoute(video: video, section: shelf),
+                transition: transition,
+                library: library,
+                downloads: downloads
+            )
 
         case .spotlight:
             cell.contentConfiguration = UIHostingConfiguration {
@@ -297,23 +295,8 @@ final class HomeCollectionController: UIViewController, UICollectionViewDelegate
               case let .video(shelf, id)? = dataSource.itemIdentifier(for: indexPath),
               let video = video(in: shelf, id: id)
         else { return nil }
-
-        // The preview is the thumbnail alone, as in the cards' SwiftUI menu: a
-        // small preview leaves room for the menu below it.
-        let preview = {
-            let controller = UIHostingController(
-                rootView: VideoArtwork(video: video, cornerRadius: 18, quality: .search)
-                    .frame(width: Self.previewWidth)
-                    .padding()
-            )
-            controller.preferredContentSize = CGSize(
-                width: Self.previewWidth + 32,
-                height: Self.previewWidth * 9 / 16 + 32
-            )
-            return controller
-        }
-        return UIContextMenuConfiguration(identifier: nil, previewProvider: preview) { [weak self] _ in
-            self?.menu(for: video, at: indexPath)
+        return menus.configuration(for: video) { [weak collectionView] in
+            collectionView?.cellForItem(at: indexPath)
         }
     }
 
@@ -322,109 +305,15 @@ final class HomeCollectionController: UIViewController, UICollectionViewDelegate
         willDisplayContextMenu configuration: UIContextMenuConfiguration,
         animator: (any UIContextMenuInteractionAnimating)?
     ) {
-        isShowingMenu = true
+        menus.willDisplay()
     }
 
-    /// Applies a change from the menu after its closing animation, so the
-    /// card leaves only once the menu is gone; the data source animates it.
     func collectionView(
         _ collectionView: UICollectionView,
         willEndContextMenuInteraction configuration: UIContextMenuConfiguration,
         animator: (any UIContextMenuInteractionAnimating)?
     ) {
-        isShowingMenu = false
-        guard let action = pendingMenuAction else { return }
-        pendingMenuAction = nil
-        if let animator {
-            animator.addCompletion {
-                MainActor.assumeIsolated {
-                    action()
-                }
-            }
-        } else {
-            action()
-        }
-    }
-
-    private func afterMenuCloses(_ action: @escaping @MainActor () -> Void) {
-        if isShowingMenu {
-            pendingMenuAction = action
-        } else {
-            action()
-        }
-    }
-
-    private func menu(for video: Video, at indexPath: IndexPath) -> UIMenu {
-        let library = content.library
-        let downloads = content.downloads
-
-        // Download, Save and Share side by side, as in the cards' SwiftUI menu.
-        var top: [UIMenuElement] = []
-        if downloads.activity(for: video) != nil {
-            top.append(UIAction(title: "Stop", image: UIImage(systemName: "stop.circle")) { _ in
-                downloads.cancel(video)
-            })
-        } else if !downloads.isDownloaded(video) {
-            top.append(UIAction(
-                title: "Download",
-                image: UIImage(systemName: "arrow.down"),
-                attributes: downloads.canDownload(video) ? [] : .disabled
-            ) { _ in
-                downloads.download(video)
-            })
-        }
-        let isSaved = library.isSaved(video)
-        top.append(UIAction(
-            title: isSaved ? "Unsave" : "Save",
-            image: UIImage(systemName: isSaved ? "bookmark.slash" : "bookmark")
-        ) { [weak self] _ in
-            self?.afterMenuCloses { library.toggleSaved(video) }
-        })
-        if let url = video.youtubeURL {
-            top.append(UIAction(title: "Share", image: UIImage(systemName: "square.and.arrow.up")) { [weak self] _ in
-                self?.share(url, at: indexPath)
-            })
-        }
-
-        // Watchlist and History, as `VideoLibraryActions`.
-        var middle: [UIMenuElement] = []
-        if library.isInWatchlist(video) {
-            middle.append(UIAction(title: "Remove from Watchlist", image: UIImage(systemName: "minus.circle")) { [weak self] _ in
-                self?.afterMenuCloses { library.removeFromWatchlist(video) }
-            })
-            middle.append(UIAction(title: "Mark as Watched", image: UIImage(systemName: "rectangle.badge.checkmark")) { [weak self] _ in
-                self?.afterMenuCloses { library.markAsWatched(video) }
-            })
-        } else {
-            middle.append(UIAction(title: "Add to Watchlist", image: UIImage(systemName: "plus.circle")) { [weak self] _ in
-                self?.afterMenuCloses { library.addToWatchlist(video) }
-            })
-        }
-        // While downloaded, the menu's only trash action is Remove Download.
-        if library.isInRecentlyWatched(video), !downloads.isDownloaded(video) {
-            middle.append(UIAction(title: "Remove from Recently Watched", image: UIImage(systemName: "trash")) { [weak self] _ in
-                self?.afterMenuCloses { library.removeFromRecentlyWatched(video) }
-            })
-        }
-
-        var children: [UIMenuElement] = [
-            UIMenu(options: .displayInline, preferredElementSize: .medium, children: top),
-            UIMenu(options: .displayInline, children: middle)
-        ]
-        if downloads.isDownloaded(video) {
-            children.append(UIMenu(options: .displayInline, children: [
-                UIAction(title: "Remove Download", image: UIImage(systemName: "trash"), attributes: .destructive) { [weak self] _ in
-                    self?.afterMenuCloses { downloads.remove(video) }
-                }
-            ]))
-        }
-        return UIMenu(children: children)
-    }
-
-    private func share(_ url: URL, at indexPath: IndexPath) {
-        let controller = UIActivityViewController(activityItems: [url], applicationActivities: nil)
-        controller.popoverPresentationController?.sourceView = collectionView.cellForItem(at: indexPath)
-        present(controller, animated: true)
+        menus.willEnd(animator: animator)
     }
 }
 

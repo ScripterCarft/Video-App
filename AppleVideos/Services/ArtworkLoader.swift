@@ -85,9 +85,17 @@ enum ArtworkLoader {
 
             guard let http = response as? HTTPURLResponse,
                   200..<300 ~= http.statusCode,
-                  let image = UIImage(data: data),
-                  !requiresSixteenByNine || isSixteenByNine(image.size)
+                  let downloaded = UIImage(data: data)
             else { continue }
+
+            let image: UIImage
+            if !requiresSixteenByNine || isSixteenByNine(downloaded.size) {
+                image = downloaded
+            } else if let cropped = sixteenByNineCenter(of: downloaded) {
+                image = cropped
+            } else {
+                continue
+            }
 
             // Decode (and shrink to the drawn size) in the background, so the
             // main thread never stalls on a large JPEG and memory stays small.
@@ -108,6 +116,20 @@ enum ArtworkLoader {
     private static func cacheKey(for candidates: [ArtworkCandidate], maxPixelWidth: CGFloat) -> NSString {
         (candidates.map(\.url.absoluteString) + ["\(Int(maxPixelWidth))"])
             .joined(separator: "|") as NSString
+    }
+
+    /// The 16:9 band of a 4:3 thumbnail. YouTube's `hqdefault` is 4:3 with
+    /// black bars above and below a 16:9 video; its middle band is the frame.
+    /// Related videos list only this size.
+    private static func sixteenByNineCenter(of image: UIImage) -> UIImage? {
+        guard image.size.width > 0,
+              abs((image.size.width / image.size.height) - (4.0 / 3.0)) < 0.04,
+              let cgImage = image.cgImage
+        else { return nil }
+        let width = CGFloat(cgImage.width)
+        let height = (width * 9 / 16).rounded()
+        let rect = CGRect(x: 0, y: ((CGFloat(cgImage.height) - height) / 2).rounded(), width: width, height: height)
+        return cgImage.cropping(to: rect).map { UIImage(cgImage: $0, scale: image.scale, orientation: image.imageOrientation) }
     }
 
     private static func isSixteenByNine(_ size: CGSize) -> Bool {

@@ -55,15 +55,12 @@ struct VideoDetailView: View {
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     // TEST (do not merge): download test instead of the disabled button.
                     Button {
-                        if case .downloading = TestDownloads.shared.states[video.id] {
-                            TestDownloads.shared.cancel(video.id)
-                        } else {
-                            TestDownloads.shared.download(video)
-                        }
+                        TestDownloads.shared.download(video)
                     } label: {
                         switch TestDownloads.shared.states[video.id] {
                         case let .downloading(fraction):
-                            DownloadProgressRing(progress: fraction)
+                            Text("\(Int(fraction * 100))%")
+                                .monospacedDigit()
                         case .finished:
                             Image(systemName: "checkmark.circle")
                         case .failed:

@@ -160,15 +160,66 @@ enum VideoCells {
         route: VideoRoute,
         transition: Namespace.ID,
         library: LibraryStore,
-        downloads: DownloadManager
+        downloads: DownloadManager,
+        fixedHeight: Bool = false
     ) {
         cell.contentConfiguration = UIHostingConfiguration {
             VideoCard(video: video, compact: compact, providesContextMenu: false)
                 .frame(width: width, alignment: .top)
+                // In a cell of fixed height, the card starts at the top.
+                .frame(maxHeight: fixedHeight ? .infinity : nil, alignment: .top)
                 .matchedTransitionSource(id: route.transitionID, in: transition)
                 .environment(library)
                 .environment(downloads)
         }
         .margins(.all, 0)
+    }
+
+    /// The height of the tallest compact card: artwork, a two-line title,
+    /// the channel and the info line, from the text styles' line heights for
+    /// the current Dynamic Type size. Shelves use it as a fixed height, so
+    /// nothing is measured while scrolling; shorter cards leave space below.
+    static func compactCardHeight(traits: UITraitCollection) -> CGFloat {
+        func line(_ style: UIFont.TextStyle) -> CGFloat {
+            ceil(UIFont.preferredFont(forTextStyle: style, compatibleWith: traits).lineHeight)
+        }
+        // Mirrors VideoCard's compact layout: spacing 10 below the artwork, 4 between lines.
+        return VideoCard.compactArtworkHeight + 10
+            + 2 * line(.headline) + 4
+            + line(.subheadline) + 4
+            + line(.caption1)
+    }
+
+    /// A horizontal shelf of compact cards with a title header, all of fixed
+    /// size. Estimated sizes make the collection view measure cells while it
+    /// scrolls, which stuttered and, on iOS 27, ran into a layout loop crash
+    /// (`_updateVisibleCellsNow` recursing until an assertion failed).
+    static func shelfSection(
+        cardWidth: CGFloat,
+        headerTopSpacing: CGFloat,
+        traits: UITraitCollection
+    ) -> NSCollectionLayoutSection {
+        let cardHeight = compactCardHeight(traits: traits)
+        let itemSize = NSCollectionLayoutSize(widthDimension: .fractionalWidth(1), heightDimension: .absolute(cardHeight))
+        let groupSize = NSCollectionLayoutSize(widthDimension: .absolute(cardWidth), heightDimension: .absolute(cardHeight))
+        let group = NSCollectionLayoutGroup.horizontal(layoutSize: groupSize, subitems: [NSCollectionLayoutItem(layoutSize: itemSize)])
+        let section = NSCollectionLayoutSection(group: group)
+        section.orthogonalScrollingBehavior = .continuousGroupLeadingBoundary
+        section.interGroupSpacing = 14
+        section.contentInsets = NSDirectionalEdgeInsets(top: 12, leading: 16, bottom: 0, trailing: 16)
+        section.supplementaryContentInsetsReference = .none
+
+        let titleHeight = ceil(UIFont.preferredFont(forTextStyle: .title2, compatibleWith: traits).lineHeight)
+        section.boundarySupplementaryItems = [
+            NSCollectionLayoutBoundarySupplementaryItem(
+                layoutSize: NSCollectionLayoutSize(
+                    widthDimension: .fractionalWidth(1),
+                    heightDimension: .absolute(headerTopSpacing + titleHeight)
+                ),
+                elementKind: UICollectionView.elementKindSectionHeader,
+                alignment: .top
+            )
+        ]
+        return section
     }
 }

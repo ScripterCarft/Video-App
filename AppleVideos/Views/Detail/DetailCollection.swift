@@ -1,27 +1,27 @@
 import SwiftUI
 import UIKit
 
-/// The shape of the detail screen's hero: 2:3, with the 16:9 thumbnail
-/// centered in it.
+/// The shape of the detail screen's artwork stage: 2:3, with the 16:9
+/// thumbnail centered in it.
 enum DetailStage {
-    /// The hero is this many times as tall as it is wide.
+    /// The stage is this many times as tall as it is wide.
     static let heightRatio: CGFloat = 1.5
-    /// Where the centered 16:9 thumbnail ends, as a fraction of the hero height.
+    /// Where the centered 16:9 thumbnail ends, as a fraction of the stage height.
     static let thumbnailBottom: CGFloat = 0.5 + (9.0 / 16.0) / heightRatio / 2
 
-    /// The hero's height for a width, on whole pixels, so its lower edge
-    /// meets the shelf without a half-covered pixel row.
+    /// The stage's height for a width, on whole pixels, so the page's black
+    /// meets it without a half-covered pixel row.
     static func height(forWidth width: CGFloat, scale: CGFloat) -> CGFloat {
         let scale = max(scale, 1)
         return (width * heightRatio * scale).rounded() / scale
     }
 }
 
-/// The detail screen in two layers, like the TV app's. Behind: the artwork
-/// stage, plain UIKit, standing still at the top edge. In front: a clear
-/// collection view that scrolls over it, first the hero (the video's info at
-/// the bottom of the stage), then the Up Next shelf on black, which starts
-/// at the stage's lower edge.
+/// The detail screen in two layers. Behind: the artwork stage as the
+/// collection view's `backgroundView`, which UIKit keeps in place while the
+/// content scrolls. In front: an empty spacer as tall as the stage, then the
+/// Up Next shelf on black, starting exactly at the stage's lower edge and
+/// sliding over it. Every size is fixed; nothing is measured while scrolling.
 struct DetailCollection: UIViewControllerRepresentable {
     let model: VideoDetailModel
     /// The Up Next videos, passed as a value so SwiftUI updates the shelf when they arrive.
@@ -45,27 +45,25 @@ struct DetailCollection: UIViewControllerRepresentable {
 
 final class DetailCollectionController: UIViewController, UICollectionViewDelegate {
     enum Section: Hashable {
-        case hero
+        case stage
         case upNext
     }
 
     enum Item: Hashable {
-        case hero
+        case stage
         case video(String)
     }
 
     private static let cardWidth: CGFloat = 272
     private static let shelfID = "upnext"
+    private static let shelfBackgroundKind = "detail-shelf-background"
 
     private var content: DetailCollection
     private var dataSource: UICollectionViewDiffableDataSource<Section, Item>!
     private lazy var collectionView = UICollectionView(frame: .zero, collectionViewLayout: makeLayout())
     private lazy var menus = VideoContextMenus(library: content.library, downloads: content.downloads, presenter: self)
+    private let artwork = DetailArtworkView()
     private var shownRelated: [Video] = []
-
-    /// The artwork layer, a plain static UIKit view.
-    /// TEST: light blue, no image yet, while the base is checked for smooth scrolling.
-    private let artworkStage = UIView()
 
     init(content: DetailCollection) {
         self.content = content
@@ -83,35 +81,24 @@ final class DetailCollectionController: UIViewController, UICollectionViewDelega
         overrideUserInterfaceStyle = .dark
         view.backgroundColor = .black
 
-        artworkStage.backgroundColor = UIColor(red: 0.72, green: 0.84, blue: 1, alpha: 1)
-        view.addSubview(artworkStage)
-
         collectionView.frame = view.bounds
         collectionView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        // Clear, so the artwork layer shows through the hero.
-        collectionView.backgroundColor = .clear
-        // The hero starts under the navigation bar; the bottom is inset by hand.
+        collectionView.backgroundColor = .black
+        collectionView.backgroundView = artwork
+        // The stage starts under the navigation bar; the bottom is inset by hand.
         collectionView.contentInsetAdjustmentBehavior = .never
+        collectionView.alwaysBounceVertical = true
         collectionView.delegate = self
         view.addSubview(collectionView)
 
+        // Fixed sizes follow the text size; recompute them when it changes.
+        registerForTraitChanges([UITraitPreferredContentSizeCategory.self]) { (self: Self, _) in
+            self.collectionView.collectionViewLayout.invalidateLayout()
+        }
+
+        artwork.load(content.model.video)
         configureDataSource()
         applySnapshot(animated: false)
-    }
-
-    override func viewDidLayoutSubviews() {
-        super.viewDidLayoutSubviews()
-        // Only when the screen's size changes, never per scroll frame.
-        let width = view.bounds.width
-        let stage = CGRect(
-            x: 0,
-            y: 0,
-            width: width,
-            height: DetailStage.height(forWidth: width, scale: traitCollection.displayScale)
-        )
-        if artworkStage.frame != stage {
-            artworkStage.frame = stage
-        }
     }
 
     override func viewSafeAreaInsetsDidChange() {
@@ -131,7 +118,7 @@ final class DetailCollectionController: UIViewController, UICollectionViewDelega
         host.setContentScrollView(collectionView, for: .top)
     }
 
-    /// Only the shelf needs a snapshot.
+    /// Only the shelf changes after loading.
     func update(content newContent: DetailCollection) {
         content = newContent
         guard isViewLoaded else { return }
@@ -143,50 +130,41 @@ final class DetailCollectionController: UIViewController, UICollectionViewDelega
     private func makeLayout() -> UICollectionViewCompositionalLayout {
         let layout = UICollectionViewCompositionalLayout { [weak self] index, environment in
             switch self?.dataSource?.sectionIdentifier(for: index) {
-            case .hero:
-                return DetailCollectionController.heroSection(height: DetailStage.height(
+            case .stage:
+                return DetailCollectionController.stageSection(height: DetailStage.height(
                     forWidth: environment.container.effectiveContentSize.width,
                     scale: environment.traitCollection.displayScale
                 ))
             case .upNext:
-                return DetailCollectionController.shelfSection()
+                let section = VideoCells.shelfSection(
+                    cardWidth: DetailCollectionController.cardWidth,
+                    headerTopSpacing: 22,
+                    traits: environment.traitCollection
+                )
+                // The black the page slides over the artwork with.
+                section.decorationItems = [
+                    NSCollectionLayoutDecorationItem.background(elementKind: DetailCollectionController.shelfBackgroundKind)
+                ]
+                return section
             case nil:
                 return nil
             }
         }
+        layout.register(DetailShelfBackground.self, forDecorationViewOfKind: Self.shelfBackgroundKind)
         return layout
     }
 
-    /// A fixed height, so the hero is never measured again while scrolling.
-    private static func heroSection(height: CGFloat) -> NSCollectionLayoutSection {
+    /// A clear spacer exactly over the artwork stage.
+    private static func stageSection(height: CGFloat) -> NSCollectionLayoutSection {
         let size = NSCollectionLayoutSize(widthDimension: .fractionalWidth(1), heightDimension: .absolute(height))
         let group = NSCollectionLayoutGroup.vertical(layoutSize: size, subitems: [NSCollectionLayoutItem(layoutSize: size)])
         return NSCollectionLayoutSection(group: group)
     }
 
-    private static func shelfSection() -> NSCollectionLayoutSection {
-        let itemSize = NSCollectionLayoutSize(widthDimension: .fractionalWidth(1), heightDimension: .estimated(260))
-        let groupSize = NSCollectionLayoutSize(widthDimension: .absolute(cardWidth), heightDimension: .estimated(260))
-        let group = NSCollectionLayoutGroup.horizontal(layoutSize: groupSize, subitems: [NSCollectionLayoutItem(layoutSize: itemSize)])
-        let section = NSCollectionLayoutSection(group: group)
-        section.orthogonalScrollingBehavior = .continuousGroupLeadingBoundary
-        section.interGroupSpacing = 14
-        section.contentInsets = NSDirectionalEdgeInsets(top: 14, leading: 16, bottom: 0, trailing: 16)
-        section.supplementaryContentInsetsReference = .none
-        section.boundarySupplementaryItems = [
-            NSCollectionLayoutBoundarySupplementaryItem(
-                layoutSize: NSCollectionLayoutSize(widthDimension: .fractionalWidth(1), heightDimension: .estimated(40)),
-                elementKind: UICollectionView.elementKindSectionHeader,
-                alignment: .top
-            )
-        ]
-        return section
-    }
-
     // MARK: - Cells
 
     private func configureDataSource() {
-        let heroRegistration = UICollectionView.CellRegistration<DetailHeroCell, Item> { _, _, _ in }
+        let stageRegistration = UICollectionView.CellRegistration<UICollectionViewCell, Item> { _, _, _ in }
         let videoRegistration = UICollectionView.CellRegistration<UICollectionViewCell, Item> { [weak self] cell, _, item in
             MainActor.assumeIsolated {
                 self?.configureVideo(cell, for: item)
@@ -196,18 +174,20 @@ final class DetailCollectionController: UIViewController, UICollectionViewDelega
             elementKind: UICollectionView.elementKindSectionHeader
         ) { header, _, _ in
             MainActor.assumeIsolated {
+                // Opaque: the header slides over the artwork too.
+                header.backgroundColor = .black
                 header.contentConfiguration = UIHostingConfiguration {
                     SectionHeader(title: "Up Next")
                         .padding(.horizontal, 16)
-                        .padding(.top, 26)
+                        .frame(maxHeight: .infinity, alignment: .bottom)
                 }
                 .margins(.all, 0)
             }
         }
 
         dataSource = UICollectionViewDiffableDataSource<Section, Item>(collectionView: collectionView) { collectionView, indexPath, item in
-            if item == .hero {
-                return collectionView.dequeueConfiguredReusableCell(using: heroRegistration, for: indexPath, item: item)
+            if item == .stage {
+                return collectionView.dequeueConfiguredReusableCell(using: stageRegistration, for: indexPath, item: item)
             }
             return collectionView.dequeueConfiguredReusableCell(using: videoRegistration, for: indexPath, item: item)
         }
@@ -228,29 +208,34 @@ final class DetailCollectionController: UIViewController, UICollectionViewDelega
             route: VideoRoute(video: video, section: Self.shelfID),
             transition: content.transition,
             library: content.library,
-            downloads: content.downloads
+            downloads: content.downloads,
+            fixedHeight: true
         )
     }
 
     private func applySnapshot(animated: Bool) {
         let related = content.related
-        var snapshot = NSDiffableDataSourceSnapshot<Section, Item>()
-        snapshot.appendSections([.hero])
-        snapshot.appendItems([.hero], toSection: .hero)
-        if !related.isEmpty {
-            snapshot.appendSections([.upNext])
-            snapshot.appendItems(related.map { .video($0.id) }, toSection: .upNext)
-        }
         let changed = related != shownRelated
         shownRelated = related
         guard changed || dataSource.snapshot().numberOfItems == 0 else { return }
+
+        var snapshot = NSDiffableDataSourceSnapshot<Section, Item>()
+        snapshot.appendSections([.stage])
+        snapshot.appendItems([.stage], toSection: .stage)
+        if !related.isEmpty {
+            snapshot.appendSections([.upNext])
+            // Unique IDs: the data source requires them.
+            var seen = Set<String>()
+            let ids = related.map(\.id).filter { seen.insert($0).inserted }
+            snapshot.appendItems(ids.map { .video($0) }, toSection: .upNext)
+        }
         dataSource.apply(snapshot, animatingDifferences: animated)
     }
 
     // MARK: - Selection and menus
 
     func collectionView(_ collectionView: UICollectionView, shouldSelectItemAt indexPath: IndexPath) -> Bool {
-        dataSource.itemIdentifier(for: indexPath) != .hero
+        dataSource.itemIdentifier(for: indexPath) != .stage
     }
 
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
@@ -292,6 +277,81 @@ final class DetailCollectionController: UIViewController, UICollectionViewDelega
     }
 }
 
-/// The hero's cell. TEST: a static, empty UIKit cell of the hero's fixed
-/// height, while the base is checked for smooth scrolling.
-private final class DetailHeroCell: UICollectionViewCell {}
+/// The artwork layer: the stage at the top edge with the 16:9 thumbnail
+/// centered in it, on black below. As the collection view's background view
+/// it stays in place; it lays out only when its size changes.
+private final class DetailArtworkView: UIView {
+    private let stage = UIView()
+    private let imageView = UIImageView()
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        backgroundColor = .black
+        // TEST: light blue shows the stage's extent while we build the screen.
+        stage.backgroundColor = UIColor(red: 0.72, green: 0.84, blue: 1, alpha: 1)
+        stage.clipsToBounds = true
+        imageView.contentMode = .scaleAspectFit
+        stage.addSubview(imageView)
+        addSubview(stage)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is not used")
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        let width = bounds.width
+        let height = DetailStage.height(forWidth: width, scale: traitCollection.displayScale)
+        stage.frame = CGRect(x: 0, y: 0, width: width, height: height)
+        let thumbnailHeight = width * 9 / 16
+        imageView.frame = CGRect(x: 0, y: (height - thumbnailHeight) / 2, width: width, height: thumbnailHeight)
+    }
+
+    private var pendingVideo: Video?
+
+    /// Loads the artwork once, from the shared loader and its cache, as soon
+    /// as the view is on screen and knows its display scale.
+    func load(_ video: Video) {
+        pendingVideo = video
+        loadIfPossible()
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        loadIfPossible()
+    }
+
+    private func loadIfPossible() {
+        guard window != nil, let video = pendingVideo else { return }
+        pendingVideo = nil
+        let candidates = video.artworkCandidates(lowData: NetworkConditions.shared.isConstrained)
+        let maxPixelWidth = ArtworkQuality.hero.displayWidth * traitCollection.displayScale
+        if let cached = ArtworkLoader.cachedImage(for: candidates, maxPixelWidth: maxPixelWidth) {
+            imageView.image = cached
+            return
+        }
+        Task { [weak self] in
+            let image = await ArtworkLoader.firstImage(
+                from: candidates,
+                requiresSixteenByNine: video.source == .youtube,
+                maxPixelWidth: maxPixelWidth
+            )
+            self?.imageView.image = image
+        }
+    }
+}
+
+/// The Up Next shelf's black background.
+private final class DetailShelfBackground: UICollectionReusableView {
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        backgroundColor = .black
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is not used")
+    }
+}

@@ -179,7 +179,8 @@ final class DetailCollectionController: UIViewController, UICollectionViewDelega
                 elementKind: UICollectionView.elementKindSectionHeader,
                 alignment: .top
             )
-        ]        return section
+        ]
+        return section
     }
 
     // MARK: - Cells

@@ -73,6 +73,34 @@ final class TestDownloads: NSObject {
         }
     }
 
+    @ObservationIgnored private var remotePlayer: AVPlayer?
+
+    /// Sends one request each from the app, AVPlayer and the download service
+    /// to a webhook.site test URL (created for this test, with the user's
+    /// consent), which records IP address, IP version and HTTPS headers. The
+    /// results are read from webhook.site's API, not shown here.
+    func sendRemoteTest() {
+        let base = "https://webhook.site/ba1929b5-95c4-4cd5-a9d6-d5aed97ba31d"
+        report = nil
+        Task {
+            _ = try? await URLSession.shared.data(from: URL(string: "\(base)/app/master.m3u8")!)
+            remotePlayer = AVPlayer(url: URL(string: "\(base)/stream/master.m3u8")!)
+
+            let configuration = AVAssetDownloadConfiguration(
+                asset: AVURLAsset(url: URL(string: "\(base)/download/master.m3u8")!),
+                title: "Remote test"
+            )
+            let task = session.makeAssetDownloadTask(downloadConfiguration: configuration)
+            task.taskDescription = "remotetest"
+            task.resume()
+
+            try? await Task.sleep(for: .seconds(8))
+            task.cancel()
+            remotePlayer = nil
+            report = "Remote test sent. Tell Claude to read the results."
+        }
+    }
+
     /// Compares YouTube's answers over the protocols URLSession picks.
     func checkProtocols(_ video: Video) {
         Task {

@@ -70,9 +70,6 @@ struct VideoDetailView: View {
                             Button("Check IP addresses") {
                                 TestDownloads.shared.checkIPs(video)
                             }
-                            Button("Capture request headers") {
-                                TestDownloads.shared.captureHeaders()
-                            }
                         } label: {
                             switch TestDownloads.shared.states[video.id] {
                             case .finished:

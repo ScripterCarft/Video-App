@@ -62,7 +62,7 @@ struct VideoDetailView: View {
                         }
                     } else {
                         Menu {
-                            ForEach([TestDownloads.Mode.youtube, .youtubeWithoutSubtitles, .appleSample, .youtubeViaProxy], id: \.self) { mode in
+                            ForEach([TestDownloads.Mode.youtube, .youtubeWithoutSubtitles, .appleSample], id: \.self) { mode in
                                 Button(mode.rawValue) {
                                     TestDownloads.shared.download(video, mode: mode)
                                 }

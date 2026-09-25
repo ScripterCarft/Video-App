@@ -128,7 +128,6 @@ final class TestDownloads: NSObject {
         case youtube = "YouTube"
         case youtubeWithoutSubtitles = "YouTube without subtitles"
         case appleSample = "Apple sample stream"
-        case youtubeViaProxy = "YouTube through the app"
     }
 
     private static let appleSampleURL = URL(
@@ -154,15 +153,7 @@ final class TestDownloads: NSObject {
                         fail(video.id, "No HLS stream for this video.")
                         return
                     }
-                    if mode == .youtubeViaProxy {
-                        guard let proxied = TestDownloadProxy.shared.proxiedURL(for: variant.url) else {
-                            fail(video.id, "Could not start the local proxy.")
-                            return
-                        }
-                        url = proxied
-                    } else {
-                        url = variant.url
-                    }
+                    url = variant.url
                     expiresAt = variant.expiresAt
                 }
                 let asset = AVURLAsset(url: url)
@@ -236,7 +227,7 @@ final class TestDownloads: NSObject {
                 progress = " at \(Int(fraction * 100)) %"
             }
             let elapsed = started.map { " after \(Int(Date.now.timeIntervalSince($0))) s" } ?? ""
-            fail(videoID, "\(currentMode.rawValue): download failed\(progress)\(elapsed).\n\(error)\(proxySummary)")
+            fail(videoID, "\(currentMode.rawValue): download failed\(progress)\(elapsed).\n\(error)")
             return
         }
         guard let url = localURL(for: videoID) else {
@@ -262,16 +253,8 @@ final class TestDownloads: NSObject {
                 lines.append(String(format: "≈ %.2f GB/hour", Double(bytes) / duration * 3600 / 1_000_000_000))
             }
             lines.append("Turn on Airplane Mode and press Play to test offline playback.")
-            report = lines.joined(separator: "\n") + proxySummary
+            report = lines.joined(separator: "\n")
         }
-    }
-
-    /// The proxy's request log, when the download went through the app.
-    private var proxySummary: String {
-        guard currentMode == .youtubeViaProxy else { return "" }
-        let summary = TestDownloadProxy.shared.summary
-        TestDownloadProxy.shared.stop()
-        return "\n\n" + summary
     }
 
     /// The error chain with every failing URL: host and path kind (master or

@@ -78,9 +78,8 @@ struct VideoDetailView: View {
     }
 }
 
-/// The detail screen's hero: the artwork stage with title, channel, Play and
-/// Save, the description and the info line. Reads `VideoDetailModel`, so it
-/// updates inside its collection view cell by itself.
+/// The detail screen's hero: title, channel, Play and Save, the description
+/// and the info line. Reads `VideoDetailModel`, so it updates by itself.
 struct DetailHero: View {
     let model: VideoDetailModel
     let playback: PlaybackStarter
@@ -93,27 +92,25 @@ struct DetailHero: View {
         model.video
     }
 
+    /// Lies over the artwork stage (see `DetailCollection`), as tall as it:
+    /// clear at the top, the information at the bottom. Behind it, a plain
+    /// gradient starts below the thumbnail, leaving the image itself
+    /// untouched, and ends in the black the shelf starts with.
     var body: some View {
-        ZStack(alignment: .bottomLeading) {
-            VideoHeroArtwork(video: video, stageAspectRatio: 2.0 / 3.0)
-                // The detail screen is always dark, so its stage gray is too.
-                .environment(\.colorScheme, .dark)
-
-            LinearGradient(
-                stops: [
-                    .init(color: .clear, location: 0.38),
-                    .init(color: .black.opacity(0.08), location: 0.55),
-                    .init(color: .black.opacity(0.3), location: 0.72),
-                    .init(color: .black.opacity(0.62), location: 1)
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-
-            information
-        }
-        .aspectRatio(2.0 / 3.0, contentMode: .fit)
-        .clipped()
+        information
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+            .background {
+                LinearGradient(
+                    stops: [
+                        .init(color: .black.opacity(0), location: DetailStage.thumbnailBottom),
+                        .init(color: .black.opacity(0.6), location: DetailStage.thumbnailBottom + 0.12),
+                        .init(color: .black.opacity(0.9), location: 0.92),
+                        .init(color: .black, location: 1)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            }
     }
 
     private var information: some View {

@@ -91,7 +91,6 @@ private struct SavedVideosView: View {
 
 private struct DownloadedVideosView: View {
     @Environment(DownloadManager.self) private var downloads
-    @State private var isConfirmingRemoveAll = false
     let transition: Namespace.ID
 
     var body: some View {
@@ -106,20 +105,20 @@ private struct DownloadedVideosView: View {
         .toolbar {
             if !downloads.videos.isEmpty {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Remove All") {
-                        isConfirmingRemoveAll = true
+                    // The confirmation opens from the button as a system menu.
+                    Menu("Remove All") {
+                        Section {
+                            Button("Remove All Downloads", systemImage: "trash", role: .destructive) {
+                                withAnimation {
+                                    downloads.removeAll()
+                                }
+                            }
+                        } header: {
+                            Text("All downloaded videos will be removed from your iPhone.")
+                        }
                     }
                 }
             }
-        }
-        .confirmationDialog("Remove All Downloads", isPresented: $isConfirmingRemoveAll, titleVisibility: .hidden) {
-            Button("Remove All Downloads", role: .destructive) {
-                withAnimation {
-                    downloads.removeAll()
-                }
-            }
-        } message: {
-            Text("All downloaded videos will be removed from your iPhone.")
         }
     }
 }
@@ -127,7 +126,6 @@ private struct DownloadedVideosView: View {
 private struct HistoryView: View {
     @Environment(LibraryStore.self) private var library
     @Environment(DownloadManager.self) private var downloads
-    @State private var isConfirmingRemoveAll = false
     let transition: Namespace.ID
 
     var body: some View {
@@ -142,20 +140,20 @@ private struct HistoryView: View {
         .toolbar {
             if !library.recentlyWatched.isEmpty {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Remove All") {
-                        isConfirmingRemoveAll = true
+                    // The confirmation opens from the button as a system menu.
+                    Menu("Remove All") {
+                        Section {
+                            Button("Remove All from History", systemImage: "trash", role: .destructive) {
+                                withAnimation {
+                                    library.removeAllFromRecentlyWatched { downloads.isDownloaded($0) }
+                                }
+                            }
+                        } header: {
+                            Text("Your watch history and the saved positions of these videos will be removed. Downloaded videos stay.")
+                        }
                     }
                 }
             }
-        }
-        .confirmationDialog("Remove All from History", isPresented: $isConfirmingRemoveAll, titleVisibility: .hidden) {
-            Button("Remove All from History", role: .destructive) {
-                withAnimation {
-                    library.removeAllFromRecentlyWatched { downloads.isDownloaded($0) }
-                }
-            }
-        } message: {
-            Text("Your watch history and the saved positions of these videos will be removed. Downloaded videos stay.")
         }
     }
 }

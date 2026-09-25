@@ -41,10 +41,6 @@ struct VideoDetailView: View {
         // Only scroll when the content is taller than the screen, so a downward
         // swipe closes the screen instead of pulling the content.
         .scrollBounceBehavior(.basedOnSize)
-        // The artwork runs under the bar on a dark screen, so the toolbar
-        // buttons stay legible without the system's top scroll edge effect,
-        // which appeared as a dark shade over the artwork.
-        .scrollEdgeEffectHidden(true, for: .top)
         .background(.black)
         .foregroundStyle(.white)
         // The detail screen is always dark; its toolbar buttons use white instead

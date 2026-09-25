@@ -3,6 +3,12 @@ import SwiftUI
 struct ExploreView: View {
     @Namespace private var transition
 
+    /// Navigation value for a topic's results; only the title, so the path
+    /// can be restored after a relaunch.
+    private struct TopicRoute: Hashable, Codable {
+        let title: String
+    }
+
     private struct Topic: Identifiable, Hashable {
         let title: String
         let systemImage: String
@@ -21,7 +27,7 @@ struct ExploreView: View {
     ]
 
     var body: some View {
-        NavigationStack {
+        RestorableNavigationStack(id: "explore.path") { _ in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 28) {
                     VStack(alignment: .leading, spacing: 14) {
@@ -29,7 +35,7 @@ struct ExploreView: View {
 
                         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
                             ForEach(topics) { topic in
-                                NavigationLink(value: topic) {
+                                NavigationLink(value: TopicRoute(title: topic.title)) {
                                     Label(topic.title, systemImage: topic.systemImage)
                                         .font(.headline)
                                         .frame(maxWidth: .infinity, minHeight: 74, alignment: .leading)
@@ -60,7 +66,7 @@ struct ExploreView: View {
             .navigationTitle("Explore")
             // Value-based like the video links; mixing view-destination links
             // with value-based ones can pop a video right after it was pushed.
-            .navigationDestination(for: Topic.self) { topic in
+            .navigationDestination(for: TopicRoute.self) { topic in
                 SearchResultsView(
                     query: topic.title,
                     section: "topic-\(topic.title)",

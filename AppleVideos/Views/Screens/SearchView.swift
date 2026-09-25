@@ -14,7 +14,7 @@ struct SearchView: View {
     ]
 
     var body: some View {
-        NavigationStack {
+        RestorableNavigationStack(id: "search.path") { _ in
             Group {
                 if submittedQuery.isEmpty {
                     ContentUnavailableView {

@@ -5,13 +5,12 @@ struct HomeView: View {
     @Environment(LibraryStore.self) private var library
     @Environment(DownloadManager.self) private var downloads
     @State private var playback = PlaybackStarter()
-    @State private var path = NavigationPath()
 
     private let featured = Video.curated[0]
     private let picks = Array(Video.curated.dropFirst())
 
     var body: some View {
-        NavigationStack(path: $path) {
+        RestorableNavigationStack(id: "home.path") { path in
             HomeCollection(
                 featured: featured,
                 shelves: shelves,
@@ -19,7 +18,7 @@ struct HomeView: View {
                 library: library,
                 downloads: downloads,
                 playback: playback,
-                onOpen: { route in path.append(route) }
+                onOpen: { route in path.wrappedValue.append(route) }
             )
             // The collection view reaches under the bars and insets itself.
             .ignoresSafeArea()

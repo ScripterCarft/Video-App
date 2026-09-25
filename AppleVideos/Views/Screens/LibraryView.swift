@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct LibraryView: View {
-    private enum Route: Hashable {
+    private enum Route: Hashable, Codable {
         case saved
         case downloaded
         case history
@@ -12,7 +12,7 @@ struct LibraryView: View {
     @Namespace private var transition
 
     var body: some View {
-        NavigationStack {
+        RestorableNavigationStack(id: "library.path") { _ in
             List {
                 Section {
                     NavigationLink(value: Route.saved) {

@@ -17,11 +17,11 @@ enum DetailStage {
     }
 }
 
-/// The detail screen in two layers. Behind: the artwork stage, standing
-/// still. In front: the scrolling page, an empty spacer as tall as the stage,
-/// then a rigid black sheet from the stage's lower edge down with the Up Next
-/// shelf on it; only the page moves. Every size is fixed; nothing is measured
-/// or updated while scrolling.
+/// The detail screen in two layers. Behind: the artwork stage as the
+/// collection view's `backgroundView`, which UIKit keeps in place while the
+/// content scrolls. In front: an empty spacer as tall as the stage, then the
+/// Up Next shelf on black, starting exactly at the stage's lower edge and
+/// sliding over it. Every size is fixed; nothing is measured while scrolling.
 struct DetailCollection: UIViewControllerRepresentable {
     let model: VideoDetailModel
     /// The Up Next videos, passed as a value so SwiftUI updates the shelf when they arrive.
@@ -56,13 +56,13 @@ final class DetailCollectionController: UIViewController, UICollectionViewDelega
 
     private static let cardWidth: CGFloat = 272
     private static let shelfID = "upnext"
+    private static let shelfBackgroundKind = "detail-shelf-background"
 
     private var content: DetailCollection
     private var dataSource: UICollectionViewDiffableDataSource<Section, Item>!
     private lazy var collectionView = UICollectionView(frame: .zero, collectionViewLayout: makeLayout())
     private lazy var menus = VideoContextMenus(library: content.library, downloads: content.downloads, presenter: self)
     private let artwork = DetailArtworkView()
-    private let sheet = UIView()
     private var shownRelated: [Video] = []
 
     init(content: DetailCollection) {
@@ -81,30 +81,15 @@ final class DetailCollectionController: UIViewController, UICollectionViewDelega
         overrideUserInterfaceStyle = .dark
         view.backgroundColor = .black
 
-        // Layer 1: the artwork, standing still behind everything.
-        artwork.frame = view.bounds
-        artwork.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        view.addSubview(artwork)
-
-        // Layer 2: the page. Clear, so the artwork shows above the sheet.
         collectionView.frame = view.bounds
         collectionView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        collectionView.backgroundColor = .clear
-        collectionView.showsVerticalScrollIndicator = false
+        collectionView.backgroundColor = .black
+        collectionView.backgroundView = artwork
         // The stage starts under the navigation bar; the bottom is inset by hand.
         collectionView.contentInsetAdjustmentBehavior = .never
         collectionView.alwaysBounceVertical = true
         collectionView.delegate = self
         view.addSubview(collectionView)
-
-        // The black sheet: one plain view in the scroll view's content, from
-        // the stage's lower edge far past the end of any page, so it moves as
-        // one piece with the content and never ends on screen, not even when
-        // bouncing. Behind the cells; a solid color draws nothing per frame.
-        sheet.backgroundColor = .black
-        sheet.isUserInteractionEnabled = false
-        sheet.layer.zPosition = -1
-        collectionView.addSubview(sheet)
 
         // Fixed sizes follow the text size; recompute them when it changes.
         registerForTraitChanges([UITraitPreferredContentSizeCategory.self]) { (self: Self, _) in
@@ -114,21 +99,6 @@ final class DetailCollectionController: UIViewController, UICollectionViewDelega
         artwork.load(content.model.video)
         configureDataSource()
         applySnapshot(animated: false)
-    }
-
-    override func viewDidLayoutSubviews() {
-        super.viewDidLayoutSubviews()
-        // Only when the size changes, never per scroll frame.
-        let width = view.bounds.width
-        let sheetFrame = CGRect(
-            x: 0,
-            y: DetailStage.height(forWidth: width, scale: traitCollection.displayScale),
-            width: width,
-            height: 20_000
-        )
-        if sheet.frame != sheetFrame {
-            sheet.frame = sheetFrame
-        }
     }
 
     override func viewSafeAreaInsetsDidChange() {
@@ -166,15 +136,21 @@ final class DetailCollectionController: UIViewController, UICollectionViewDelega
                     scale: environment.traitCollection.displayScale
                 ))
             case .upNext:
-                return VideoCells.shelfSection(
+                let section = VideoCells.shelfSection(
                     cardWidth: DetailCollectionController.cardWidth,
                     headerTopSpacing: 22,
                     traits: environment.traitCollection
                 )
+                // The black the page slides over the artwork with.
+                section.decorationItems = [
+                    NSCollectionLayoutDecorationItem.background(elementKind: DetailCollectionController.shelfBackgroundKind)
+                ]
+                return section
             case nil:
                 return nil
             }
         }
+        layout.register(DetailShelfBackground.self, forDecorationViewOfKind: Self.shelfBackgroundKind)
         return layout
     }
 
@@ -198,6 +174,8 @@ final class DetailCollectionController: UIViewController, UICollectionViewDelega
             elementKind: UICollectionView.elementKindSectionHeader
         ) { header, _, _ in
             MainActor.assumeIsolated {
+                // Opaque: the header slides over the artwork too.
+                header.backgroundColor = .black
                 header.contentConfiguration = UIHostingConfiguration {
                     SectionHeader(title: "Up Next")
                         .padding(.horizontal, 16)
@@ -300,8 +278,8 @@ final class DetailCollectionController: UIViewController, UICollectionViewDelega
 }
 
 /// The artwork layer: the stage at the top edge with the 16:9 thumbnail
-/// centered in it, on black below. It stays in place behind the page and
-/// lays out only when its size changes.
+/// centered in it, on black below. As the collection view's background view
+/// it stays in place; it lays out only when its size changes.
 private final class DetailArtworkView: UIView {
     private let stage = UIView()
     private let imageView = UIImageView()
@@ -362,5 +340,18 @@ private final class DetailArtworkView: UIView {
             )
             self?.imageView.image = image
         }
+    }
+}
+
+/// The Up Next shelf's black background.
+private final class DetailShelfBackground: UICollectionReusableView {
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        backgroundColor = .black
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is not used")
     }
 }

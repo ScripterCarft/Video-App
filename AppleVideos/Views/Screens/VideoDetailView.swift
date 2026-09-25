@@ -1,51 +1,45 @@
 import SwiftUI
 
+/// A video's detail screen: a SwiftUI shell (toolbar, zoom transition,
+/// player, description sheet) around `DetailCollection`, which shows the
+/// hero and the Up Next shelf. `VideoDetailModel` holds the state and loads.
 struct VideoDetailView: View {
     let video: Video
     let transition: Namespace.ID
     let transitionID: String
 
     @Environment(LibraryStore.self) private var library
+    @Environment(DownloadManager.self) private var downloads
+    @Environment(\.openVideo) private var openVideo
+    @State private var model: VideoDetailModel
     @State private var playback = PlaybackStarter()
     @State private var feedback = 0
     @State private var showDescription = false
-    @State private var loadedDescription: String?
-    @State private var loadedBadges: [String]?
-    @State private var detailsLoadFinished = false
-    @State private var detailsVideoID: String?
-    @State private var refreshedVideo: Video?
-    @State private var streamBadges: [String] = []
 
     init(video: Video, transition: Namespace.ID, transitionID: String) {
         self.video = video
         self.transition = transition
         self.transitionID = transitionID
+        _model = State(initialValue: VideoDetailModel(video: video))
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 22) {
-                detailStage
-
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Up Next")
-                        .font(.title2.bold())
-                    Text("More recommendations will become personal as the Apple Videos algorithm evolves.")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.horizontal)
-            }
-            .padding(.bottom, 30)
-        }
-        // TEST (do not merge): always scrollable, to look at the scroll edge
-        // effect; normally .scrollBounceBehavior(.basedOnSize) goes here.
+        DetailCollection(
+            model: model,
+            related: model.related,
+            playback: playback,
+            transition: transition,
+            library: library,
+            downloads: downloads,
+            onShowDescription: { showDescription = true },
+            onFeedback: { feedback += 1 },
+            onOpen: { route in openVideo(route) }
+        )
+        .ignoresSafeArea()
         .background(.black)
-        .foregroundStyle(.white)
         // The detail screen is always dark; its toolbar buttons use white instead
         // of the app's red accent, like the TV app.
         .tint(.white)
-        .ignoresSafeArea(edges: .top)
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
         .toolbar {
@@ -63,215 +57,147 @@ struct VideoDetailView: View {
         .navigationTransition(.zoom(sourceID: transitionID, in: transition))
         .playbackPresentation(playback)
         .sheet(isPresented: $showDescription) {
-            DescriptionSheet(video: shown, description: visibleDescription)
+            DescriptionSheet(video: model.shown, description: model.visibleDescription)
                 .tint(.primary)
                 .presentationDetents([.fraction(0.55), .fraction(0.8)])
                 .presentationDragIndicator(.visible)
         }
-        // One task, in order: the details, shown in one step, then the stream.
-        // SwiftUI cancels it when the screen goes away.
+        // SwiftUI cancels the loading when the screen goes away. The player
+        // removes and re-adds this screen; the model keeps what has loaded.
         .task(id: video.id) {
-            // The full-screen player removes this screen from the window, and an
-            // interactive swipe-down re-adds it, which re-runs this task. Only reset
-            // for a different video so state stays unchanged under AVKit's transition.
-            if detailsVideoID != video.id {
-                detailsVideoID = video.id
-                loadedDescription = nil
-                loadedBadges = nil
-                refreshedVideo = nil
-                streamBadges = []
-                detailsLoadFinished = false
-            }
-
-            if !detailsLoadFinished {
-                if video.source == .youtube {
-                    let details = try? await YouTubeService.shared.details(for: video.id)
-                    // A cancelled load is retried the next time the screen appears.
-                    guard !Task.isCancelled else { return }
-                    // Current title, views and publish date, from the details above.
-                    let refreshed = details == nil ? nil : try? await YouTubeService.shared.refreshedVideo(video)
-                    guard !Task.isCancelled else { return }
-
-                    // Everything that loaded appears at once, not piece by piece.
-                    withAnimation(.easeOut(duration: 0.25)) {
-                        loadedDescription = details?.description
-                        loadedBadges = details.flatMap { $0.badges.isEmpty ? nil : $0.badges }
-                        refreshedVideo = refreshed
-                        detailsLoadFinished = true
-                    }
-                    if let refreshed {
-                        // Stored when the screen leaves; see onDisappear.
-                        library.rememberFresh(refreshed)
-                    }
-                } else {
-                    detailsLoadFinished = true
-                }
-            }
-
-            // Then, while the screen stays, resolve the stream so Play starts
-            // without waiting; its formats and captions also give the badges.
-            let badges = await NativePlayback.prefetch(video)?.technicalBadges ?? []
-            guard !Task.isCancelled, badges != streamBadges else { return }
-            streamBadges = badges
+            await model.load(library: library)
         }
         .onDisappear {
             // Store the refreshed metadata once the screen has left, so nothing
             // on the screen behind changes during the zoom back. The player
             // covering this screen is not leaving it.
-            guard !NativePlayback.isShowingPlayer, let refreshedVideo else { return }
-            library.updateMetadata(of: refreshedVideo)
+            guard !NativePlayback.isShowingPlayer, let refreshed = model.refreshedVideo else { return }
+            library.updateMetadata(of: refreshed)
         }
         .sensoryFeedback(.selection, trigger: feedback)
     }
+}
 
-    /// The video with the freshest metadata available.
-    private var shown: Video {
-        refreshedVideo ?? video
+/// The detail screen's hero: the artwork stage with title, channel, Play and
+/// Save, the description and the info line. Reads `VideoDetailModel`, so it
+/// updates inside its collection view cell by itself.
+struct DetailHero: View {
+    let model: VideoDetailModel
+    let playback: PlaybackStarter
+    let onShowDescription: () -> Void
+    let onFeedback: () -> Void
+
+    @Environment(LibraryStore.self) private var library
+
+    private var video: Video {
+        model.video
     }
 
-    /// Prefers the full description from the details request over the short
-    /// snippet that search results carry.
-    private var visibleDescription: String? {
-        [loadedDescription, video.descriptionText]
-            .lazy
-            .compactMap { $0?.collapsedWhitespace }
-            .first
-    }
+    var body: some View {
+        ZStack(alignment: .bottomLeading) {
+            VideoHeroArtwork(video: video, stageAspectRatio: 2.0 / 3.0)
+                // The detail screen is always dark, so its stage gray is too.
+                .environment(\.colorScheme, .dark)
 
-    private var visibleBadges: [String] {
-        let original = video.badges ?? []
-        // Technical badges come from the resolved stream; the details request
-        // (WEB client) is refused playback data and only supplies live status.
-        let verified = streamBadges + (loadedBadges ?? [])
-        let resolutions = Set(["8K", "4K", "HD", "SD"])
-        let resolution = verified.first(where: resolutions.contains)
-            ?? original.first(where: resolutions.contains)
-        let supported = ["HDR", "CC", "SDH", "360°", "LIVE", "PREMIERE", "UPCOMING"]
-        let combined = Set(original + verified)
-        return [resolution].compactMap { $0 } + supported.filter(combined.contains)
-    }
+            LinearGradient(
+                stops: [
+                    .init(color: .clear, location: 0.38),
+                    .init(color: .black.opacity(0.08), location: 0.55),
+                    .init(color: .black.opacity(0.3), location: 0.72),
+                    .init(color: .black.opacity(0.62), location: 1)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
 
-    private var textMetadata: [String] {
-        [shown.formattedDuration, shown.viewCountText, shown.publishedLabel]
-            .compactMap { value in
-                guard let value, !value.isEmpty else { return nil }
-                return value
-            }
-    }
-
-    private var detailStage: some View {
-        GeometryReader { geometry in
-            let stageHeight = geometry.size.height
-
-            ZStack(alignment: .bottomLeading) {
-                VideoHeroArtwork(video: video, stageAspectRatio: 2.0 / 3.0)
-                    .frame(width: geometry.size.width, height: stageHeight)
-                    // The detail screen is always dark, so its stage gray is too.
-                    .environment(\.colorScheme, .dark)
-
-                LinearGradient(
-                    stops: [
-                        .init(color: .clear, location: 0.38),
-                        .init(color: .black.opacity(0.08), location: 0.55),
-                        .init(color: .black.opacity(0.3), location: 0.72),
-                        .init(color: .black.opacity(0.62), location: 1)
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-
-                detailInformation
-            }
-            .clipped()
+            information
         }
         .aspectRatio(2.0 / 3.0, contentMode: .fit)
+        .clipped()
     }
 
-    private var detailInformation: some View {
+    private var information: some View {
         VStack(alignment: .leading, spacing: 14) {
-                VStack(alignment: .center, spacing: 5) {
-                    Text(shown.title)
-                        .font(.title.bold())
-                        .lineLimit(3)
-                    Text(shown.channelName)
+            VStack(alignment: .center, spacing: 5) {
+                Text(model.shown.title)
+                    .font(.title.bold())
+                    .lineLimit(3)
+                Text(model.shown.channelName)
+                    .font(.headline)
+                    .foregroundStyle(.white.opacity(0.72))
+            }
+            .frame(maxWidth: .infinity, alignment: .center)
+            .multilineTextAlignment(.center)
+
+            HStack(spacing: 10) {
+                Spacer(minLength: 0)
+
+                Button {
+                    if playback.isPreparing {
+                        playback.cancel()
+                    } else {
+                        playback.start(video, description: model.visibleDescription, library: library)
+                        onFeedback()
+                    }
+                } label: {
+                    PlayButtonContent(
+                        progress: library.progress(for: video),
+                        isPreparing: playback.isPreparing
+                    )
+                    .font(.headline)
+                    .foregroundStyle(.black)
+                    .padding(.horizontal, 26)
+                    .frame(minWidth: 190, minHeight: 50)
+                    .background(.white, in: Capsule())
+                }
+                .buttonStyle(.plain)
+
+                Button {
+                    library.toggleSaved(video)
+                    onFeedback()
+                } label: {
+                    Image(systemName: library.isSaved(video) ? "checkmark" : "plus")
                         .font(.headline)
-                        .foregroundStyle(.white.opacity(0.72))
-                        .multilineTextAlignment(.center)
-                }
-                .frame(maxWidth: .infinity, alignment: .center)
-                .multilineTextAlignment(.center)
-
-                HStack(spacing: 10) {
-                    Spacer(minLength: 0)
-
-                    Button {
-                        if playback.isPreparing {
-                            playback.cancel()
-                        } else {
-                            playback.start(video, description: visibleDescription, library: library)
-                            feedback += 1
+                        .foregroundStyle(.white)
+                        .frame(width: 50, height: 50)
+                        .background(Color(white: 0.24), in: Circle())
+                        .overlay {
+                            Circle()
+                                .strokeBorder(.white.opacity(0.16), lineWidth: 0.5)
                         }
-                    } label: {
-                        PlayButtonContent(
-                            progress: library.progress(for: video),
-                            isPreparing: playback.isPreparing
-                        )
-                        .font(.headline)
-                        .foregroundStyle(.black)
-                        .padding(.horizontal, 26)
-                        .frame(minWidth: 190, minHeight: 50)
-                        .background(.white, in: Capsule())
-                    }
-                    .buttonStyle(.plain)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(library.isSaved(video) ? "Remove from Saved" : "Add to Saved")
 
-                    Button {
-                        library.toggleSaved(video)
-                        feedback += 1
-                    } label: {
-                        Image(systemName: library.isSaved(video) ? "checkmark" : "plus")
-                            .font(.headline)
-                            .foregroundStyle(.white)
-                            .frame(width: 50, height: 50)
-                            .background(Color(white: 0.24), in: Circle())
-                            .overlay {
-                                Circle()
-                                    .strokeBorder(.white.opacity(0.16), lineWidth: 0.5)
-                            }
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(library.isSaved(video) ? "Remove from Saved" : "Add to Saved")
+                Spacer(minLength: 0)
+            }
 
-                    Spacer(minLength: 0)
+            // Until the details are loaded, the description and the line
+            // below are placeholders; then both appear in one step.
+            if !model.detailsLoadFinished {
+                DescriptionPlaceholder()
+            } else if let description = model.visibleDescription {
+                DescriptionPreview(text: description, onMore: onShowDescription)
+            }
+
+            HStack(spacing: 7) {
+                ForEach(Array(model.textMetadata.enumerated()), id: \.offset) { index, item in
+                    if index > 0 {
+                        Text("·")
+                            .foregroundStyle(.white.opacity(0.42))
+                    }
+                    Text(item)
+                        .foregroundStyle(.white.opacity(0.7))
+                        .lineLimit(1)
                 }
 
-                // Until the details are loaded, the description and the line
-                // below are placeholders; then both appear in one step.
-                if !detailsLoadFinished {
-                    DescriptionPlaceholder()
-                } else if let description = visibleDescription {
-                    DescriptionPreview(text: description) {
-                        showDescription = true
-                    }
+                ForEach(model.visibleBadges, id: \.self) { badge in
+                    MetadataBadge(text: badge)
                 }
-
-                HStack(spacing: 7) {
-                    ForEach(Array(textMetadata.enumerated()), id: \.offset) { index, item in
-                        if index > 0 {
-                            Text("·")
-                                .foregroundStyle(.white.opacity(0.42))
-                        }
-                        Text(item)
-                            .foregroundStyle(.white.opacity(0.7))
-                            .lineLimit(1)
-                    }
-
-                    ForEach(visibleBadges, id: \.self) { badge in
-                        MetadataBadge(text: badge)
-                    }
-                }
-                .font(.footnote)
-                .minimumScaleFactor(0.86)
-                .redacted(reason: detailsLoadFinished ? [] : .placeholder)
+            }
+            .font(.footnote)
+            .minimumScaleFactor(0.86)
+            .redacted(reason: model.detailsLoadFinished ? [] : .placeholder)
         }
         .foregroundStyle(.white)
         .padding(.horizontal, 18)

@@ -79,6 +79,20 @@ private struct VideoDestination: View {
     }
 }
 
+/// Opens a video's detail screen on the current tab's navigation stack.
+struct OpenVideoAction: Sendable {
+    let action: @MainActor @Sendable (VideoRoute) -> Void
+
+    @MainActor
+    func callAsFunction(_ route: VideoRoute) {
+        action(route)
+    }
+}
+
+extension EnvironmentValues {
+    @Entry var openVideo = OpenVideoAction { _ in }
+}
+
 /// A navigation stack whose path survives relaunches, stored with the
 /// path's `CodableRepresentation` in scene storage, as Apple documents for
 /// `NavigationPath`. Every value pushed on it must be `Codable`.
@@ -97,6 +111,11 @@ struct RestorableNavigationStack<Root: View>: View {
         NavigationStack(path: $path) {
             root($path)
         }
+        // Screens inside the stack, UIKit collection views included, open a
+        // video's detail screen through this action.
+        .environment(\.openVideo, OpenVideoAction { [path = $path] route in
+            path.wrappedValue.append(route)
+        })
         .onAppear {
             guard !didRestore else { return }
             didRestore = true

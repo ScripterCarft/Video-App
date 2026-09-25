@@ -1,10 +1,17 @@
 import SwiftUI
 import UIKit
 
-/// The detail screen as one scrolling collection view, like the TV app's:
-/// the hero with title, buttons and description, then the Up Next shelf of
-/// related videos with the shared cell and context menu. The hero starts
-/// under the navigation bar; the page always scrolls.
+/// The detail screen's page color, dark gray like the TV app's.
+enum DetailBackground {
+    static var uiColor: UIColor { UIColor(white: 0.09, alpha: 1) }
+    static var color: Color { Color(uiColor: uiColor) }
+}
+
+/// The detail screen in two layers, like the TV app's: the artwork stands
+/// still at the top edge, and a collection view scrolls over it with the
+/// title, buttons and description first, then the Up Next shelf of related
+/// videos with the shared cell and context menu. Pulling down at the top
+/// enlarges the artwork to fill the gap.
 struct DetailCollection: UIViewControllerRepresentable {
     let model: VideoDetailModel
     /// The Up Next videos, passed as a value so SwiftUI updates the shelf when they arrive.
@@ -39,10 +46,16 @@ final class DetailCollectionController: UIViewController, UICollectionViewDelega
 
     private static let cardWidth: CGFloat = 272
     private static let shelfID = "upnext"
+    /// The artwork stage and the hero cell are 2:3, as tall as 1.5 × the width.
+    private static let stageHeightRatio: CGFloat = 1.5
+    private static let sectionBackgroundKind = "detail-section-background"
 
     private var content: DetailCollection
     private var dataSource: UICollectionViewDiffableDataSource<Section, Item>!
     private lazy var collectionView = UICollectionView(frame: .zero, collectionViewLayout: makeLayout())
+    /// The artwork layer behind the collection view. Only its transform
+    /// changes while scrolling, so SwiftUI never redraws it for that.
+    private lazy var artworkHost = UIHostingController(rootView: DetailArtwork(video: content.model.video))
     private lazy var menus = VideoContextMenus(library: content.library, downloads: content.downloads, presenter: self)
     private var shownRelated: [Video] = []
 
@@ -60,16 +73,59 @@ final class DetailCollectionController: UIViewController, UICollectionViewDelega
         super.viewDidLoad()
         // The detail screen is always dark, like the TV app's.
         overrideUserInterfaceStyle = .dark
-        view.backgroundColor = .black
+        view.backgroundColor = DetailBackground.uiColor
+
+        // The artwork reaches the top edge, under the status and navigation bars.
+        artworkHost.safeAreaRegions = []
+        artworkHost.view.backgroundColor = .clear
+        addChild(artworkHost)
+        view.addSubview(artworkHost.view)
+        artworkHost.didMove(toParent: self)
+
         collectionView.frame = view.bounds
         collectionView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        collectionView.backgroundColor = .black
+        // Clear, so the artwork shows through the hero cell; the Up Next
+        // section has its own background.
+        collectionView.backgroundColor = .clear
         // The hero starts under the navigation bar; the bottom is inset by hand.
         collectionView.contentInsetAdjustmentBehavior = .never
+        // Pulling down at the top always works, even when the page fits.
+        collectionView.alwaysBounceVertical = true
         collectionView.delegate = self
         view.addSubview(collectionView)
         configureDataSource()
         applySnapshot(animated: false)
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        let width = view.bounds.width
+        let height = width * Self.stageHeightRatio
+        // Bounds and center, not frame: the view carries a transform.
+        artworkHost.view.bounds = CGRect(x: 0, y: 0, width: width, height: height)
+        artworkHost.view.center = CGPoint(x: width / 2, y: height / 2)
+        updateArtworkStretch()
+    }
+
+    /// Pulled down past the top, the artwork grows from its top edge so it
+    /// always reaches the hero, which the scroll view moves down. Scrolled
+    /// up, the artwork stands still and the page slides over it.
+    private func updateArtworkStretch() {
+        let height = artworkHost.view.bounds.height
+        let pull = max(0, -(collectionView.contentOffset.y + collectionView.adjustedContentInset.top))
+        guard height > 0, pull > 0 else {
+            artworkHost.view.transform = .identity
+            return
+        }
+        let scale = (height + pull) / height
+        // Scaling around the center moves the top up by pull / 2; move it back.
+        artworkHost.view.transform = CGAffineTransform(translationX: 0, y: pull / 2)
+            .scaledBy(x: scale, y: scale)
+    }
+
+    func scrollViewDidScroll(_ scrollView: UIScrollView) {
+        guard scrollView === collectionView else { return }
+        updateArtworkStretch()
     }
 
     override func viewSafeAreaInsetsDidChange() {
@@ -99,25 +155,25 @@ final class DetailCollectionController: UIViewController, UICollectionViewDelega
     // MARK: - Layout
 
     private func makeLayout() -> UICollectionViewCompositionalLayout {
-        let configuration = UICollectionViewCompositionalLayoutConfiguration()
-        configuration.interSectionSpacing = 26
-        return UICollectionViewCompositionalLayout(
-            sectionProvider: { [weak self] index, _ in
-                switch self?.dataSource?.sectionIdentifier(for: index) {
-                case .hero:
-                    return DetailCollectionController.heroSection()
-                case .upNext:
-                    return DetailCollectionController.shelfSection()
-                case nil:
-                    return nil
-                }
-            },
-            configuration: configuration
-        )
+        // No space between sections: the artwork would show through a gap.
+        let layout = UICollectionViewCompositionalLayout { [weak self] index, _ in
+            switch self?.dataSource?.sectionIdentifier(for: index) {
+            case .hero:
+                return DetailCollectionController.heroSection()
+            case .upNext:
+                return DetailCollectionController.shelfSection()
+            case nil:
+                return nil
+            }
+        }
+        layout.register(DetailSectionBackground.self, forDecorationViewOfKind: Self.sectionBackgroundKind)
+        return layout
     }
 
+    /// The hero has a fixed height, exactly over the artwork stage, so it is
+    /// never measured again while scrolling or bouncing.
     private static func heroSection() -> NSCollectionLayoutSection {
-        let size = NSCollectionLayoutSize(widthDimension: .fractionalWidth(1), heightDimension: .estimated(700))
+        let size = NSCollectionLayoutSize(widthDimension: .fractionalWidth(1), heightDimension: .fractionalWidth(stageHeightRatio))
         let group = NSCollectionLayoutGroup.vertical(layoutSize: size, subitems: [NSCollectionLayoutItem(layoutSize: size)])
         return NSCollectionLayoutSection(group: group)
     }
@@ -138,6 +194,9 @@ final class DetailCollectionController: UIViewController, UICollectionViewDelega
                 alignment: .top
             )
         ]
+        // Opaque, so the artwork does not show behind the shelf once the page
+        // has slid over it.
+        section.decorationItems = [NSCollectionLayoutDecorationItem.background(elementKind: sectionBackgroundKind)]
         return section
     }
 
@@ -153,9 +212,13 @@ final class DetailCollectionController: UIViewController, UICollectionViewDelega
             elementKind: UICollectionView.elementKindSectionHeader
         ) { header, _, _ in
             MainActor.assumeIsolated {
+                // The space above the title belongs to the opaque header, so
+                // no gap between hero and shelf lets the artwork through.
+                header.backgroundColor = DetailBackground.uiColor
                 header.contentConfiguration = UIHostingConfiguration {
                     SectionHeader(title: "Up Next")
                         .padding(.horizontal, 16)
+                        .padding(.top, 26)
                 }
                 .margins(.all, 0)
             }
@@ -188,6 +251,9 @@ final class DetailCollectionController: UIViewController, UICollectionViewDelega
                 )
                 .environment(library)
                 .environment(downloads)
+                // The cell reaches under the bars; its content must not be
+                // pushed down or laid out again as that overlap changes.
+                .ignoresSafeArea()
             }
             .margins(.all, 0)
 
@@ -263,5 +329,29 @@ final class DetailCollectionController: UIViewController, UICollectionViewDelega
         animator: (any UIContextMenuInteractionAnimating)?
     ) {
         menus.willEnd(animator: animator)
+    }
+}
+
+/// The artwork layer: the 16:9 thumbnail on its dark 2:3 stage.
+private struct DetailArtwork: View {
+    let video: Video
+
+    var body: some View {
+        VideoHeroArtwork(video: video, stageAspectRatio: 2.0 / 3.0)
+            .environment(\.colorScheme, .dark)
+            .ignoresSafeArea()
+    }
+}
+
+/// The Up Next section's opaque background, in the page color.
+private final class DetailSectionBackground: UICollectionReusableView {
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        backgroundColor = DetailBackground.uiColor
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is not used")
     }
 }

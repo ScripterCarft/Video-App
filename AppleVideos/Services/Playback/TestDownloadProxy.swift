@@ -17,6 +17,10 @@ final class TestDownloadProxy {
     private var counts: [String: Int] = [:]
 
     /// Starts the server if needed and returns the proxied URL for `url`.
+    /// When true, the proxy serves only the master playlist (without VP9) and
+    /// leaves every other request to go to YouTube directly.
+    var servesMasterOnly = false
+
     func proxiedURL(for url: URL) -> URL? {
         if listener == nil {
             log = []
@@ -90,8 +94,10 @@ final class TestDownloadProxy {
         return url.host ?? "other"
     }
 
-    /// Points every absolute URL in a playlist at the proxy.
-    nonisolated private static func rewritePlaylist(_ text: String) -> String {
+    /// Points every absolute URL in a playlist at the proxy. With
+    /// `keepingURLs`, only the VP9 variants are removed and every other URL
+    /// stays pointed at YouTube, so the download service fetches it directly.
+    nonisolated private static func rewritePlaylist(_ text: String, keepingURLs: Bool = false) -> String {
         // Drop VP9 variants (and the URL line after each), which AVFoundation
         // cannot play but a download would otherwise pick.
         var lines: [String] = []
@@ -106,6 +112,9 @@ final class TestDownloadProxy {
                 continue
             }
             lines.append(line)
+        }
+        if keepingURLs {
+            return lines.joined(separator: "\n")
         }
         return lines.map { line in
             if line.hasPrefix("https://") || line.hasPrefix("http://") {
@@ -204,7 +213,7 @@ final class TestDownloadProxy {
 
             var body = data
             if let text = String(data: data, encoding: .utf8), text.hasPrefix("#EXTM3U") {
-                body = Data(Self.rewritePlaylist(text).utf8)
+                body = Data(Self.rewritePlaylist(text, keepingURLs: servesMasterOnly).utf8)
             }
             var responseHeaders: [String: String] = [:]
             if let type = http?.value(forHTTPHeaderField: "Content-Type") {

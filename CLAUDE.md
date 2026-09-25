@@ -208,7 +208,37 @@ accepted player-dismissal bug.
 
 ## Open work
 
-1. **Subtitles (next).** YouTube's HLS master already carries a WebVTT
+0. **The rebuild (current, user-approved plan).** Goal: the app feels like
+   one system, built the way Apple builds the TV and Podcasts apps; big
+   rebuilds are fine. Principle: every screen showing videos is a
+   `UICollectionView` with a compositional layout, one shared cell
+   (`VideoCells`) and one context menu (`VideoContextMenus`); SwiftUI stays
+   for the shell (tabs, navigation, sheets) and for cell content via
+   `UIHostingConfiguration`. Phases, one commit per step, tested on device:
+   1. Foundation: shared cell + menu (done), a router per tab with slim
+      typed routes (video ID, restorable path), views reading SwiftData
+      (`@Query` where AVKit is not affected), one video model.
+   2. Detail screen as a scrolling collection view: hero section, real
+      shelves (related videos from Innertube `next`) instead of the "Up
+      Next" placeholder, hero under the bar with `backgroundExtensionEffect`.
+      Play and + stay solid, not glass (like the TV app).
+   3. Explore, Search and the Library's video lists on the same collection
+      view. Search gets `Tab(role: .search)` but must stay a normal tab in
+      the bar, not separated (research the iOS 27 option first); recent
+      searches. Library: its entry screen stays the compact list with
+      icons; the video lists as a collection view are a trial the user
+      judges on device.
+   4. Tab bar minimizes on scroll; a mini player (`tabViewBottomAccessory`)
+      that is the same player as full screen (one `AVPlayer`: closing full
+      screen keeps playing in the mini player, tapping it enlarges it);
+      `inlineLarge` titles on every tab; `MPNowPlayingSession`.
+   5. Later, only when the user asks: iCloud sync via SwiftData, background
+      refresh, App Intents, Spotlight, Handoff, widget.
+   Keep as is (already Apple's way): `AVPlayerViewController` full screen,
+   `AVAssetDownloadURLSession`, Settings.bundle, `ArtworkLoader`.
+   The detail screen is temporarily always scrollable (TEST commit
+   ef911a8, revert once phase 2 makes it a scrolling collection view).
+1. **Subtitles.** YouTube's HLS master already carries a WebVTT
    subtitle group, which AVPlayer shows; the user reports that only part
    of the tracks appear there. The resolver also parses the caption tracks
    (manual and auto-generated), unused so far. Apple's route is to add a

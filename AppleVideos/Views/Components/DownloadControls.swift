@@ -29,7 +29,8 @@ struct DownloadToolbarButton: View {
     }
 }
 
-/// The Download entry of a card's context menu, beside Save and Share.
+/// The Download entry of a card's context menu, beside Save and Share. A
+/// downloaded video has none; its menu offers Remove Download instead.
 struct DownloadMenuButton: View {
     let video: Video
     let onAction: () -> Void
@@ -42,10 +43,7 @@ struct DownloadMenuButton: View {
                 downloads.cancel(video)
                 onAction()
             }
-        } else if downloads.isDownloaded(video) {
-            Button("Downloaded", systemImage: "arrow.down.circle.fill") {}
-                .disabled(true)
-        } else {
+        } else if !downloads.isDownloaded(video) {
             Button("Download", systemImage: "arrow.down") {
                 downloads.download(video)
                 onAction()

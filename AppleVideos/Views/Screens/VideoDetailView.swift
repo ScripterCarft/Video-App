@@ -38,9 +38,8 @@ struct VideoDetailView: View {
             }
             .padding(.bottom, 30)
         }
-        // Only scroll when the content is taller than the screen, so a downward
-        // swipe closes the screen instead of pulling the content.
-        .scrollBounceBehavior(.basedOnSize)
+        // TEST (do not merge): always scrollable, to look at the scroll edge
+        // effect; normally .scrollBounceBehavior(.basedOnSize) goes here.
         .background(.black)
         .foregroundStyle(.white)
         // The detail screen is always dark; its toolbar buttons use white instead

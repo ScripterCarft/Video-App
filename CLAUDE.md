@@ -146,9 +146,14 @@ accepted player-dismissal bug.
   downloads wait for Wi-Fi), Wi-Fi High Quality 1080p / Fast Downloads
   720p (default); mobile data always 720p. No HDR/Atmos line (YouTube HLS
   has neither). UI: detail toolbar button with `DownloadProgressRing` (tap
-  stops), a downloaded video's button opens "Download Again to Renew" /
-  red "Remove Download"; context menu Download / Stop; download symbol
-  beside the duration; Library > Downloaded with Remove All.
+  stops), a downloaded video's button opens a gray popover at the button
+  (user's wish: no Liquid Glass; the system dialog is glass on iOS 26+)
+  with "Download Again to Renew" / red "Remove Download"; context menu
+  Download / Stop, hidden once downloaded; download symbol beside the
+  duration; Library > Downloaded and History each with Remove All.
+- Shelf cards reserve two title lines (`lineLimit(2, reservesSpace:)`):
+  a `LazyHStack` sizes rows from loaded cards, and a fixed-size title in a
+  `frame(minHeight:)` was squeezed and drew over the channel name.
 - Download investigation (test builds, reverted): the direct system
   download gets HTTP 401 from YouTube for many videos, immediately, while
   the same requests from the app succeed. Ruled out: headers, cookies,

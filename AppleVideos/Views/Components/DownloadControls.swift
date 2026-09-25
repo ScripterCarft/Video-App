@@ -62,8 +62,8 @@ struct DownloadMenuButton: View {
     }
 }
 
-/// The renew-or-remove choice for a downloaded video: the message on top,
-/// then two full-width buttons separated by lines, like an action sheet.
+/// The renew-or-remove choice for a downloaded video: the message, then two
+/// rounded buttons below it.
 private struct DownloadOptionsPopover: View {
     let video: Video
     @Binding var isPresented: Bool
@@ -71,42 +71,37 @@ private struct DownloadOptionsPopover: View {
     @Environment(DownloadManager.self) private var downloads
 
     var body: some View {
-        VStack(spacing: 0) {
+        VStack(spacing: 10) {
             Text("Renew to keep this download from Videos or remove it from your iPhone.")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
+                .foregroundStyle(.white)
                 .fixedSize(horizontal: false, vertical: true)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 14)
-
-            Divider()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.bottom, 4)
 
             Button {
                 isPresented = false
                 downloads.renew(video)
             } label: {
                 Text("Download Again to Renew")
-                    .foregroundStyle(.blue)
-                    .frame(maxWidth: .infinity, minHeight: 50)
-                    .contentShape(Rectangle())
+                    .frame(maxWidth: .infinity)
             }
-
-            Divider()
+            .tint(.white)
 
             Button(role: .destructive) {
                 isPresented = false
                 downloads.remove(video)
             } label: {
                 Text("Remove Download")
-                    .foregroundStyle(.red)
-                    .frame(maxWidth: .infinity, minHeight: 50)
-                    .contentShape(Rectangle())
+                    .frame(maxWidth: .infinity)
             }
+            .tint(.red)
         }
-        .buttonStyle(.plain)
         .font(.body)
-        .frame(width: 290)
+        .buttonStyle(.bordered)
+        .buttonBorderShape(.capsule)
+        .controlSize(.large)
+        .padding(18)
+        .frame(width: 260)
     }
 }
 

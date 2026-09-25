@@ -313,6 +313,7 @@ private struct DescriptionPreview: View {
         }
     }
 
+    @ViewBuilder
     private var measuredBody: some View {
         let preview = Self.preview(of: text, width: width, dynamicTypeSize: dynamicTypeSize)
 

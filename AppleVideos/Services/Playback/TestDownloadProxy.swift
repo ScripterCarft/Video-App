@@ -21,7 +21,6 @@ final class TestDownloadProxy {
         if listener == nil {
             log = []
             counts = [:]
-            failures = []
             guard let listener = try? NWListener(using: .tcp, on: Self.port) else { return nil }
             listener.newConnectionHandler = { connection in
                 connection.start(queue: .main)
@@ -41,11 +40,9 @@ final class TestDownloadProxy {
     /// The first lines of the log plus a count per status and request kind.
     var summary: String {
         let totals = counts.sorted { $0.key < $1.key }.map { "\($0.key): \($0.value)" }
-        return (["Refused requests (first 6):"] + failures.prefix(6) + ["Totals:"] + totals)
+        return (["Proxy log (first requests):"] + log.prefix(12) + ["Totals:"] + totals)
             .joined(separator: "\n")
     }
-
-    private var failures: [String] = []
 
     // MARK: URLs
 
@@ -67,13 +64,6 @@ final class TestDownloadProxy {
         while base64.count % 4 != 0 { base64 += "=" }
         guard let data = Data(base64Encoded: base64) else { return nil }
         return URL(string: String(decoding: data, as: UTF8.self))
-    }
-
-    /// A value from YouTube's path-style parameters (`/itag/311/`).
-    nonisolated private static func pathValue(_ name: String, in url: URL) -> String? {
-        let components = url.pathComponents
-        guard let index = components.firstIndex(of: name), index + 1 < components.count else { return nil }
-        return components[index + 1]
     }
 
     nonisolated private static func kind(of url: URL) -> String {
@@ -151,19 +141,7 @@ final class TestDownloadProxy {
             let (data, response) = try await URLSession.shared.data(for: request)
             let http = response as? HTTPURLResponse
             let status = http?.statusCode ?? 502
-            let itag = Self.pathValue("itag", in: url) ?? "-"
-            record("\(status) \(kind) itag \(itag)")
-            if status >= 400 {
-                let finalHost = http?.url?.host ?? "?"
-                let redirected = finalHost != url.host ? " · redirected to \(finalHost)" : ""
-                let body = String(decoding: data.prefix(200), as: UTF8.self)
-                failures.append(
-                    "\(status) \(kind) itag \(itag) gosq \(Self.pathValue("gosq", in: url) ?? "-")"
-                        + " · range \(headers["range"] ?? "none")\(redirected)"
-                        + " · \(Self.pathValue("playlist_type", in: url) ?? "")"
-                        + "\n   body: \(body.isEmpty ? "(empty)" : body)"
-                )
-            }
+            record("\(status) \(kind)\(headers["range"].map { _ in " range" } ?? "")")
 
             var body = data
             if let text = String(data: data, encoding: .utf8), text.hasPrefix("#EXTM3U") {
@@ -191,7 +169,7 @@ final class TestDownloadProxy {
 
     private func record(_ entry: String) {
         log.append(entry)
-        let key = entry
+        let key = entry.split(separator: " ").prefix(2).joined(separator: " ")
         counts[key, default: 0] += 1
     }
 

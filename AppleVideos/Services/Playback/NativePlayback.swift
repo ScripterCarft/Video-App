@@ -301,7 +301,8 @@ final class NativePlayback: NSObject {
         }
     }
 
-    private static func topViewController() -> UIViewController? {
+    /// The key window's topmost presented view controller.
+    static func topViewController() -> UIViewController? {
         let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
         let window = scenes
             .filter { $0.activationState == .foregroundActive }

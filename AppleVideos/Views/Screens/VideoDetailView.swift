@@ -47,7 +47,12 @@ struct VideoDetailView: View {
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     DownloadToolbarButton(video: video)
 
-                    ShareLink(item: url) {
+                    // The standard share sheet from the bottom. A ShareLink in
+                    // the toolbar grows out of the button, which glitched here.
+                    Button {
+                        let controller = UIActivityViewController(activityItems: [url], applicationActivities: nil)
+                        NativePlayback.topViewController()?.present(controller, animated: true)
+                    } label: {
                         Image(systemName: "square.and.arrow.up")
                     }
                     .accessibilityLabel("Share")

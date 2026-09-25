@@ -172,8 +172,9 @@ actor YouTubeService {
             throw SearchError.invalidResponse
         }
 
-        let results = (((((root["contents"] as? [String: Any])?["twoColumnWatchNextResults"] as? [String: Any])?
-            ["secondaryResults"] as? [String: Any])?["secondaryResults"] as? [String: Any])?["results"] as? [[String: Any]]) ?? []
+        let watchNext = (root["contents"] as? [String: Any])?["twoColumnWatchNextResults"] as? [String: Any]
+        let secondary = (watchNext?["secondaryResults"] as? [String: Any])?["secondaryResults"] as? [String: Any]
+        let results = secondary?["results"] as? [[String: Any]] ?? []
         var seen: Set<String> = [videoID]
         let videos = results
             .compactMap { $0["lockupViewModel"] as? [String: Any] }
@@ -193,8 +194,8 @@ actor YouTubeService {
               let title = (metadata["title"] as? [String: Any])?["content"] as? String
         else { return nil }
 
-        let rows = (((metadata["metadata"] as? [String: Any])?["contentMetadataViewModel"] as? [String: Any])?
-            ["metadataRows"] as? [[String: Any]]) ?? []
+        let content = (metadata["metadata"] as? [String: Any])?["contentMetadataViewModel"] as? [String: Any]
+        let rows = content?["metadataRows"] as? [[String: Any]] ?? []
         let rowParts: [[String]] = rows.map { row in
             ((row["metadataParts"] as? [[String: Any]]) ?? []).compactMap { part in
                 ((part["text"] as? [String: Any])?["content"] as? String)?.collapsedWhitespace

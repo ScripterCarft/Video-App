@@ -36,7 +36,7 @@ struct VideoDetailView: View {
             onOpen: { route in openVideo(route) }
         )
         .ignoresSafeArea()
-        .background(DetailBackground.color)
+        .background(.black)
         // The detail screen is always dark; its toolbar buttons use white instead
         // of the app's red accent, like the TV app.
         .tint(.white)
@@ -78,9 +78,9 @@ struct VideoDetailView: View {
     }
 }
 
-/// The detail screen's hero: title, channel, Play and Save, the description
-/// and the info line. Reads `VideoDetailModel`, so it updates inside its
-/// collection view cell by itself.
+/// The detail screen's hero: the artwork stage with title, channel, Play and
+/// Save, the description and the info line. Reads `VideoDetailModel`, so it
+/// updates inside its collection view cell by itself.
 struct DetailHero: View {
     let model: VideoDetailModel
     let playback: PlaybackStarter
@@ -93,26 +93,27 @@ struct DetailHero: View {
         model.video
     }
 
-    /// The hero cell lies over the artwork layer (see `DetailCollection`):
-    /// clear at the top, then the information on the page's dark gray, which
-    /// fades out upward over the artwork. A plain gradient, no material: this
-    /// screen takes part in the zoom transition.
     var body: some View {
-        information
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
-            .background {
-                LinearGradient(
-                    stops: [
-                        .init(color: DetailBackground.color.opacity(0), location: 0.35),
-                        .init(color: DetailBackground.color.opacity(0.45), location: 0.52),
-                        .init(color: DetailBackground.color.opacity(0.82), location: 0.72),
-                        .init(color: DetailBackground.color.opacity(0.9), location: 0.9),
-                        .init(color: DetailBackground.color, location: 1)
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-            }
+        ZStack(alignment: .bottomLeading) {
+            VideoHeroArtwork(video: video, stageAspectRatio: 2.0 / 3.0)
+                // The detail screen is always dark, so its stage gray is too.
+                .environment(\.colorScheme, .dark)
+
+            LinearGradient(
+                stops: [
+                    .init(color: .clear, location: 0.38),
+                    .init(color: .black.opacity(0.08), location: 0.55),
+                    .init(color: .black.opacity(0.3), location: 0.72),
+                    .init(color: .black.opacity(0.62), location: 1)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+
+            information
+        }
+        .aspectRatio(2.0 / 3.0, contentMode: .fit)
+        .clipped()
     }
 
     private var information: some View {

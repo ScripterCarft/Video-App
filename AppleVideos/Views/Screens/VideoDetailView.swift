@@ -70,6 +70,9 @@ struct VideoDetailView: View {
                             Button("Check IP addresses") {
                                 TestDownloads.shared.checkIPs(video)
                             }
+                            Button("Check HTTP versions") {
+                                TestDownloads.shared.checkProtocols(video)
+                            }
                             Button("Capture request headers") {
                                 TestDownloads.shared.captureHeaders()
                             }

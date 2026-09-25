@@ -25,14 +25,25 @@ struct VideoArtwork: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .clipped()
 
-            if showsDuration, let duration = video.duration {
-                Text(duration)
-                    .font(.caption2.weight(.semibold).monospacedDigit())
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 4)
-                    .background(.black.opacity(0.76), in: Capsule())
-                    .padding(8)
+            // Read from the shared manager: context menu previews may not
+            // carry the environment.
+            let isDownloaded = DownloadManager.shared.isDownloaded(video)
+            if showsDuration, video.duration != nil || isDownloaded {
+                HStack(spacing: 4) {
+                    if isDownloaded {
+                        Image(systemName: "arrow.down.circle.fill")
+                            .accessibilityLabel("Downloaded")
+                    }
+                    if let duration = video.duration {
+                        Text(duration)
+                    }
+                }
+                .font(.caption2.weight(.semibold).monospacedDigit())
+                .foregroundStyle(.white)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 4)
+                .background(.black.opacity(0.76), in: Capsule())
+                .padding(8)
             }
         }
         .aspectRatio(16 / 9, contentMode: .fit)

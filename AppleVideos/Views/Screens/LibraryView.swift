@@ -8,6 +8,7 @@ struct LibraryView: View {
     }
 
     @Environment(LibraryStore.self) private var library
+    @Environment(DownloadManager.self) private var downloads
     @Namespace private var transition
 
     var body: some View {
@@ -19,7 +20,7 @@ struct LibraryView: View {
                     }
 
                     NavigationLink(value: Route.downloaded) {
-                        LibraryRow(title: "Downloaded", subtitle: "^[\(library.downloadedVideos.count) video](inflect: true)", icon: "arrow.down.circle.fill", color: .blue)
+                        LibraryRow(title: "Downloaded", subtitle: "^[\(downloads.videos.count) video](inflect: true)", icon: "arrow.down.circle.fill", color: .blue)
                     }
 
                     NavigationLink(value: Route.history) {
@@ -89,7 +90,8 @@ private struct SavedVideosView: View {
 }
 
 private struct DownloadedVideosView: View {
-    @Environment(LibraryStore.self) private var library
+    @Environment(DownloadManager.self) private var downloads
+    @State private var isConfirmingRemoveAll = false
     let transition: Namespace.ID
 
     var body: some View {
@@ -97,10 +99,28 @@ private struct DownloadedVideosView: View {
             title: "Downloaded",
             section: "downloaded",
             emptyTitle: "No Downloads",
-            emptyDescription: "Downloaded videos will appear here.",
-            videos: library.downloadedVideos,
+            emptyDescription: "Use the download button or a video's context menu to watch it offline.",
+            videos: downloads.videos,
             transition: transition
         )
+        .toolbar {
+            if !downloads.videos.isEmpty {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Remove All") {
+                        isConfirmingRemoveAll = true
+                    }
+                }
+            }
+        }
+        .confirmationDialog("Remove All Downloads", isPresented: $isConfirmingRemoveAll, titleVisibility: .hidden) {
+            Button("Remove All Downloads", role: .destructive) {
+                withAnimation {
+                    downloads.removeAll()
+                }
+            }
+        } message: {
+            Text("All downloaded videos will be removed from your iPhone.")
+        }
     }
 }
 

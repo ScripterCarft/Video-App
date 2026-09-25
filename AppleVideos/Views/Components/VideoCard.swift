@@ -5,6 +5,7 @@ struct VideoCard: View {
     var compact = false
 
     @Environment(LibraryStore.self) private var library
+    @Environment(DownloadManager.self) private var downloads
     @State private var feedback = 0
 
     var body: some View {
@@ -45,8 +46,9 @@ struct VideoCard: View {
         .contextMenu {
             // A control group in a menu shows its buttons side by side.
             ControlGroup {
-                Button("Download", systemImage: "arrow.down") {}
-                    .disabled(!library.canDownload(video))
+                DownloadMenuButton(video: video) {
+                    feedback += 1
+                }
 
                 Button {
                     withAnimation {
@@ -74,11 +76,11 @@ struct VideoCard: View {
                 }
             }
 
-            if library.isDownloaded(video) {
+            if downloads.isDownloaded(video) {
                 Section {
                     Button("Remove Download", systemImage: "trash", role: .destructive) {
                         withAnimation {
-                            library.removeDownload(video)
+                            downloads.remove(video)
                         }
                         feedback += 1
                     }

@@ -62,6 +62,44 @@
 				<string>dataSaver</string>
 			</array>
 		</dict>
+		<dict>
+			<key>Type</key>
+			<string>PSGroupSpecifier</string>
+			<key>Title</key>
+			<string>Download Options</string>
+			<key>FooterText</key>
+			<string>High Quality: slower downloads, higher quality. Fast Downloads: faster downloads, lower quality. Downloads over mobile data use Fast Downloads.</string>
+		</dict>
+		<dict>
+			<key>Type</key>
+			<string>PSToggleSwitchSpecifier</string>
+			<key>Title</key>
+			<string>Use Mobile Data</string>
+			<key>Key</key>
+			<string>downloads.useMobileData</string>
+			<key>DefaultValue</key>
+			<false/>
+		</dict>
+		<dict>
+			<key>Type</key>
+			<string>PSMultiValueSpecifier</string>
+			<key>Title</key>
+			<string>Wi-Fi</string>
+			<key>Key</key>
+			<string>downloads.quality</string>
+			<key>DefaultValue</key>
+			<string>fast</string>
+			<key>Titles</key>
+			<array>
+				<string>High Quality</string>
+				<string>Fast Downloads</string>
+			</array>
+			<key>Values</key>
+			<array>
+				<string>high</string>
+				<string>fast</string>
+			</array>
+		</dict>
 	</array>
 </dict>
 </plist>

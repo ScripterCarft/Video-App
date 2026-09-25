@@ -12,6 +12,16 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         return true
     }
 
+    /// The system relaunches the app when background downloads finish; the
+    /// download manager calls the handler once it has processed the events.
+    func application(
+        _ application: UIApplication,
+        handleEventsForBackgroundURLSession identifier: String,
+        completionHandler: @escaping () -> Void
+    ) {
+        DownloadManager.shared.backgroundCompletionHandlers[identifier] = completionHandler
+    }
+
     /// The app itself is portrait only; only the full-screen player may rotate.
     /// Info.plist still lists landscape because it caps every view controller,
     /// including AVPlayerViewController.

@@ -20,6 +20,9 @@ struct AppleVideosApp: App {
         // Start watching for Low Data Mode before the first images load.
         _ = NetworkConditions.shared
         StreamingSettings.registerDefaults()
+        DownloadSettings.registerDefaults()
+        // Reconnects to downloads that kept running while the app was closed.
+        _ = DownloadManager.shared
         let library = LibraryStore()
         _library = State(initialValue: library)
         Task {
@@ -31,7 +34,9 @@ struct AppleVideosApp: App {
     var body: some Scene {
         WindowGroup {
             RootTabView()
+                .downloadFailureAlert()
                 .environment(library)
+                .environment(DownloadManager.shared)
         }
     }
 }

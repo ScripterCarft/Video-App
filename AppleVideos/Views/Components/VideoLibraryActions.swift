@@ -8,6 +8,7 @@ struct VideoLibraryActions: View {
     let onAction: () -> Void
 
     @Environment(LibraryStore.self) private var library
+    @Environment(DownloadManager.self) private var downloads
 
     var body: some View {
         if library.isInWatchlist(video) {
@@ -24,7 +25,7 @@ struct VideoLibraryActions: View {
         }
 
         // While downloaded, the menu's only trash action is Remove Download.
-        if library.isInRecentlyWatched(video), !library.isDownloaded(video) {
+        if library.isInRecentlyWatched(video), !downloads.isDownloaded(video) {
             Button("Remove from Recently Watched", systemImage: "trash") {
                 perform { library.removeFromRecentlyWatched(video) }
             }

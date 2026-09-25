@@ -229,15 +229,7 @@ final class DetailCollectionController: UIViewController, UICollectionViewDelega
             let ids = related.map(\.id).filter { seen.insert($0).inserted }
             snapshot.appendItems(ids.map { .video($0) }, toSection: .upNext)
         }
-        // The shelf arriving is the screen's content loading, not a change
-        // to animate (with the animated insertion, the header lay over the
-        // cards until the next scroll). Apple's API for loading data in place.
-        let shelfArrives = dataSource.snapshot().indexOfSection(.upNext) == nil
-        if shelfArrives || !animated {
-            dataSource.applySnapshotUsingReloadData(snapshot)
-        } else {
-            dataSource.apply(snapshot, animatingDifferences: true)
-        }
+        dataSource.apply(snapshot, animatingDifferences: animated)
     }
 
     // MARK: - Selection and menus

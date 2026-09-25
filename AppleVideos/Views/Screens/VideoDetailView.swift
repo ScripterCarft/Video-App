@@ -9,8 +9,6 @@ struct VideoDetailView: View {
     @Environment(LibraryStore.self) private var library
     @State private var playback = PlaybackStarter()
     @State private var feedback = 0
-    // TEST (do not merge)
-    @AppStorage("test.plainDetailBar") private var testPlainBar = false
     @State private var showDescription = false
     @State private var loadedDescription: String?
     @State private var loadedBadges: [String]?
@@ -49,10 +47,9 @@ struct VideoDetailView: View {
         // The detail screen is always dark; its toolbar buttons use white instead
         // of the app's red accent, like the TV app.
         .tint(.white)
-        // TEST (do not merge): "Plain detail bar" leaves the navigation bar as is.
-        .ignoresSafeArea(edges: testPlainBar ? [] : .top)
-        .toolbarBackground(testPlainBar ? .automatic : .hidden, for: .navigationBar)
-        .toolbarColorScheme(testPlainBar ? nil : .dark, for: .navigationBar)
+        .ignoresSafeArea(edges: .top)
+        .toolbarBackground(.hidden, for: .navigationBar)
+        .toolbarColorScheme(.dark, for: .navigationBar)
         .toolbar {
             if let url = video.youtubeURL {
                 ToolbarItemGroup(placement: .topBarTrailing) {

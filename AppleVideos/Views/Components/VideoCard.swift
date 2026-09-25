@@ -49,7 +49,8 @@ struct VideoCard: View {
                 }
 
                 Button {
-                    withAnimation {
+                    // Unsave removes the card from Saved.
+                    applyAfterContextMenuCloses {
                         library.toggleSaved(video)
                     }
                     feedback += 1
@@ -77,7 +78,7 @@ struct VideoCard: View {
             if downloads.isDownloaded(video) {
                 Section {
                     Button("Remove Download", systemImage: "trash", role: .destructive) {
-                        withAnimation {
+                        applyAfterContextMenuCloses {
                             downloads.remove(video)
                         }
                         feedback += 1

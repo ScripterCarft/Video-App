@@ -146,22 +146,23 @@ accepted player-dismissal bug.
   downloads wait for Wi-Fi), Wi-Fi High Quality 1080p / Fast Downloads
   720p (default); mobile data always 720p. No HDR/Atmos line (YouTube HLS
   has neither). UI: detail toolbar button with `DownloadProgressRing` (tap
-  stops), a downloaded video's button opens a gray popover at the button
-  (user's wish: no Liquid Glass; the system dialog is glass on iOS 26+)
-  with "Download Again to Renew" / red "Remove Download"; context menu
+  stops), a downloaded video's button opens a system menu with "Download
+  Again to Renew" / red "Remove Download"; context menu
   Download / Stop, hidden once downloaded; download symbol beside the
   duration; Library > Downloaded and History each with Remove All.
-- Home shelves use a non-lazy `HStack` (a handful of cards): a `LazyHStack`
-  sizes the row from the cards it has loaded, which squeezed a two-line
-  title over the channel name. Cards keep their own height (user rejected
-  reserving two lines: gap under short titles).
-- Context menu actions that remove a card wait for the menu's closing
-  animation (`applyAfterContextMenuCloses`, 0.4 s): otherwise neighbors
-  moved under the returning lifted preview. SwiftUI has no menu-closed
-  callback; the clean alternative is `UIContextMenuInteraction`.
-- The download popover: white message at body size, two capsule
-  `.bordered` large buttons below (white renew, red remove), 260 pt wide.
-  History Remove All keeps downloaded videos.
+- Home shelves stay `LazyHStack` (user's decision) laid over a hidden
+  `VideoCard.CompactHeightTemplate`, the height of a card with a two-line
+  title: a lazy stack sizes the row from loaded cards, which squeezed a
+  two-line title over the channel name. Cards keep their own height
+  (rejected: non-lazy HStack; reserving two lines inside each card).
+- Library lists (Saved, Downloaded, History) are a plain `List` so
+  removals from a card's context menu animate; with ScrollView +
+  LazyVStack neighbors jumped under the returning menu preview. Rejected:
+  delaying the change 0.4 s (timing hack, reverted).
+- Renew/Remove on the detail screen and Remove All (Downloaded, History)
+  are system `Menu`s with a section header as the explanation (rejected:
+  custom gray popover, confirmation dialogs). History Remove All keeps
+  downloaded videos.
 - Download investigation (test builds, reverted): the direct system
   download gets HTTP 401 from YouTube for many videos, immediately, while
   the same requests from the app succeed. Ruled out: headers, cookies,

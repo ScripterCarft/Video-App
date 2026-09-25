@@ -131,7 +131,6 @@ final class TestDownloads: NSObject {
         case youtubeWithoutSubtitles = "YouTube without subtitles"
         case appleSample = "Apple sample stream"
         case youtubeViaProxy = "YouTube through the app"
-        case youtubeH264 = "YouTube H.264 only (direct)"
     }
 
     private static let appleSampleURL = URL(
@@ -179,24 +178,15 @@ final class TestDownloads: NSObject {
                         configuration.primaryContentConfiguration.mediaSelections = [mutable]
                     }
                 }
-                if mode == .youtubeH264 {
-                    // The best H.264 variant up to 720p; VP9 variants got 401s.
-                    guard let qualifier = try await Self.h264Qualifier(for: asset) else {
-                        fail(video.id, "No H.264 variant up to 720p.")
-                        return
-                    }
-                    configuration.primaryContentConfiguration.variantQualifiers = [qualifier]
-                } else {
-                    // Up to 720p, as "Fast Downloads" would be.
-                    configuration.primaryContentConfiguration.variantQualifiers = [
-                        AVAssetVariantQualifier(
-                            predicate: AVAssetVariantQualifier.predicate(
-                                forPresentationHeight: 720,
-                                operatorType: .lessThanOrEqualTo
-                            )
+                // Up to 720p, as "Fast Downloads" would be.
+                configuration.primaryContentConfiguration.variantQualifiers = [
+                    AVAssetVariantQualifier(
+                        predicate: AVAssetVariantQualifier.predicate(
+                            forPresentationHeight: 720,
+                            operatorType: .lessThanOrEqualTo
                         )
-                    ]
-                }
+                    )
+                ]
                 let task = session.makeAssetDownloadTask(downloadConfiguration: configuration)
                 // Survives a relaunch, unlike an in-memory map.
                 task.taskDescription = "\(video.id)|\(Date.now.timeIntervalSince1970)|\(expiresAt.timeIntervalSince1970)"
@@ -213,22 +203,6 @@ final class TestDownloads: NSObject {
                 fail(video.id, "Resolving failed: \(error.localizedDescription)")
             }
         }
-    }
-
-    /// A qualifier for the highest H.264 variant up to 720p, chosen from the
-    /// asset's variants, so the download never picks VP9.
-    nonisolated private static func h264Qualifier(
-        for asset: AVURLAsset
-    ) async throws -> sending AVAssetVariantQualifier? {
-        let variants = try await asset.load(.variants)
-        let candidates = variants.filter { variant in
-            guard let video = variant.videoAttributes else { return false }
-            return video.codecTypes.contains(kCMVideoCodecType_H264) && video.presentationSize.height <= 720
-        }
-        guard let best = candidates.max(by: { ($0.peakBitRate ?? 0) < ($1.peakBitRate ?? 0) }) else {
-            return nil
-        }
-        return AVAssetVariantQualifier(variant: best)
     }
 
     func cancel(_ videoID: String) {

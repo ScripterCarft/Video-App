@@ -66,8 +66,6 @@ struct VideoHeroArtwork: View {
     var stageAspectRatio: CGFloat = 4.0 / 5.0
 
     @Environment(\.displayScale) private var displayScale
-    // TEST (do not merge): one plain image instead of blurred, masked layers.
-    @AppStorage("test.lightDetail") private var testLight = false
 
     var body: some View {
         FallbackThumbnailImage(
@@ -75,12 +73,6 @@ struct VideoHeroArtwork: View {
             maxPixelWidth: ArtworkQuality.hero.displayWidth * displayScale,
             requiresSixteenByNine: video.source == .youtube
         ) { image in
-            Group {
-            if testLight {
-                image
-                    .resizable()
-                    .scaledToFill()
-            } else {
             GeometryReader { proxy in
                 let imageFraction = min(1, stageAspectRatio / (16.0 / 9.0))
                 let imageEdge = (1 - imageFraction) / 2
@@ -134,8 +126,6 @@ struct VideoHeroArtwork: View {
                             )
                         }
                 }
-            }
-            }
             }
         } placeholder: {
             ArtworkPlaceholder()

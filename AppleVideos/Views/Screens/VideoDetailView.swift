@@ -11,7 +11,6 @@ struct VideoDetailView: View {
     @State private var feedback = 0
     // TEST (do not merge)
     @AppStorage("test.plainDetailBar") private var testPlainBar = false
-    @AppStorage("test.lightDetail") private var testLight = false
     @State private var showDescription = false
     @State private var loadedDescription: String?
     @State private var loadedBadges: [String]?
@@ -192,7 +191,7 @@ struct VideoDetailView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .center)
                 .multilineTextAlignment(.center)
-                .testShadow(color: .black.opacity(0.62), radius: 9)
+                .shadow(color: .black.opacity(0.62), radius: 9, y: 2)
 
                 HStack(spacing: 10) {
                     Spacer(minLength: 0)
@@ -225,7 +224,7 @@ struct VideoDetailView: View {
                             .font(.headline)
                             .foregroundStyle(.white)
                             .frame(width: 50, height: 50)
-                            .background(testLight ? AnyShapeStyle(.white.opacity(0.18)) : AnyShapeStyle(.ultraThinMaterial), in: Circle())
+                            .background(.ultraThinMaterial, in: Circle())
                             .overlay {
                                 Circle()
                                     .strokeBorder(.white.opacity(0.16), lineWidth: 0.5)
@@ -262,7 +261,7 @@ struct VideoDetailView: View {
                 }
                 .font(.footnote)
                 .minimumScaleFactor(0.86)
-                .testShadow(color: .black.opacity(0.56), radius: 7)
+                .shadow(color: .black.opacity(0.56), radius: 7, y: 2)
         }
         .foregroundStyle(.white)
         .padding(.horizontal, 18)
@@ -292,28 +291,8 @@ private struct DescriptionPreview: View {
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var width: CGFloat = 0
-    // TEST (do not merge): no TextKit measuring with "Light detail".
-    @AppStorage("test.lightDetail") private var testLight = false
 
     var body: some View {
-        if testLight {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(text)
-                    .font(.subheadline)
-                    .foregroundStyle(.white.opacity(0.88))
-                    .lineLimit(2)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                Button("MORE", action: onMore)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.white)
-                    .buttonStyle(.plain)
-            }
-        } else {
-            measuredBody
-        }
-    }
-
-    private var measuredBody: some View {
         let preview = Self.preview(of: text, width: width, dynamicTypeSize: dynamicTypeSize)
 
         Text(preview ?? text)
@@ -329,7 +308,7 @@ private struct DescriptionPreview: View {
                         .buttonStyle(.plain)
                 }
             }
-            .testShadow(color: .black.opacity(0.58), radius: 8)
+            .shadow(color: .black.opacity(0.58), radius: 8, y: 2)
             .onGeometryChange(for: CGFloat.self) { proxy in
                 proxy.size.width
             } action: { newWidth in
@@ -450,26 +429,5 @@ private struct MetadataBadge: View {
                 RoundedRectangle(cornerRadius: 4, style: .continuous)
                     .strokeBorder(.white.opacity(0.22), lineWidth: 0.5)
             }
-    }
-}
-
-// TEST (do not merge): "Light detail" drops the text shadows.
-private struct TestShadow: ViewModifier {
-    let color: Color
-    let radius: CGFloat
-    @AppStorage("test.lightDetail") private var testLight = false
-
-    func body(content: Content) -> some View {
-        if testLight {
-            content
-        } else {
-            content.shadow(color: color, radius: radius, y: 2)
-        }
-    }
-}
-
-private extension View {
-    func testShadow(color: Color, radius: CGFloat) -> some View {
-        modifier(TestShadow(color: color, radius: radius))
     }
 }

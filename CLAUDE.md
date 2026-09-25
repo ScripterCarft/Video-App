@@ -78,9 +78,18 @@ accepted player-dismissal bug.
   are the only way screens start playback.
 - Audio session category is set once at launch (`AppDelegate`). The app is
   portrait only; only `AVPlayerViewController` may rotate.
-- Streams are prefetched when a detail screen opens (and for the Home
-  featured video); badges come from the resolved stream
-  (`ResolvedPlaybackSource.technicalBadges`).
+- Storage: SwiftData (`StoredVideo`, `LibraryDatabase`), one record per
+  video with its metadata once, list membership (saved, watched, added to
+  the Watchlist), progress and download path; lists are queries, unused
+  records are deleted. `LibraryStore`/`DownloadManager` publish lists read
+  from it and reassign only changes (progress saves during playback must
+  not re-render). Earlier UserDefaults data is migrated once at launch.
+- Detail loading (user's design): one task loads the details first; the
+  description and info line are placeholders until then and everything
+  appears in one animation; only afterwards is the stream prefetched (Play
+  and stream badges). Refreshed metadata is stored when the screen leaves
+  (`onDisappear`, not while the player covers it). The Home featured video
+  still prefetches its stream.
 - Navigation is value-based in every `NavigationStack`: `VideoLink` /
   `videoDestination(transition:)` for videos, route enums for library and
   Explore topics. Never mix view-destination `NavigationLink`s with
@@ -114,7 +123,7 @@ accepted player-dismissal bug.
   is not worth building now.
 - `Video.publishedAt` stores the publish date; labels are formatted at
   display time. Search results get an approximate date from "N units ago".
-- Watch progress: `LibraryStore` (`apple-videos.progress`, 200 entries),
+- Watch progress: `LibraryStore` (in `StoredVideo`, 200 entries),
   saved every 5 s and on pause, end, close and background; under 10 s or
   past 95 % is not kept (thresholds chosen by us, not Apple). One rule
   (user's decision): a video counts as started after 10 s of actual

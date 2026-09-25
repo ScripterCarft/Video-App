@@ -10,7 +10,6 @@ struct VideoDetailView: View {
     @State private var playback = PlaybackStarter()
     @State private var feedback = 0
     @State private var showDescription = false
-    @State private var isShowingDownloadOptions = false
     @State private var loadedDescription: String?
     @State private var loadedBadges: [String]?
     @State private var detailsLoadFinished = false
@@ -54,7 +53,7 @@ struct VideoDetailView: View {
         .toolbar {
             if let url = video.youtubeURL {
                 ToolbarItemGroup(placement: .topBarTrailing) {
-                    DownloadToolbarButton(video: video, isShowingDownloadOptions: $isShowingDownloadOptions)
+                    DownloadToolbarButton(video: video)
 
                     ShareLink(item: url) {
                         Image(systemName: "square.and.arrow.up")
@@ -65,7 +64,6 @@ struct VideoDetailView: View {
         }
         .navigationTransition(.zoom(sourceID: transitionID, in: transition))
         .playbackPresentation(playback)
-        .downloadOptionsDialog(for: video, isPresented: $isShowingDownloadOptions)
         .sheet(isPresented: $showDescription) {
             DescriptionSheet(video: shown, description: visibleDescription)
                 .tint(.primary)

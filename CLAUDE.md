@@ -151,9 +151,17 @@ accepted player-dismissal bug.
   with "Download Again to Renew" / red "Remove Download"; context menu
   Download / Stop, hidden once downloaded; download symbol beside the
   duration; Library > Downloaded and History each with Remove All.
-- Shelf cards reserve two title lines (`lineLimit(2, reservesSpace:)`):
-  a `LazyHStack` sizes rows from loaded cards, and a fixed-size title in a
-  `frame(minHeight:)` was squeezed and drew over the channel name.
+- Home shelves use a non-lazy `HStack` (a handful of cards): a `LazyHStack`
+  sizes the row from the cards it has loaded, which squeezed a two-line
+  title over the channel name. Cards keep their own height (user rejected
+  reserving two lines: gap under short titles).
+- Context menu actions that remove a card wait for the menu's closing
+  animation (`applyAfterContextMenuCloses`, 0.4 s): otherwise neighbors
+  moved under the returning lifted preview. SwiftUI has no menu-closed
+  callback; the clean alternative is `UIContextMenuInteraction`.
+- The download popover: white message at body size, two capsule
+  `.bordered` large buttons below (white renew, red remove), 260 pt wide.
+  History Remove All keeps downloaded videos.
 - Download investigation (test builds, reverted): the direct system
   download gets HTTP 401 from YouTube for many videos, immediately, while
   the same requests from the app succeed. Ruled out: headers, cookies,

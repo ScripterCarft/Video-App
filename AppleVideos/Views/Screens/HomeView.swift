@@ -5,6 +5,16 @@ struct HomeView: View {
     @Environment(LibraryStore.self) private var library
     @State private var playback = PlaybackStarter()
 
+    // TEST (do not merge)
+    @AppStorage("test.homeTitleMode") private var testTitleModeValue = "large"
+    private var testTitleMode: ToolbarTitleDisplayMode {
+        switch testTitleModeValue {
+        case "inlineLarge": .inlineLarge
+        case "automatic": .automatic
+        default: .large
+        }
+    }
+
     private let featured = Video.curated[0]
     private let picks = Array(Video.curated.dropFirst())
 
@@ -56,6 +66,8 @@ struct HomeView: View {
             }
             .background(Color(uiColor: .systemBackground))
             .navigationTitle("Home")
+            // TEST (do not merge): title mode chosen in the Settings app.
+            .toolbarTitleDisplayMode(testTitleMode)
             .videoDestination(transition: transition)
             .playbackPresentation(playback)
             .task {

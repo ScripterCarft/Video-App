@@ -25,6 +25,7 @@ struct AppleVideosApp: App {
         // Moves the library from earlier UserDefaults storage into SwiftData
         // once, before anything reads the store.
         LegacyLibraryMigration.run()
+        LibraryDatabase.migrateProgress()
         // Reconnects to downloads that kept running while the app was closed.
         _ = DownloadManager.shared
         let library = LibraryStore()

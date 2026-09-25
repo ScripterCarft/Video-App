@@ -3,12 +3,15 @@ import Observation
 import SwiftData
 
 /// Saved, History, the Watchlist and watch progress, stored in SwiftData with
-/// one `StoredVideo` per video. The lists published here are read from the
-/// store after each change and after every save of the shared context.
+/// one `StoredVideo` per video and one `WatchProgress` per started video.
+/// The lists published here are read from the store after each change and
+/// after every save of the shared context; library screens query the store
+/// directly.
 ///
 /// Watch progress is written to the store during playback (it survives a
 /// crash) but `progress`, which the UI reads, changes only when a player has
-/// closed, so nothing re-renders while AVKit is on screen.
+/// closed, so nothing re-renders while AVKit is on screen. Because progress is
+/// a separate model, queries over stored videos do not update for it.
 @MainActor
 @Observable
 final class LibraryStore {
@@ -85,7 +88,7 @@ final class LibraryStore {
     func removeFromRecentlyWatched(_ video: Video) {
         guard let record = LibraryDatabase.record(id: video.id) else { return }
         record.watchedAt = nil
-        record.setProgress(nil)
+        LibraryDatabase.setProgress(nil, for: record.id)
         progress[video.id] = nil
         commit(record)
     }
@@ -96,7 +99,7 @@ final class LibraryStore {
     func removeAllFromRecentlyWatched(keeping: (Video) -> Bool) {
         for record in LibraryDatabase.allRecords() where record.watchedAt != nil && !keeping(record.video) {
             record.watchedAt = nil
-            record.setProgress(nil)
+            LibraryDatabase.setProgress(nil, for: record.id)
             progress[record.id] = nil
             LibraryDatabase.deleteIfUnused(record)
         }
@@ -149,7 +152,7 @@ final class LibraryStore {
     func removeFromWatchlist(_ video: Video) {
         guard let record = LibraryDatabase.record(id: video.id) else { return }
         record.watchlistAddedAt = nil
-        record.setProgress(nil)
+        LibraryDatabase.setProgress(nil, for: record.id)
         progress[video.id] = nil
         commit(record)
     }
@@ -223,7 +226,7 @@ final class LibraryStore {
 
     /// Where to resume `video`, if it was started and not finished.
     func resumePosition(for video: Video) -> Double? {
-        guard let entry = LibraryDatabase.record(id: video.id)?.progress, entry.isResumable else { return nil }
+        guard let entry = LibraryDatabase.progress(id: video.id)?.progress, entry.isResumable else { return nil }
         return entry.position
     }
 
@@ -245,11 +248,10 @@ final class LibraryStore {
             finishedSincePublish.insert(video.id)
         }
         if entry.isResumable {
-            LibraryDatabase.record(for: freshest(video)).setProgress(entry)
+            LibraryDatabase.setProgress(entry, for: video.id)
             trimProgress()
-        } else if let record = LibraryDatabase.record(id: video.id), record.progressPosition != nil {
-            record.setProgress(nil)
-            LibraryDatabase.deleteIfUnused(record)
+        } else if LibraryDatabase.progress(id: video.id) != nil {
+            LibraryDatabase.setProgress(nil, for: video.id)
         } else {
             return
         }
@@ -277,23 +279,17 @@ final class LibraryStore {
 
     /// Keeps the most recent saved positions.
     private func trimProgress() {
-        let withProgress = LibraryDatabase.allRecords()
-            .filter { $0.progressUpdatedAt != nil }
-            .sorted { $0.progressUpdatedAt! > $1.progressUpdatedAt! }
-        for record in withProgress.dropFirst(Self.maximumProgressEntries) {
-            record.setProgress(nil)
-            LibraryDatabase.deleteIfUnused(record)
+        let entries = LibraryDatabase.allProgress().sorted { $0.updatedAt > $1.updatedAt }
+        for entry in entries.dropFirst(Self.maximumProgressEntries) {
+            LibraryDatabase.context.delete(entry)
         }
     }
 
     private static func storedProgress() -> [String: PlaybackProgress] {
-        var result: [String: PlaybackProgress] = [:]
-        for record in LibraryDatabase.allRecords() {
-            if let entry = record.progress {
-                result[record.id] = entry
-            }
-        }
-        return result
+        Dictionary(
+            LibraryDatabase.allProgress().map { ($0.videoID, $0.progress) },
+            uniquingKeysWith: { first, _ in first }
+        )
     }
 
     // MARK: - Storage
@@ -384,11 +380,11 @@ enum LegacyLibraryMigration {
             record.downloadPath = entry.path
             record.downloadedAt = entry.downloadedAt
         }
-        // Positions only for stored videos: a record needs the video's metadata.
+        // Positions are kept by video ID, apart from the video records.
         if let data = defaults.data(forKey: Keys.progress),
            let entries = try? JSONDecoder().decode([String: PlaybackProgress].self, from: data) {
             for (id, entry) in entries {
-                LibraryDatabase.record(id: id)?.setProgress(entry)
+                LibraryDatabase.setProgress(entry, for: id)
             }
         }
 

@@ -1,8 +1,8 @@
 import Foundation
 import SwiftData
 
-/// One stored video, kept once: its metadata, the lists it belongs to, its
-/// watch progress and its download. Saved, History, the Watchlist and
+/// One stored video, kept once: its metadata, the lists it belongs to and
+/// its download. (Its watch progress is a separate `WatchProgress`.) Saved, History, the Watchlist and
 /// Downloaded are queries over these records, so refreshing a video updates
 /// it everywhere at once.
 @Model
@@ -27,6 +27,8 @@ final class StoredVideo {
     /// When the video was added to the Watchlist by hand.
     var watchlistAddedAt: Date?
 
+    /// Legacy: watch progress moved to `WatchProgress`. Read once by
+    /// `LibraryDatabase.migrateProgress()`, then cleared.
     var progressPosition: Double?
     var progressDuration: Double?
     var progressUpdatedAt: Date?
@@ -103,17 +105,84 @@ final class StoredVideo {
     }
 }
 
+/// Where playback of a video stopped. Kept apart from `StoredVideo`: it is
+/// written every few seconds while a video plays, and views that query the
+/// stored videos must not update for that.
+@Model
+final class WatchProgress {
+    @Attribute(.unique) var videoID: String
+    var position: Double
+    var duration: Double
+    var updatedAt: Date
+
+    init(videoID: String, progress: PlaybackProgress) {
+        self.videoID = videoID
+        position = progress.position
+        duration = progress.duration
+        updatedAt = progress.updatedAt
+    }
+
+    var progress: PlaybackProgress {
+        PlaybackProgress(position: position, duration: duration, updatedAt: updatedAt)
+    }
+}
+
 /// The app's one SwiftData store, shared by the library and the downloads.
 @MainActor
 enum LibraryDatabase {
     static let container: ModelContainer = {
-        if let container = try? ModelContainer(for: StoredVideo.self) {
+        if let container = try? ModelContainer(for: StoredVideo.self, WatchProgress.self) {
             return container
         }
         // A store that cannot be opened must not stop the app from launching.
         let memory = ModelConfiguration(isStoredInMemoryOnly: true)
-        return try! ModelContainer(for: StoredVideo.self, configurations: memory)
+        return try! ModelContainer(for: StoredVideo.self, WatchProgress.self, configurations: memory)
     }()
+
+    // MARK: Watch progress
+
+    static func progress(id: String) -> WatchProgress? {
+        var descriptor = FetchDescriptor<WatchProgress>(predicate: #Predicate { $0.videoID == id })
+        descriptor.fetchLimit = 1
+        return try? context.fetch(descriptor).first
+    }
+
+    static func allProgress() -> [WatchProgress] {
+        (try? context.fetch(FetchDescriptor<WatchProgress>())) ?? []
+    }
+
+    /// Stores or, with nil, deletes the position of a video.
+    static func setProgress(_ progress: PlaybackProgress?, for id: String) {
+        let existing = self.progress(id: id)
+        guard let progress else {
+            if let existing {
+                context.delete(existing)
+            }
+            return
+        }
+        if let existing {
+            existing.position = progress.position
+            existing.duration = progress.duration
+            existing.updatedAt = progress.updatedAt
+        } else {
+            context.insert(WatchProgress(videoID: id, progress: progress))
+        }
+    }
+
+    /// Moves positions kept on video records by an earlier version into
+    /// `WatchProgress`, once.
+    static func migrateProgress() {
+        let records = allRecords().filter { $0.progressPosition != nil }
+        guard !records.isEmpty else { return }
+        for record in records {
+            if let legacy = record.progress, progress(id: record.id) == nil {
+                context.insert(WatchProgress(videoID: record.id, progress: legacy))
+            }
+            record.setProgress(nil)
+            deleteIfUnused(record)
+        }
+        save()
+    }
 
     static var context: ModelContext {
         container.mainContext

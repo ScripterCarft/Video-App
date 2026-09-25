@@ -35,72 +35,9 @@ final class TestDownloads: NSObject {
             assetDownloadDelegate: self,
             delegateQueue: .main
         )
-        ipSession = URLSession(
-            configuration: .background(withIdentifier: "videos.ipcheck.test"),
-            delegate: self,
-            delegateQueue: .main
-        )
         for videoID in Self.paths.keys where localURL(for: videoID) != nil {
             states[videoID] = .finished
         }
-    }
-
-    // MARK: IP check
-
-    @ObservationIgnored private var ipSession: URLSession!
-    @ObservationIgnored private var ipCheckLines: [String] = []
-    private static let traceURL = URL(string: "https://www.cloudflare.com/cdn-cgi/trace")!
-
-    /// Compares the IP in YouTube's stream link with the IP the app and the
-    /// background download service reach the internet with. YouTube binds
-    /// stream links to the requesting IP.
-    func checkIPs(_ video: Video) {
-        Task {
-            var lines = ["IP check"]
-            if let source = try? await YouTubeInnertubePlaybackResolver.shared.resolve(
-                PlaybackRequest(videoID: video.id)
-            ), let url = source.variants.first(where: { $0.transport == .hls })?.url {
-                lines.append("Stream link IP: \(Self.ipParameter(in: url) ?? "none")")
-            }
-            let appTrace = (try? await URLSession.shared.data(from: Self.traceURL)).map {
-                String(decoding: $0.0, as: UTF8.self)
-            }
-            lines.append("App: \(Self.summary(ofTrace: appTrace))")
-            ipCheckLines = lines
-            let task = ipSession.downloadTask(with: Self.traceURL)
-            task.taskDescription = "ipcheck"
-            task.resume()
-        }
-    }
-
-    private func finishIPCheck(trace: String?, error: String?) {
-        var lines = ipCheckLines
-        if let error {
-            lines.append("Background download service: failed · \(error)")
-        } else {
-            lines.append("Background download service: \(Self.summary(ofTrace: trace))")
-        }
-        report = lines.joined(separator: "\n")
-    }
-
-    private static func ipParameter(in url: URL) -> String? {
-        let components = url.pathComponents
-        guard let index = components.firstIndex(of: "ip"), index + 1 < components.count else { return nil }
-        return components[index + 1]
-    }
-
-    /// The IP and whether it arrives through Cloudflare WARP / iCloud Private
-    /// Relay style egress, from Cloudflare's trace page.
-    private static func summary(ofTrace trace: String?) -> String {
-        guard let trace else { return "no answer" }
-        let fields = Dictionary(
-            trace.split(separator: "\n").compactMap { line -> (String, String)? in
-                let parts = line.split(separator: "=", maxSplits: 1).map(String.init)
-                return parts.count == 2 ? (parts[0], parts[1]) : nil
-            },
-            uniquingKeysWith: { first, _ in first }
-        )
-        return "\(fields["ip"] ?? "?") · warp \(fields["warp"] ?? "?")"
     }
 
     /// Download packages are stored relative to the home directory, which
@@ -290,19 +227,7 @@ final class TestDownloads: NSObject {
     }
 }
 
-extension TestDownloads: AVAssetDownloadDelegate, URLSessionDownloadDelegate {
-    nonisolated func urlSession(
-        _ session: URLSession,
-        downloadTask: URLSessionDownloadTask,
-        didFinishDownloadingTo location: URL
-    ) {
-        // The file is removed when this returns, so read it now.
-        let trace = try? String(contentsOf: location, encoding: .utf8)
-        MainActor.assumeIsolated {
-            finishIPCheck(trace: trace, error: nil)
-        }
-    }
-
+extension TestDownloads: AVAssetDownloadDelegate {
     nonisolated func urlSession(
         _ session: URLSession,
         assetDownloadTask: AVAssetDownloadTask,
@@ -325,12 +250,6 @@ extension TestDownloads: AVAssetDownloadDelegate, URLSessionDownloadDelegate {
         let taskID = task.taskIdentifier
         let message = error.map(Self.diagnostic)
         MainActor.assumeIsolated {
-            if description == "ipcheck" {
-                if let message {
-                    finishIPCheck(trace: nil, error: message)
-                }
-                return
-            }
             finish(description: description, taskID: taskID, error: message)
         }
     }

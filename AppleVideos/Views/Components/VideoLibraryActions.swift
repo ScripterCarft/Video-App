@@ -32,9 +32,11 @@ struct VideoLibraryActions: View {
         }
     }
 
-    private func perform(_ action: @escaping @MainActor () -> Void) {
-        // Cards leaving a list animate out once the menu has closed.
-        applyAfterContextMenuCloses(action)
+    private func perform(_ action: () -> Void) {
+        // Cards leaving a list animate out.
+        withAnimation {
+            action()
+        }
         onAction()
     }
 }

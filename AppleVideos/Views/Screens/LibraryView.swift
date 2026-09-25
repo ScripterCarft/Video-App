@@ -172,16 +172,21 @@ private struct VideoCollectionView: View {
             if videos.isEmpty {
                 ContentUnavailableView(emptyTitle, systemImage: "rectangle.stack.badge.plus", description: Text(emptyDescription))
             } else {
-                ScrollView {
-                    LazyVStack(spacing: 22) {
-                        ForEach(videos) { video in
-                            VideoLink(video: video, section: section, transition: transition) {
-                                VideoCard(video: video)
-                            }
+                // A List (backed by a collection view) animates removals itself,
+                // also from a card's context menu; a ScrollView with a lazy
+                // stack let neighbors jump under the menu's returning preview.
+                List {
+                    ForEach(videos) { video in
+                        VideoLink(video: video, section: section, transition: transition) {
+                            VideoCard(video: video)
                         }
+                        .navigationLinkIndicatorVisibility(.hidden)
+                        .listRowInsets(EdgeInsets(top: 11, leading: 16, bottom: 11, trailing: 16))
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
                     }
-                    .padding()
                 }
+                .listStyle(.plain)
             }
         }
         .navigationTitle(title)

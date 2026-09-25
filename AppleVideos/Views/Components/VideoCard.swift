@@ -18,14 +18,10 @@ struct VideoCard: View {
             .frame(height: compact ? 153 : nil)
 
             VStack(alignment: .leading, spacing: 4) {
-                // Shelf cards always reserve two title lines, so every card in a
-                // row has the same height. A row measures only the cards it has
-                // loaded; before, a two-line title in a row sized for one line
-                // was drawn over the channel name.
                 Text(video.title)
                     .font(.headline)
                     .foregroundStyle(.primary)
-                    .lineLimit(2, reservesSpace: compact)
+                    .lineLimit(2)
                     .truncationMode(.tail)
                     .frame(maxWidth: .infinity, alignment: .leading)
 

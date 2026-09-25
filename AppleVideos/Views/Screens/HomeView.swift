@@ -126,7 +126,11 @@ struct HomeView: View {
                 .padding(.horizontal, 16)
 
             ScrollView(.horizontal) {
-                LazyHStack(alignment: .top, spacing: 14) {
+                // Not lazy: a shelf holds a handful of cards, and a lazy stack
+                // sizes the row from the cards it has loaded, which squeezed a
+                // card with a longer title. This row is as tall as its tallest
+                // card and every card keeps its own height.
+                HStack(alignment: .top, spacing: 14) {
                     ForEach(videos) { video in
                         VideoLink(video: video, section: sectionID, transition: transition) {
                             VideoCard(video: video, compact: true)

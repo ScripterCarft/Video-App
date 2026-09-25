@@ -33,10 +33,7 @@ final class PlaybackStarter {
                     library.publishProgress()
                     switch ending {
                     case let .closed(reachedWatchThreshold):
-                        // A saved position means the video can be continued, so it
-                        // belongs in History (and the Watchlist) even when seeking
-                        // made the watched time stay under the threshold.
-                        if reachedWatchThreshold || library.resumePosition(for: video) != nil {
+                        if reachedWatchThreshold {
                             library.markWatched(video)
                         }
                     case let .failed(diagnostic):

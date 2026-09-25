@@ -100,34 +100,6 @@
 				<string>fast</string>
 			</array>
 		</dict>
-		<dict>
-			<key>Type</key>
-			<string>PSGroupSpecifier</string>
-			<key>Title</key>
-			<string>TEST (will be removed)</string>
-		</dict>
-		<dict>
-			<key>Type</key>
-			<string>PSMultiValueSpecifier</string>
-			<key>Title</key>
-			<string>Detail Edge Effect</string>
-			<key>Key</key>
-			<string>test.detailEdgeEffect</string>
-			<key>DefaultValue</key>
-			<string>automatic</string>
-			<key>Titles</key>
-			<array>
-				<string>automatic</string>
-				<string>soft</string>
-				<string>hard</string>
-			</array>
-			<key>Values</key>
-			<array>
-				<string>automatic</string>
-				<string>soft</string>
-				<string>hard</string>
-			</array>
-		</dict>
 	</array>
 </dict>
 </plist>

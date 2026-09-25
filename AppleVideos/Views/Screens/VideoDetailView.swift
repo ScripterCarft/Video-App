@@ -8,15 +8,6 @@ struct VideoDetailView: View {
     @Environment(LibraryStore.self) private var library
     @State private var playback = PlaybackStarter()
     @State private var feedback = 0
-    // TEST (do not merge)
-    @AppStorage("test.detailEdgeEffect") private var testEdgeValue = "automatic"
-    private var testEdgeStyle: ScrollEdgeEffectStyle {
-        switch testEdgeValue {
-        case "soft": .soft
-        case "hard": .hard
-        default: .automatic
-        }
-    }
     @State private var showDescription = false
     @State private var loadedDescription: String?
     @State private var loadedBadges: [String]?
@@ -49,8 +40,6 @@ struct VideoDetailView: View {
         }
         // TEST (do not merge): always scrollable, to look at the scroll edge
         // effect; normally .scrollBounceBehavior(.basedOnSize) goes here.
-        // TEST (do not merge): edge effect style chosen in the Settings app.
-        .scrollEdgeEffectStyle(testEdgeStyle, for: .top)
         .background(.black)
         .foregroundStyle(.white)
         // The detail screen is always dark; its toolbar buttons use white instead

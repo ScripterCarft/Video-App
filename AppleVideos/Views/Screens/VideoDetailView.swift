@@ -68,13 +68,8 @@ struct VideoDetailView: View {
                 .presentationDetents([.fraction(0.55), .fraction(0.8)])
                 .presentationDragIndicator(.visible)
         }
-        .task(id: video.id) {
-            // Resolve the stream while the user reads, so Play starts without
-            // waiting. The resolved formats and captions also give the badges.
-            let badges = await NativePlayback.prefetch(video)?.technicalBadges ?? []
-            guard !Task.isCancelled, badges != streamBadges else { return }
-            streamBadges = badges
-        }
+        // One task, in order: the details, shown in one step, then the stream.
+        // SwiftUI cancels it when the screen goes away.
         .task(id: video.id) {
             // The full-screen player removes this screen from the window, and an
             // interactive swipe-down re-adds it, which re-runs this task. Only reset
@@ -84,30 +79,47 @@ struct VideoDetailView: View {
                 loadedDescription = nil
                 loadedBadges = nil
                 refreshedVideo = nil
+                streamBadges = []
                 detailsLoadFinished = false
             }
-            guard !detailsLoadFinished else { return }
 
-            guard video.source == .youtube else {
-                detailsLoadFinished = true
-                return
+            if !detailsLoadFinished {
+                if video.source == .youtube {
+                    let details = try? await YouTubeService.shared.details(for: video.id)
+                    // A cancelled load is retried the next time the screen appears.
+                    guard !Task.isCancelled else { return }
+                    // Current title, views and publish date, from the details above.
+                    let refreshed = details == nil ? nil : try? await YouTubeService.shared.refreshedVideo(video)
+                    guard !Task.isCancelled else { return }
+
+                    // Everything that loaded appears at once, not piece by piece.
+                    withAnimation(.easeOut(duration: 0.25)) {
+                        loadedDescription = details?.description
+                        loadedBadges = details.flatMap { $0.badges.isEmpty ? nil : $0.badges }
+                        refreshedVideo = refreshed
+                        detailsLoadFinished = true
+                    }
+                    if let refreshed {
+                        // Stored when the screen leaves; see onDisappear.
+                        library.rememberFresh(refreshed)
+                    }
+                } else {
+                    detailsLoadFinished = true
+                }
             }
 
-            let details = try? await YouTubeService.shared.details(for: video.id)
-            // A cancelled load is retried the next time the screen appears.
-            guard !Task.isCancelled else { return }
-            loadedDescription = details?.description
-            loadedBadges = details.flatMap { $0.badges.isEmpty ? nil : $0.badges }
-
-            // Show current title, views and publish date, and keep the library's
-            // copies of this video up to date. Uses the details loaded above.
-            if details != nil,
-               let refreshed = try? await YouTubeService.shared.refreshedVideo(video),
-               !Task.isCancelled {
-                refreshedVideo = refreshed
-                library.updateMetadata(of: refreshed)
-            }
-            detailsLoadFinished = true
+            // Then, while the screen stays, resolve the stream so Play starts
+            // without waiting; its formats and captions also give the badges.
+            let badges = await NativePlayback.prefetch(video)?.technicalBadges ?? []
+            guard !Task.isCancelled, badges != streamBadges else { return }
+            streamBadges = badges
+        }
+        .onDisappear {
+            // Store the refreshed metadata once the screen has left, so nothing
+            // on the screen behind changes during the zoom back. The player
+            // covering this screen is not leaving it.
+            guard !NativePlayback.isShowingPlayer, let refreshedVideo else { return }
+            library.updateMetadata(of: refreshedVideo)
         }
         .sensoryFeedback(.selection, trigger: feedback)
     }
@@ -232,12 +244,14 @@ struct VideoDetailView: View {
                     Spacer(minLength: 0)
                 }
 
-                if let description = visibleDescription {
+                // Until the details are loaded, the description and the line
+                // below are placeholders; then both appear in one step.
+                if !detailsLoadFinished {
+                    DescriptionPlaceholder()
+                } else if let description = visibleDescription {
                     DescriptionPreview(text: description) {
                         showDescription = true
                     }
-                } else if video.source == .youtube && !detailsLoadFinished {
-                    DescriptionPlaceholder()
                 }
 
                 HStack(spacing: 7) {
@@ -257,6 +271,7 @@ struct VideoDetailView: View {
                 }
                 .font(.footnote)
                 .minimumScaleFactor(0.86)
+                .redacted(reason: detailsLoadFinished ? [] : .placeholder)
         }
         .foregroundStyle(.white)
         .padding(.horizontal, 18)

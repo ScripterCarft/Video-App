@@ -204,6 +204,12 @@ final class LibraryStore {
     /// sending fifty at once.
     private static let concurrentRefreshes = 4
 
+    /// Remembers fresher metadata without storing it yet, so a video recorded
+    /// meanwhile (for example when its player closes) is stored with it.
+    func rememberFresh(_ video: Video) {
+        refreshedThisLaunch[video.id] = video
+    }
+
     /// Stores fresher metadata for `video`. It is kept once, so every list
     /// showing it updates; nothing is written when nothing changed or the
     /// video is not stored.

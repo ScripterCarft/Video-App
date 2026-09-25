@@ -28,6 +28,11 @@ final class NativePlayback: NSObject {
     /// Keeps the playback alive while it is presented or in Picture in Picture.
     private static var current: NativePlayback?
 
+    /// Whether a native player (or its Picture in Picture) is open.
+    static var isShowingPlayer: Bool {
+        current != nil
+    }
+
     private let video: Video
     private let videoDescription: String?
     private let item: AVPlayerItem

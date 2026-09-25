@@ -73,19 +73,6 @@ final class TestDownloads: NSObject {
         }
     }
 
-    /// Compares YouTube's answers over the protocols URLSession picks.
-    func checkProtocols(_ video: Video) {
-        Task {
-            guard let source = try? await YouTubeInnertubePlaybackResolver.shared.resolve(
-                PlaybackRequest(videoID: video.id)
-            ), let url = source.variants.first(where: { $0.transport == .hls })?.url else {
-                report = "Protocol check: no HLS stream."
-                return
-            }
-            report = await TestProtocolCheck.run(masterURL: url)
-        }
-    }
-
     /// Records the request headers of AVPlayer and of the download service.
     func captureHeaders() {
         Task {

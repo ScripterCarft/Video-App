@@ -163,11 +163,14 @@ accepted player-dismissal bug.
   Again to Renew" / red "Remove Download"; context menu
   Download / Stop, hidden once downloaded; download symbol beside the
   duration; Library > Downloaded and History each with Remove All.
-- Home shelves stay `LazyHStack` (user's decision) laid over a hidden
-  `VideoCard.CompactHeightTemplate`, the height of a card with a two-line
-  title: a lazy stack sizes the row from loaded cards, which squeezed a
-  two-line title over the channel name. Cards keep their own height
-  (rejected: non-lazy HStack; reserving two lines inside each card).
+- Home is one `UICollectionView` (`HomeCollection`) with a compositional
+  layout: featured, shelves as orthogonal sections
+  (`continuousGroupLeadingBoundary`), Spotlight; Apple's intended design for
+  App Store-style pages (WWDC19). Cells host the SwiftUI cards via
+  `UIHostingConfiguration`; diffable data source; the collection view owns
+  the context menus and applies removals in `willEndContextMenuInteraction`
+  so cards leave after the menu closes. Other screens keep the SwiftUI card
+  menu (`VideoCard.providesContextMenu`).
 - Library lists (Saved, Downloaded, History) are a plain `List` so
   removals from a card's context menu animate; with ScrollView +
   LazyVStack neighbors jumped under the returning menu preview. Rejected:
@@ -197,7 +200,6 @@ accepted player-dismissal bug.
   system gray (dark on detail). No blurs, masks, shadows or materials on
   these screens without measuring.
 - Home title: `toolbarTitleDisplayMode(.inlineLarge)` (compared on device).
-- Home shelves: `scrollClipDisabled()` and `viewAligned` snapping.
 - Removed on purpose: the empty Profile button (App Review rejects
   non-functional UI). "Up Next" stays at the user's
   request.

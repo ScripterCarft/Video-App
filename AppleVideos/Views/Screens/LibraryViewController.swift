@@ -23,12 +23,7 @@ final class LibraryViewController: UIViewController, UICollectionViewDelegate {
     /// The counts shown, to reconfigure only rows whose count changed.
     private var shownCounts: [LibraryList: Int] = [:]
     private var dataSource: UICollectionViewDiffableDataSource<Int, LibraryList>!
-    private lazy var collectionView = UICollectionView(
-        frame: .zero,
-        collectionViewLayout: UICollectionViewCompositionalLayout.list(
-            using: UICollectionLayoutListConfiguration(appearance: .plain)
-        )
-    )
+    private lazy var collectionView = UICollectionView(frame: .zero, collectionViewLayout: VideoCells.plainListLayout())
 
     init(library: LibraryStore, navigator: VideoNavigator) {
         self.library = library

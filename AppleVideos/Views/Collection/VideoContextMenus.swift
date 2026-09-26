@@ -276,6 +276,20 @@ enum VideoCells {
         return height
     }
 
+    /// Apple's plain list, as in Music's library, without the separator
+    /// above the first row, which would sit on the bar's own line.
+    static func plainListLayout() -> UICollectionViewCompositionalLayout {
+        var configuration = UICollectionLayoutListConfiguration(appearance: .plain)
+        configuration.itemSeparatorHandler = { indexPath, separator in
+            var separator = separator
+            if indexPath.item == 0 {
+                separator.topSeparatorVisibility = .hidden
+            }
+            return separator
+        }
+        return UICollectionViewCompositionalLayout.list(using: configuration)
+    }
+
     /// A vertical list of full-width video cards between the screen margins,
     /// all of fixed size, like the shelves (see `shelfSection`). Cards show
     /// `.search` artwork, sharp at full width.

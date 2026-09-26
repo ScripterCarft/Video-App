@@ -12,8 +12,18 @@ swipe dismissal; expanding to full screen does NOT recover it. Changing the
 iPhone Liquid Glass Appearance setting fixed only the perceived transparency,
 not playback. The accessory uses UITabAccessory; no custom glass/blur/alpha is
 present. Keep that native appearance and the now-approved layout unchanged.
-The precise playback cause is NOT proven. Do not apply delayed Play, buffer
-policy changes or attach/detach hacks based on the symptom alone.
+Device diagnostic 1 confirms that the original item and controller remain
+attached, and that completed AVKit dismissal changes rate 1 to 0. The completed
+transition now restores the rate captured at dismissal start, only for a paused,
+nonfailed, unfinished session permitted by network policy. Cancelled gestures,
+PiP and playback paused before dismissal are not resumed. No timer/new player.
+The independent waiting cause is NOT proven: ready item/player, buffer-empty,
+waitingToMinimizeStalls and CoreMedia -16840. Do not change buffering policy or
+attach/detach based on this alone. Diagnostic 2 includes the last six stream
+errors with their dates and descriptions (URLs removed), to establish whether
+the reported network error coincides with the stall and why the request failed.
+Mini Play/Pause now uses UIKit symbolContentTransition (.replace), disabled
+for Reduce Motion; the layout and native glass remain unchanged.
 A TEST diagnostic captures the last 24 AVPlayer status/wait-reason/transition
 events and an on-demand snapshot (item identity, buffer ranges, error domain/code,
 network policy). Long-press mini Play/Pause -> Copy Playback Diagnostics.

@@ -461,14 +461,22 @@ final class NativePlayback: NSObject {
         guard let current else { return "No native playback session." }
         let error = current.item.error as NSError?
         let playerError = current.player.error as NSError?
-        let logError = current.item.errorLog()?.events.last
+        let streamErrors = (current.item.errorLog()?.events ?? []).suffix(6).map { event in
+            let seconds = event.date.map { String(format: "%.2f", $0.timeIntervalSince(current.diagnosticStart)) } ?? "unknown"
+            // Error comments can include signed stream URLs. Keep the error
+            // description, but never copy those URLs or response headers.
+            let comment = (event.errorComment ?? "No description")
+                .replacingOccurrences(of: #"(?i)(?:https?|file)://[^\s]+"#, with: "<URL removed>", options: .regularExpression)
+                .prefix(500)
+            return "\(seconds)s \(event.errorDomain) / \(event.errorStatusCode): \(comment)"
+        }.joined(separator: "\n")
         let access = current.item.accessLog()?.events.last
         let ranges = current.item.loadedTimeRanges.map { value in
             let range = value.timeRangeValue
             return "\(range.start.seconds)...\(CMTimeRangeGetEnd(range).seconds)"
         }.joined(separator: ", ")
         return """
-        Mini playback diagnostic 1
+        Mini playback diagnostic 2
         Video: \(current.video.id)
         Now: \(current.diagnosticState)
         Mini: \(displayState.isMinimized); seek pending: \(current.isAwaitingResumeSeek)
@@ -481,7 +489,8 @@ final class NativePlayback: NSObject {
         Buffered seconds: \(ranges)
         Player error: \(playerError?.domain ?? "none") / \(playerError?.code ?? 0)
         Item error: \(error?.domain ?? "none") / \(error?.code ?? 0)
-        Stream error: \(logError?.errorDomain ?? "none") / \(logError?.errorStatusCode ?? 0)
+        Stream errors (last 6):
+        \(streamErrors.isEmpty ? "none" : streamErrors)
         Bytes transferred: \(access?.numberOfBytesTransferred ?? 0)
         Observed bitrate: \(access?.observedBitrate ?? 0)
         Cellular: \(NetworkConditions.shared.usesCellular); allowed: \(StreamingSettings.current().useMobileData)

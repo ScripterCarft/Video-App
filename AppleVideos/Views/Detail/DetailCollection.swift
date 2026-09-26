@@ -6,8 +6,6 @@ import UIKit
 enum DetailStage {
     /// The stage is this many times as tall as it is wide.
     static let heightRatio: CGFloat = 1.5
-    /// Where the centered 16:9 thumbnail ends, as a fraction of the stage height.
-    static let thumbnailBottom: CGFloat = 0.5 + (9.0 / 16.0) / heightRatio / 2
 
     /// The stage's height for a width, on whole pixels, so the page's black
     /// meets it without a half-covered pixel row.
@@ -19,9 +17,10 @@ enum DetailStage {
 
 /// The detail screen in two layers. Behind: the artwork stage as the
 /// collection view's `backgroundView`, which UIKit keeps in place while the
-/// content scrolls. In front: an empty spacer as tall as the stage, then the
-/// Up Next shelf on black, starting exactly at the stage's lower edge and
-/// sliding over it. Every size is fixed; nothing is measured while scrolling.
+/// content scrolls. In front: the hero cell over the stage (the video's info
+/// at its bottom, over the artwork), then the Up Next shelf on black,
+/// starting exactly at the stage's lower edge and sliding over it. Every
+/// size is fixed; nothing is measured while scrolling.
 struct DetailCollection: UIViewControllerRepresentable {
     let model: VideoDetailModel
     /// The Up Next videos, passed as a value so SwiftUI updates the shelf when they arrive.
@@ -169,7 +168,7 @@ final class DetailCollectionController: UIViewController, UICollectionViewDelega
         return UIFont(descriptor: descriptor.withSymbolicTraits(.traitBold) ?? descriptor, size: 0)
     }
 
-    /// A clear spacer over the artwork stage, below the bars.
+    /// The hero over the artwork stage, below the bars.
     private static func stageSection(height: CGFloat) -> NSCollectionLayoutSection {
         let size = NSCollectionLayoutSize(widthDimension: .fractionalWidth(1), heightDimension: .absolute(height))
         let group = NSCollectionLayoutGroup.vertical(layoutSize: size, subitems: [NSCollectionLayoutItem(layoutSize: size)])
@@ -179,7 +178,19 @@ final class DetailCollectionController: UIViewController, UICollectionViewDelega
     // MARK: - Cells
 
     private func configureDataSource() {
-        let stageRegistration = UICollectionView.CellRegistration<UICollectionViewCell, Item> { _, _, _ in }
+        // The first cell covers the artwork and carries the hero at its bottom.
+        let stageRegistration = UICollectionView.CellRegistration<UICollectionViewCell, Item> { [weak self] cell, _, _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                cell.contentConfiguration = DetailHeroConfiguration(
+                    model: self.content.model,
+                    playback: self.content.playback,
+                    library: self.content.library,
+                    onShowDescription: self.content.onShowDescription,
+                    onFeedback: self.content.onFeedback
+                )
+            }
+        }
         let videoRegistration = UICollectionView.CellRegistration<UICollectionViewCell, Item> { [weak self] cell, _, item in
             MainActor.assumeIsolated {
                 self?.configureVideo(cell, for: item)

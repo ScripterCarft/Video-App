@@ -211,11 +211,11 @@ enum VideoCells {
     /// A section title in plain UIKit text, title 2 bold, with only its own
     /// margins (not the cell's, which follow the screen edges). `topSpacing`
     /// is part of the header's fixed height (see `shelfSection`).
-    /// Apple's large, bold section header style
-    /// (`extraProminentInsetGroupedHeader`), on one line, with a subtitle
+    /// Apple's prominent section header style
+    /// (`prominentInsetGroupedHeader`), on one line, with a subtitle
     /// as its secondary text where a section has one (Explore).
     static func headerConfiguration(title: String, subtitle: String? = nil, topSpacing: CGFloat) -> UIListContentConfiguration {
-        var configuration = UIListContentConfiguration.extraProminentInsetGroupedHeader()
+        var configuration = UIListContentConfiguration.prominentInsetGroupedHeader()
         configuration.text = title
         configuration.textProperties.numberOfLines = 1
         configuration.secondaryText = subtitle

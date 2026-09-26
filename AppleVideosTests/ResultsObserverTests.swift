@@ -236,6 +236,11 @@ struct ResultsObserverTests {
 
     // MARK: - Helpers
 
+    /// How long to wait for a change. Measured changes arrived within about
+    /// 125 ms, so this leaves a wide margin; cases that expect no change wait
+    /// this long in full.
+    nonisolated static let wait: Duration = .milliseconds(500)
+
     struct Change: CustomStringConvertible {
         /// Whether observation reported a change within the wait.
         let fired: Bool
@@ -244,11 +249,13 @@ struct ResultsObserverTests {
         let milliseconds: Int
 
         var description: String {
-            fired ? "fired \(synchronous ? "synchronously" : "after \(milliseconds) ms")" : "not fired within 1 s"
+            fired
+                ? "fired \(synchronous ? "synchronously" : "after \(milliseconds) ms")"
+                : "not fired within \(ResultsObserverTests.wait)"
         }
     }
 
-    /// Tracks the reads in `read`, runs `action` and waits up to a second
+    /// Tracks the reads in `read`, runs `action` and waits up to `wait`
     /// for observation to report a change.
     private func observeChange(of read: @escaping @MainActor () -> Void, after action: () throws -> Void) async -> Change {
         let flag = Mutex(false)
@@ -260,7 +267,7 @@ struct ResultsObserverTests {
         let start = ContinuousClock.now
         try? action()
         let synchronous = flag.withLock { $0 }
-        while !flag.withLock({ $0 }), ContinuousClock.now - start < .seconds(1) {
+        while !flag.withLock({ $0 }), ContinuousClock.now - start < Self.wait {
             try? await Task.sleep(for: .milliseconds(10))
         }
         let elapsed = ContinuousClock.now - start
@@ -273,7 +280,7 @@ struct ResultsObserverTests {
 
     private func waitForUpdates(of view: CountingView, beyond count: Int) async -> (count: Int, milliseconds: Int) {
         let start = ContinuousClock.now
-        while view.updates <= count, ContinuousClock.now - start < .seconds(1) {
+        while view.updates <= count, ContinuousClock.now - start < Self.wait {
             try? await Task.sleep(for: .milliseconds(10))
             view.superview?.layoutIfNeeded()
         }

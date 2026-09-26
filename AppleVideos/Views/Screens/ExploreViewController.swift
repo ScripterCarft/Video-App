@@ -2,7 +2,7 @@ import UIKit
 
 /// Explore as a UIKit screen: topic tiles in two columns, each opening that
 /// topic's search results, and the trending videos as full-width cards.
-final class ExploreViewController: UIViewController, UICollectionViewDelegate {
+final class ExploreViewController: VideoCollectionViewController {
     private enum Section: Hashable {
         case topics
         case trending
@@ -31,17 +31,14 @@ final class ExploreViewController: UIViewController, UICollectionViewDelegate {
     private static let trendingSection = "trending"
     private static let tileHeight: CGFloat = 74
 
-    private let library: LibraryStore
     private let navigator: VideoNavigator
     private let trending = Video.curated
     private var dataSource: UICollectionViewDiffableDataSource<Section, Item>!
     private lazy var collectionView = UICollectionView(frame: .zero, collectionViewLayout: makeLayout())
-    private lazy var menus = VideoContextMenus(library: library, downloads: DownloadManager.shared, presenter: self)
 
     init(library: LibraryStore, navigator: VideoNavigator) {
-        self.library = library
         self.navigator = navigator
-        super.init(nibName: nil, bundle: nil)
+        super.init(library: library)
         title = "Explore"
         // The large title sits in the bar at the leading edge, like Home.
         navigationItem.largeTitleDisplayMode = .inline
@@ -222,51 +219,9 @@ final class ExploreViewController: UIViewController, UICollectionViewDelegate {
         }
     }
 
-    // MARK: - Context menus
-
-    func collectionView(
-        _ collectionView: UICollectionView,
-        contextMenuConfigurationForItemsAt indexPaths: [IndexPath],
-        point: CGPoint
-    ) -> UIContextMenuConfiguration? {
-        guard let indexPath = indexPaths.first,
-              case let .video(id)? = dataSource.itemIdentifier(for: indexPath),
-              let video = trending.first(where: { $0.id == id })
-        else { return nil }
-        return menus.configuration(for: video, in: collectionView.cellForItem(at: indexPath)) { [weak collectionView] in
-            collectionView?.cellForItem(at: indexPath)
-        }
-    }
-
-    func collectionView(
-        _ collectionView: UICollectionView,
-        contextMenuConfiguration configuration: UIContextMenuConfiguration,
-        highlightPreviewForItemAt indexPath: IndexPath
-    ) -> UITargetedPreview? {
-        VideoContextMenus.targetedPreview(of: collectionView.cellForItem(at: indexPath))
-    }
-
-    func collectionView(
-        _ collectionView: UICollectionView,
-        contextMenuConfiguration configuration: UIContextMenuConfiguration,
-        dismissalPreviewForItemAt indexPath: IndexPath
-    ) -> UITargetedPreview? {
-        VideoContextMenus.targetedPreview(of: collectionView.cellForItem(at: indexPath))
-    }
-
-    func collectionView(
-        _ collectionView: UICollectionView,
-        willDisplayContextMenu configuration: UIContextMenuConfiguration,
-        animator: (any UIContextMenuInteractionAnimating)?
-    ) {
-        menus.willDisplay()
-    }
-
-    func collectionView(
-        _ collectionView: UICollectionView,
-        willEndContextMenuInteraction configuration: UIContextMenuConfiguration,
-        animator: (any UIContextMenuInteractionAnimating)?
-    ) {
-        menus.willEnd(animator: animator)
+    /// The trending cards have the context menu; the topic tiles do not.
+    override func video(at indexPath: IndexPath) -> Video? {
+        guard case let .video(id)? = dataSource.itemIdentifier(for: indexPath) else { return nil }
+        return trending.first { $0.id == id }
     }
 }

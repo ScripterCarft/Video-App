@@ -24,7 +24,7 @@ enum DetailStage {
 /// the observable model and download state in `updateProperties()`, which
 /// UIKit tracks, so the shelf and the Download button update by themselves.
 /// The hero (title, Play, description) comes later.
-final class VideoDetailViewController: UIViewController, UICollectionViewDelegate, RoutedScreen {
+final class VideoDetailViewController: VideoCollectionViewController, RoutedScreen {
     /// Opens a video from Up Next; the view to zoom from is looked up when
     /// the zoom needs it.
     typealias OpenAction = @MainActor (VideoRoute, @escaping @MainActor () -> UIView?) -> Void
@@ -45,8 +45,6 @@ final class VideoDetailViewController: UIViewController, UICollectionViewDelegat
 
     let route: VideoRoute
     var appRoute: AppRoute? { .video(route) }
-    private let library: LibraryStore
-    private let downloads = DownloadManager.shared
     private let onOpen: OpenAction
 
     private var model: VideoDetailModel?
@@ -54,15 +52,13 @@ final class VideoDetailViewController: UIViewController, UICollectionViewDelegat
     private var shownRelated: [Video] = []
     private var dataSource: UICollectionViewDiffableDataSource<Section, Item>!
     private lazy var collectionView = DetailCollectionView(frame: .zero, collectionViewLayout: makeLayout())
-    private lazy var menus = VideoContextMenus(library: library, downloads: downloads, presenter: self)
     private let artwork = DetailArtworkView()
     private let downloadButton = DownloadBarButton()
 
     init(route: VideoRoute, library: LibraryStore, onOpen: @escaping OpenAction) {
         self.route = route
-        self.library = library
         self.onOpen = onOpen
-        super.init(nibName: nil, bundle: nil)
+        super.init(library: library)
         // The detail screen is always dark, like the TV app's.
         overrideUserInterfaceStyle = .dark
         navigationItem.largeTitleDisplayMode = .never
@@ -329,50 +325,10 @@ final class VideoDetailViewController: UIViewController, UICollectionViewDelegat
         }
     }
 
-    func collectionView(
-        _ collectionView: UICollectionView,
-        contextMenuConfigurationForItemsAt indexPaths: [IndexPath],
-        point: CGPoint
-    ) -> UIContextMenuConfiguration? {
-        guard let indexPath = indexPaths.first,
-              case let .video(id)? = dataSource.itemIdentifier(for: indexPath),
-              let video = shownRelated.first(where: { $0.id == id })
-        else { return nil }
-        return menus.configuration(for: video, in: collectionView.cellForItem(at: indexPath)) { [weak collectionView] in
-            collectionView?.cellForItem(at: indexPath)
-        }
-    }
-
-    func collectionView(
-        _ collectionView: UICollectionView,
-        contextMenuConfiguration configuration: UIContextMenuConfiguration,
-        highlightPreviewForItemAt indexPath: IndexPath
-    ) -> UITargetedPreview? {
-        VideoContextMenus.targetedPreview(of: collectionView.cellForItem(at: indexPath))
-    }
-
-    func collectionView(
-        _ collectionView: UICollectionView,
-        contextMenuConfiguration configuration: UIContextMenuConfiguration,
-        dismissalPreviewForItemAt indexPath: IndexPath
-    ) -> UITargetedPreview? {
-        VideoContextMenus.targetedPreview(of: collectionView.cellForItem(at: indexPath))
-    }
-
-    func collectionView(
-        _ collectionView: UICollectionView,
-        willDisplayContextMenu configuration: UIContextMenuConfiguration,
-        animator: (any UIContextMenuInteractionAnimating)?
-    ) {
-        menus.willDisplay()
-    }
-
-    func collectionView(
-        _ collectionView: UICollectionView,
-        willEndContextMenuInteraction configuration: UIContextMenuConfiguration,
-        animator: (any UIContextMenuInteractionAnimating)?
-    ) {
-        menus.willEnd(animator: animator)
+    /// Up Next's cards have the context menu; the stage has none.
+    override func video(at indexPath: IndexPath) -> Video? {
+        guard case let .video(id)? = dataSource.itemIdentifier(for: indexPath) else { return nil }
+        return shownRelated.first { $0.id == id }
     }
 }
 

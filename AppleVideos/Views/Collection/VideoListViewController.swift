@@ -8,7 +8,7 @@ import UIKit
 /// `state` is read in `updateProperties()`, so UIKit tracks the observable
 /// data it reads and updates the list by itself. Cards removed from their
 /// context menu leave once the menu has closed.
-final class VideoListViewController: UIViewController, UICollectionViewDelegate, RoutedScreen {
+final class VideoListViewController: VideoCollectionViewController, RoutedScreen {
     /// What the list shows.
     enum State {
         case videos([Video])
@@ -18,8 +18,6 @@ final class VideoListViewController: UIViewController, UICollectionViewDelegate,
 
     let appRoute: AppRoute?
     private let section: String
-    private let library: LibraryStore
-    private let downloads = DownloadManager.shared
     private let navigator: VideoNavigator
     private let state: @MainActor () -> State
     private let emptyState: UIContentUnavailableConfiguration
@@ -36,7 +34,6 @@ final class VideoListViewController: UIViewController, UICollectionViewDelegate,
     private var shownVideos: [Video] = []
     private var dataSource: UICollectionViewDiffableDataSource<Int, String>!
     private lazy var collectionView = UICollectionView(frame: .zero, collectionViewLayout: makeLayout())
-    private lazy var menus = VideoContextMenus(library: library, downloads: downloads, presenter: self)
     private lazy var refreshControl: UIRefreshControl = {
         let control = UIRefreshControl()
         control.addAction(UIAction { [weak self] _ in
@@ -58,11 +55,10 @@ final class VideoListViewController: UIViewController, UICollectionViewDelegate,
     ) {
         appRoute = route
         self.section = section
-        self.library = library
         self.navigator = navigator
         self.emptyState = emptyState
         self.state = state
-        super.init(nibName: nil, bundle: nil)
+        super.init(library: library)
         self.title = title
         // The large title sits in the bar at the leading edge, like every tab.
         navigationItem.largeTitleDisplayMode = .inline
@@ -196,51 +192,7 @@ final class VideoListViewController: UIViewController, UICollectionViewDelegate,
         }
     }
 
-    // MARK: - Context menus
-
-    func collectionView(
-        _ collectionView: UICollectionView,
-        contextMenuConfigurationForItemsAt indexPaths: [IndexPath],
-        point: CGPoint
-    ) -> UIContextMenuConfiguration? {
-        guard let indexPath = indexPaths.first,
-              let id = dataSource.itemIdentifier(for: indexPath),
-              let video = video(id: id)
-        else { return nil }
-        return menus.configuration(for: video, in: collectionView.cellForItem(at: indexPath)) { [weak collectionView] in
-            collectionView?.cellForItem(at: indexPath)
-        }
-    }
-
-    func collectionView(
-        _ collectionView: UICollectionView,
-        contextMenuConfiguration configuration: UIContextMenuConfiguration,
-        highlightPreviewForItemAt indexPath: IndexPath
-    ) -> UITargetedPreview? {
-        VideoContextMenus.targetedPreview(of: collectionView.cellForItem(at: indexPath))
-    }
-
-    func collectionView(
-        _ collectionView: UICollectionView,
-        contextMenuConfiguration configuration: UIContextMenuConfiguration,
-        dismissalPreviewForItemAt indexPath: IndexPath
-    ) -> UITargetedPreview? {
-        VideoContextMenus.targetedPreview(of: collectionView.cellForItem(at: indexPath))
-    }
-
-    func collectionView(
-        _ collectionView: UICollectionView,
-        willDisplayContextMenu configuration: UIContextMenuConfiguration,
-        animator: (any UIContextMenuInteractionAnimating)?
-    ) {
-        menus.willDisplay()
-    }
-
-    func collectionView(
-        _ collectionView: UICollectionView,
-        willEndContextMenuInteraction configuration: UIContextMenuConfiguration,
-        animator: (any UIContextMenuInteractionAnimating)?
-    ) {
-        menus.willEnd(animator: animator)
+    override func video(at indexPath: IndexPath) -> Video? {
+        dataSource.itemIdentifier(for: indexPath).flatMap(video(id:))
     }
 }

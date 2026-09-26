@@ -30,7 +30,7 @@ final class AppTabBarController: UITabBarController {
         super.init(nibName: nil, bundle: nil)
 
         let home = navigation(for: Identifier.home, restoring: restoration) { navigator in
-            HomeViewController(library: library, downloads: DownloadManager.shared, navigator: navigator)
+            HomeViewController(library: library, navigator: navigator)
         }
         let explore = navigation(for: Identifier.explore, restoring: restoration) { navigator in
             ExploreViewController(library: library, navigator: navigator)

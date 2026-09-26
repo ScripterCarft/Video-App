@@ -9,7 +9,7 @@ import UIKit
 /// `updateProperties()`: UIKit tracks that read and updates Home when the
 /// Watchlist changes. The collection view owns the context menus, so a card
 /// removed from its menu leaves once the menu has closed.
-final class HomeViewController: UIViewController, UICollectionViewDelegate {
+final class HomeViewController: VideoCollectionViewController {
     enum Section: Hashable {
         case featured
         case shelf(String)
@@ -31,8 +31,6 @@ final class HomeViewController: UIViewController, UICollectionViewDelegate {
     private static let cardWidth: CGFloat = 272
     private static let spotlightTitle = "Apple Videos Spotlight"
 
-    private let library: LibraryStore
-    private let downloads: DownloadManager
     /// Starts the featured video from its Play button.
     private let playback = PlaybackStarter()
     private let navigator: VideoNavigator
@@ -45,13 +43,10 @@ final class HomeViewController: UIViewController, UICollectionViewDelegate {
     private var shelves: [Shelf] = []
     private var dataSource: UICollectionViewDiffableDataSource<Section, Item>!
     private lazy var collectionView = UICollectionView(frame: .zero, collectionViewLayout: makeLayout())
-    private lazy var menus = VideoContextMenus(library: library, downloads: downloads, presenter: self)
 
-    init(library: LibraryStore, downloads: DownloadManager, navigator: VideoNavigator) {
-        self.library = library
-        self.downloads = downloads
+    init(library: LibraryStore, navigator: VideoNavigator) {
         self.navigator = navigator
-        super.init(nibName: nil, bundle: nil)
+        super.init(library: library)
         title = "Home"
         // The large title sits in the bar at the leading edge, like the TV app.
         navigationItem.largeTitleDisplayMode = .inline
@@ -311,51 +306,10 @@ final class HomeViewController: UIViewController, UICollectionViewDelegate {
         }
     }
 
-    // MARK: - Context menus
-
-    func collectionView(
-        _ collectionView: UICollectionView,
-        contextMenuConfigurationForItemsAt indexPaths: [IndexPath],
-        point: CGPoint
-    ) -> UIContextMenuConfiguration? {
-        guard let indexPath = indexPaths.first,
-              case let .video(shelf, id)? = dataSource.itemIdentifier(for: indexPath),
-              let video = video(in: shelf, id: id)
-        else { return nil }
-        return menus.configuration(for: video, in: collectionView.cellForItem(at: indexPath)) { [weak collectionView] in
-            collectionView?.cellForItem(at: indexPath)
-        }
-    }
-
-    func collectionView(
-        _ collectionView: UICollectionView,
-        contextMenuConfiguration configuration: UIContextMenuConfiguration,
-        highlightPreviewForItemAt indexPath: IndexPath
-    ) -> UITargetedPreview? {
-        VideoContextMenus.targetedPreview(of: collectionView.cellForItem(at: indexPath))
-    }
-
-    func collectionView(
-        _ collectionView: UICollectionView,
-        contextMenuConfiguration configuration: UIContextMenuConfiguration,
-        dismissalPreviewForItemAt indexPath: IndexPath
-    ) -> UITargetedPreview? {
-        VideoContextMenus.targetedPreview(of: collectionView.cellForItem(at: indexPath))
-    }
-
-    func collectionView(
-        _ collectionView: UICollectionView,
-        willDisplayContextMenu configuration: UIContextMenuConfiguration,
-        animator: (any UIContextMenuInteractionAnimating)?
-    ) {
-        menus.willDisplay()
-    }
-
-    func collectionView(
-        _ collectionView: UICollectionView,
-        willEndContextMenuInteraction configuration: UIContextMenuConfiguration,
-        animator: (any UIContextMenuInteractionAnimating)?
-    ) {
-        menus.willEnd(animator: animator)
+    /// The shelves' cards have the context menu; the featured and Spotlight
+    /// cards do not.
+    override func video(at indexPath: IndexPath) -> Video? {
+        guard case let .video(shelf, id)? = dataSource.itemIdentifier(for: indexPath) else { return nil }
+        return video(in: shelf, id: id)
     }
 }

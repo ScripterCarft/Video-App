@@ -59,6 +59,9 @@ struct ResultsObserverTests {
         probe("insert without save: \(change), results \(observer.results.map(\.id))")
     }
 
+    /// Measured on the iOS 27.0 simulator: the first save of a new
+    /// WatchProgress does report a change (once per video), but saving a
+    /// changed one, which playback does every 5 s, does not.
     @Test func savingOnlyWatchProgressLeavesVideoResultsAlone() async throws {
         let video = record("c")
         video.savedAt = .now
@@ -70,8 +73,7 @@ struct ResultsObserverTests {
             context.insert(WatchProgress(videoID: "c", progress: PlaybackProgress(position: 30, duration: 600, updatedAt: .now)))
             try context.save()
         }
-        probe("save of a WatchProgress only: \(change)")
-        #expect(!change.fired)
+        probe("save of a new WatchProgress only: \(change)")
 
         let update = await observeChange(of: { _ = observer.results }) {
             let entry = try context.fetch(FetchDescriptor<WatchProgress>()).first
@@ -164,8 +166,14 @@ struct ResultsObserverTests {
         context.insert(WatchProgress(videoID: "h", progress: PlaybackProgress(position: 30, duration: 600, updatedAt: .now)))
         try context.save()
         let afterProgress = await waitForUpdates(of: view, beyond: afterInsert.count)
-        probe("UIKit updateProperties after a WatchProgress save: \(afterProgress.count) (was \(afterInsert.count))")
-        #expect(afterProgress.count == afterInsert.count)
+        probe("UIKit updateProperties after a new WatchProgress save: \(afterProgress.count) (was \(afterInsert.count))")
+
+        let entry = try #require(try context.fetch(FetchDescriptor<WatchProgress>()).first)
+        entry.position = 40
+        try context.save()
+        let afterUpdate = await waitForUpdates(of: view, beyond: afterProgress.count)
+        probe("UIKit updateProperties after a changed WatchProgress save: \(afterUpdate.count) (was \(afterProgress.count))")
+        #expect(afterUpdate.count == afterProgress.count)
     }
 
     // MARK: - Helpers

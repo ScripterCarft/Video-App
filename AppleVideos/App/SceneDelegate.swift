@@ -32,7 +32,7 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         }
         return restoration.activity(
             selectedTab: tabBarController.selectedTab?.identifier,
-            homeRoutes: tabBarController.homeNavigator.routes
+            stacks: tabBarController.stacks
         )
     }
 }

@@ -8,14 +8,40 @@ final class VideoNavigationController: UINavigationController {
     }
 }
 
-/// Opens videos on a UIKit navigation controller with Apple's zoom
-/// transition (`preferredTransition = .zoom`): the detail screen grows out
-/// of the tapped card's artwork and shrinks back into it, and swiping it
-/// away works the same way.
+/// A screen pushed on a tab's stack, `Codable` so the stack can be restored
+/// after a relaunch (`SceneRestoration`).
+enum AppRoute: Hashable, Codable {
+    /// A video's detail screen.
+    case video(VideoRoute)
+    /// Explore's results for a topic.
+    case topic(String)
+    /// One of the Library's lists.
+    case library(LibraryList)
+}
+
+enum LibraryList: String, Hashable, Codable {
+    case saved
+    case downloaded
+    case history
+}
+
+/// A screen that a route shows; the navigator collects the routes of the
+/// screens on its stack for restoration. A tab's root screen has none.
+@MainActor
+protocol RoutedScreen: UIViewController {
+    var appRoute: AppRoute? { get }
+}
+
+/// Opens screens on a tab's UIKit navigation controller. Videos open with
+/// Apple's zoom transition (`preferredTransition = .zoom`): the detail screen
+/// grows out of the tapped card's artwork and shrinks back into it, and
+/// swiping it away works the same way.
 @MainActor
 final class VideoNavigator {
     weak var navigationController: UINavigationController?
     private let library: LibraryStore
+    /// Builds the tab's screens for routes other than videos.
+    var makeScreen: ((AppRoute) -> UIViewController?)?
 
     init(library: LibraryStore) {
         self.library = library
@@ -33,8 +59,17 @@ final class VideoNavigator {
         navigationController?.pushViewController(controller, animated: animated)
     }
 
-    /// The routes of the detail screens on the stack, bottom to top.
-    var routes: [VideoRoute] {
-        navigationController?.viewControllers.compactMap { ($0 as? VideoDetailViewController)?.route } ?? []
+    /// Pushes the screen for `route`.
+    func show(_ route: AppRoute, animated: Bool = true) {
+        if case let .video(videoRoute) = route {
+            open(videoRoute, animated: animated)
+        } else if let controller = makeScreen?(route) {
+            navigationController?.pushViewController(controller, animated: animated)
+        }
+    }
+
+    /// The routes of the screens on the stack above its root, bottom to top.
+    var routes: [AppRoute] {
+        navigationController?.viewControllers.compactMap { ($0 as? RoutedScreen)?.appRoute } ?? []
     }
 }

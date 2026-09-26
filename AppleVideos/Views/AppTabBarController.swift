@@ -1,9 +1,10 @@
 import SwiftUI
 import UIKit
 
-/// The app's tab bar: Home, Explore, Library and Search as `UITab`s. Home is
-/// UIKit; the other tabs are SwiftUI in hosting controllers until they are
-/// rebuilt in UIKit. Search is a normal tab in the bar, like before.
+/// The app's tab bar: Home, Explore, Library and Search as `UITab`s, each
+/// UIKit tab a `VideoNavigationController` with its own `VideoNavigator`.
+/// Tabs not yet rebuilt in UIKit are SwiftUI in hosting controllers. Search
+/// is a normal tab in the bar, like before.
 ///
 /// Also reports a download that could not be completed, wherever the app is.
 final class AppTabBarController: UITabBarController {
@@ -14,23 +15,21 @@ final class AppTabBarController: UITabBarController {
         static let search = "search"
     }
 
-    /// Opens videos on Home; its routes are what Home restores.
-    let homeNavigator: VideoNavigator
+    private let library: LibraryStore
     private let downloads = DownloadManager.shared
+    /// The UIKit tabs' navigators by tab, whose routes are restored.
+    private var navigators: [String: VideoNavigator] = [:]
     /// The failure the alert on screen reports, so it is shown only once.
     private var reportedFailureID: UUID?
 
-    init(library: LibraryStore, restoration: SceneRestoration) {
-        homeNavigator = VideoNavigator(library: library)
-        super.init(nibName: nil, bundle: nil)
+    /// The screens on each UIKit tab's stack, for restoration.
+    var stacks: [String: [AppRoute]] {
+        navigators.mapValues(\.routes)
+    }
 
-        let home = HomeViewController(library: library, downloads: downloads, navigator: homeNavigator)
-        let homeNavigation = VideoNavigationController(rootViewController: home)
-        homeNavigation.navigationBar.prefersLargeTitles = true
-        homeNavigator.navigationController = homeNavigation
-        for route in restoration.homeRoutes {
-            homeNavigator.open(route, animated: false)
-        }
+    init(library: LibraryStore, restoration: SceneRestoration) {
+        self.library = library
+        super.init(nibName: nil, bundle: nil)
 
         func hosted(_ view: some View) -> UIViewController {
             UIHostingController(rootView: view
@@ -40,12 +39,19 @@ final class AppTabBarController: UITabBarController {
                 .modelContainer(LibraryDatabase.container))
         }
 
+        let home = navigation(for: Identifier.home, restoring: restoration) { navigator in
+            HomeViewController(library: library, downloads: DownloadManager.shared, navigator: navigator)
+        }
+        let explore = navigation(for: Identifier.explore, restoring: restoration) { navigator in
+            ExploreViewController(library: library, navigator: navigator)
+        }
+
         tabs = [
             UITab(title: "Home", image: UIImage(systemName: "house"), identifier: Identifier.home) { _ in
-                homeNavigation
+                home
             },
             UITab(title: "Explore", image: UIImage(systemName: "safari"), identifier: Identifier.explore) { _ in
-                hosted(ExploreView())
+                explore
             },
             UITab(title: "Library", image: UIImage(systemName: "rectangle.stack"), identifier: Identifier.library) { _ in
                 hosted(LibraryView())
@@ -62,6 +68,56 @@ final class AppTabBarController: UITabBarController {
     @available(*, unavailable)
     required init?(coder: NSCoder) {
         fatalError("init(coder:) is not used")
+    }
+
+    /// A UIKit tab: its navigation controller with `root`, and the screens
+    /// that were open on it restored.
+    private func navigation(
+        for identifier: String,
+        restoring restoration: SceneRestoration,
+        root: (VideoNavigator) -> UIViewController
+    ) -> UINavigationController {
+        let navigator = VideoNavigator(library: library)
+        navigator.makeScreen = { [weak self, weak navigator] route in
+            guard let self, let navigator else { return nil }
+            return self.screen(for: route, navigator: navigator)
+        }
+        let navigationController = VideoNavigationController(rootViewController: root(navigator))
+        navigationController.navigationBar.prefersLargeTitles = true
+        navigator.navigationController = navigationController
+        navigators[identifier] = navigator
+        for route in restoration.stacks[identifier] ?? [] {
+            navigator.show(route, animated: false)
+        }
+        return navigationController
+    }
+
+    /// The screens that routes other than videos show.
+    private func screen(for route: AppRoute, navigator: VideoNavigator) -> UIViewController? {
+        switch route {
+        case .video:
+            return nil
+        case let .topic(title):
+            let results = SearchResults()
+            results.search(title)
+            let controller = VideoListViewController(
+                title: title,
+                section: "topic-\(title)",
+                route: route,
+                library: library,
+                navigator: navigator,
+                emptyState: .search()
+            ) {
+                results.listState()
+            }
+            controller.onRefresh = {
+                await results.reload()
+            }
+            controller.navigationItem.largeTitleDisplayMode = .always
+            return controller
+        case .library:
+            return nil
+        }
     }
 
     /// The selected tab's screen decides the status bar style, so the dark

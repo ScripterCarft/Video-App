@@ -182,15 +182,7 @@ final class HomeViewController: UIViewController, UICollectionViewDelegate {
                     let section = HomeViewController.cardSection(
                         height: SpotlightCardConfiguration.height(forWidth: cardWidth, traits: environment.traitCollection)
                     )
-                    // The title header, like the shelves' (see `shelfSection`).
-                    let titleHeight = ceil(UIFont.preferredFont(forTextStyle: .title2, compatibleWith: environment.traitCollection).lineHeight)
-                    section.boundarySupplementaryItems = [
-                        NSCollectionLayoutBoundarySupplementaryItem(
-                            layoutSize: NSCollectionLayoutSize(widthDimension: .fractionalWidth(1), heightDimension: .absolute(titleHeight)),
-                            elementKind: UICollectionView.elementKindSectionHeader,
-                            alignment: .top
-                        )
-                    ]
+                    section.boundarySupplementaryItems = [VideoCells.header(traits: environment.traitCollection)]
                     section.supplementaryContentInsetsReference = .none
                     section.contentInsets.top = 14
                     return section

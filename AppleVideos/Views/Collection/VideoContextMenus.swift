@@ -211,15 +211,60 @@ enum VideoCells {
     /// A section title in plain UIKit text, title 2 bold, with only its own
     /// margins (not the cell's, which follow the screen edges). `topSpacing`
     /// is part of the header's fixed height (see `shelfSection`).
-    static func headerConfiguration(title: String, topSpacing: CGFloat) -> UIListContentConfiguration {
+    /// With a `subtitle`, a second line in subheadline secondary text, as
+    /// Explore's sections have.
+    static func headerConfiguration(title: String, subtitle: String? = nil, topSpacing: CGFloat) -> UIListContentConfiguration {
         var configuration = UIListContentConfiguration.cell()
         configuration.text = title
         configuration.textProperties.font = headerFont()
         configuration.textProperties.color = .label
         configuration.textProperties.numberOfLines = 1
+        if let subtitle {
+            configuration.secondaryText = subtitle
+            configuration.secondaryTextProperties.font = .preferredFont(forTextStyle: .subheadline)
+            configuration.secondaryTextProperties.color = .secondaryLabel
+            configuration.secondaryTextProperties.numberOfLines = 1
+            configuration.textToSecondaryTextVerticalPadding = headerSubtitleSpacing
+        }
         configuration.directionalLayoutMargins = NSDirectionalEdgeInsets(top: topSpacing, leading: 16, bottom: 0, trailing: 16)
         configuration.axesPreservingSuperviewLayoutMargins = []
         return configuration
+    }
+
+    private static let headerSubtitleSpacing: CGFloat = 3
+
+    /// The fixed height of a section title from `headerConfiguration`.
+    static func headerHeight(hasSubtitle: Bool, topSpacing: CGFloat, traits: UITraitCollection) -> CGFloat {
+        let title = ceil(UIFont.preferredFont(forTextStyle: .title2, compatibleWith: traits).lineHeight)
+        guard hasSubtitle else { return topSpacing + title }
+        let subtitle = ceil(UIFont.preferredFont(forTextStyle: .subheadline, compatibleWith: traits).lineHeight)
+        return topSpacing + title + headerSubtitleSpacing + subtitle
+    }
+
+    /// A section title as a header of fixed height (see `headerHeight`).
+    static func header(hasSubtitle: Bool = false, topSpacing: CGFloat = 0, traits: UITraitCollection) -> NSCollectionLayoutBoundarySupplementaryItem {
+        NSCollectionLayoutBoundarySupplementaryItem(
+            layoutSize: NSCollectionLayoutSize(
+                widthDimension: .fractionalWidth(1),
+                heightDimension: .absolute(headerHeight(hasSubtitle: hasSubtitle, topSpacing: topSpacing, traits: traits))
+            ),
+            elementKind: UICollectionView.elementKindSectionHeader,
+            alignment: .top
+        )
+    }
+
+    /// A vertical list of full-width video cards between the screen margins,
+    /// all of fixed size, like the shelves (see `shelfSection`). Cards show
+    /// `.search` artwork, sharp at full width.
+    static func listSection(containerWidth: CGFloat, traits: UITraitCollection) -> NSCollectionLayoutSection {
+        let cardHeight = VideoCardConfiguration.height(forWidth: containerWidth - 2 * 16, traits: traits)
+        let size = NSCollectionLayoutSize(widthDimension: .fractionalWidth(1), heightDimension: .absolute(cardHeight))
+        let group = NSCollectionLayoutGroup.vertical(layoutSize: size, subitems: [NSCollectionLayoutItem(layoutSize: size)])
+        let section = NSCollectionLayoutSection(group: group)
+        section.interGroupSpacing = 22
+        section.contentInsets = NSDirectionalEdgeInsets(top: 16, leading: 16, bottom: 16, trailing: 16)
+        section.supplementaryContentInsetsReference = .none
+        return section
     }
 
     private static func headerFont() -> UIFont {
@@ -250,18 +295,7 @@ enum VideoCells {
         section.interGroupSpacing = 14
         section.contentInsets = NSDirectionalEdgeInsets(top: 12, leading: 16, bottom: 0, trailing: 16)
         section.supplementaryContentInsetsReference = .none
-
-        let titleHeight = ceil(UIFont.preferredFont(forTextStyle: .title2, compatibleWith: traits).lineHeight)
-        section.boundarySupplementaryItems = [
-            NSCollectionLayoutBoundarySupplementaryItem(
-                layoutSize: NSCollectionLayoutSize(
-                    widthDimension: .fractionalWidth(1),
-                    heightDimension: .absolute(headerTopSpacing + titleHeight)
-                ),
-                elementKind: UICollectionView.elementKindSectionHeader,
-                alignment: .top
-            )
-        ]
+        section.boundarySupplementaryItems = [header(topSpacing: headerTopSpacing, traits: traits)]
         return section
     }
 }

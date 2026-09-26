@@ -9,6 +9,9 @@ import UIKit
 /// size never depends on where the cell is on screen.
 struct VideoCardConfiguration: UIContentConfiguration {
     var video: Video
+    /// The width the artwork is prepared for: `.compact` for shelves,
+    /// `.search` for full-width cards in lists.
+    var quality: ArtworkQuality = .compact
 
     func makeContentView() -> any UIView & UIContentView {
         VideoCardContentView(configuration: self)
@@ -180,18 +183,18 @@ final class VideoCardContentView: UIView, UIContentView {
             .filter { !$0.isEmpty }
             .joined(separator: ", ")
 
-        loadArtwork(for: video)
+        loadArtwork(for: video, quality: appliedConfiguration.quality)
     }
 
     /// Loads the artwork once per candidate list, from the shared loader and
     /// its cache; a reused cell cancels the load of its previous video.
-    private func loadArtwork(for video: Video) {
+    private func loadArtwork(for video: Video, quality: ArtworkQuality) {
         let candidates = video.artworkCandidates(lowData: NetworkConditions.shared.isConstrained)
         guard candidates != loadedCandidates else { return }
         loadedCandidates = candidates
         imageTask?.cancel()
 
-        let maxPixelWidth = ArtworkQuality.compact.displayWidth * max(traitCollection.displayScale, 1)
+        let maxPixelWidth = quality.displayWidth * max(traitCollection.displayScale, 1)
         if let cached = ArtworkLoader.cachedImage(for: candidates, maxPixelWidth: maxPixelWidth) {
             show(cached)
             return

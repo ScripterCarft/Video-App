@@ -24,7 +24,7 @@ enum DetailStage {
 /// the observable model and download state in `updateProperties()`, which
 /// UIKit tracks, so the shelf and the Download button update by themselves.
 /// The hero (title, Play, description) comes later.
-final class VideoDetailViewController: UIViewController, UICollectionViewDelegate {
+final class VideoDetailViewController: UIViewController, UICollectionViewDelegate, RoutedScreen {
     /// Opens a video from Up Next; the view to zoom from is looked up when
     /// the zoom needs it.
     typealias OpenAction = @MainActor (VideoRoute, @escaping @MainActor () -> UIView?) -> Void
@@ -44,6 +44,7 @@ final class VideoDetailViewController: UIViewController, UICollectionViewDelegat
     private static let shelfBackgroundKind = "detail-shelf-background"
 
     let route: VideoRoute
+    var appRoute: AppRoute? { .video(route) }
     private let library: LibraryStore
     private let downloads = DownloadManager.shared
     private let onOpen: OpenAction

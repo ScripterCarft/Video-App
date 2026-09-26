@@ -1,9 +1,10 @@
 # Apple Videos
 
-A native personal video app for iOS 27. It is being rebuilt screen by screen
-in modern UIKit: the app shell (scene delegate and tab bar controller), Home
-and the video detail screen are UIKit; Search, Library and Explore are still
-SwiftUI, hosted in the tab bar.
+A native personal video app for iOS 27, built in modern UIKit: a scene
+delegate, a tab bar controller with `UITab`s, and view controllers with
+compositional collection views, diffable data sources, content
+configurations and observation tracking (`updateProperties()`). Only the
+embedded web player fallback is SwiftUI.
 
 ## Naming
 
@@ -36,14 +37,13 @@ The YouTube and Innertube representations stay inside the service and resolver l
 - `Services/Downloads/`: offline downloads
 - `Views/Home/`: the UIKit Home screen (`HomeViewController`) and its Featured and Spotlight cards
 - `Views/Detail/`: the UIKit video detail screen and its loading model
-- `Views/Collection/`: the shared UIKit card (`VideoCardConfiguration`), shelf layout (`VideoCells`), context menus and share item
-- `Views/Navigation/`: `VideoNavigator`, which opens detail screens with UIKit's zoom transition
-- `Views/Screens/`: the SwiftUI Search, Library and Explore tabs and the SwiftUI shell around the detail screen
-- `Views/Components/`: SwiftUI views used by those tabs, including `VideoLink`
-- `Views/Player/`: the embedded YouTube fallback
+- `Views/Collection/`: the shared card (`VideoCardConfiguration`), shelf and list layouts (`VideoCells`), the video list screen (`VideoListViewController`), search results, the Play button configuration, context menus and share item
+- `Views/Navigation/`: routes (`VideoRoute`, `AppRoute`) and `VideoNavigator`, which pushes screens and opens videos with UIKit's zoom transition
+- `Views/Screens/`: the Explore, Search and Library tabs
+- `Views/Player/`: the embedded YouTube fallback (SwiftUI)
 - `Support/`: small Foundation extensions
 
-Navigation carries only a video's ID (`VideoRoute`); the destination reads the video from `VideoCatalog`. The Home tab is a UIKit navigation controller: `VideoNavigator` pushes `VideoDetailViewController` with `preferredTransition = .zoom` from the tapped card's artwork. After a relaunch the scene restores the selected tab and the open screens through its state restoration activity. The SwiftUI tabs each own one `NavigationStack` and register the video detail destination once with `videoDestination(transition:)` on its root; links use `VideoLink`, which scopes the zoom-transition ID to the section a video was tapped in. Do not add further `navigationDestination(for:)` declarations for videos inside pushed screens.
+Navigation carries only a video's ID (`VideoRoute`); the detail screen reads the video from `VideoCatalog`. Every tab is a UIKit navigation controller with its own `VideoNavigator`: it pushes `VideoDetailViewController` with `preferredTransition = .zoom` from the tapped card's artwork, and other screens (a topic's results, a Library list) from their `AppRoute`. After a relaunch the scene restores the selected tab and each tab's screens through its state restoration activity.
 
 Artwork comes from `ArtworkLoader`: shared downloads, HTTP caching, downsampling to the drawn size and an in-memory cache. A video keeps the best 16:9 thumbnail YouTube lists; a 1280 image, once known, is never replaced by a smaller one (Up Next lists only small ones), and the detail screen loads the 1280 image as soon as the video's details list it.
 

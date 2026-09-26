@@ -92,8 +92,8 @@ what is intentional, what was measured, and what is still open.
   publish the lists other screens read as plain `[Video]` values, reloaded
   synchronously after every save of the shared context
   (`ModelContext.didSave`) and reassigned only when they changed. A record
-  is deleted as soon as nothing needs it (`deleteIfUnused`). SwiftUI
-  library screens use `@Query`. Earlier UserDefaults data and positions on
+  is deleted as soon as nothing needs it (`deleteIfUnused`). The Library's
+  lists read these values too; nothing uses `@Query`. Earlier UserDefaults data and positions on
   video records are migrated once at launch. SwiftData's `ResultsObserver`
   was tried and rejected; see Measured findings.
 - `Video` (value type for network results and routes) and `StoredVideo`
@@ -158,18 +158,19 @@ what is intentional, what was measured, and what is still open.
   video off (the latter two also clear its progress). Launch refreshes the
   first 8 Watchlist videos; Saved and History refresh when opened, once
   per video per launch, keeping stored data until fresh data replaces it.
-- Library lists (Saved, Downloaded, History) are a plain `List` so
-  removals from a card's context menu animate; with ScrollView +
-  LazyVStack neighbors jumped under the returning menu preview. Rejected:
-  delaying the change 0.4 s (timing hack, reverted).
+- Removals from a card's context menu are applied after the menu has closed
+  (`VideoContextMenus`, `willEndContextMenuInteraction`), so the diffable
+  data source animates the card out cleanly. (In SwiftUI, a ScrollView with
+  a lazy stack let neighbors jump under the returning preview; delaying the
+  change 0.4 s was a rejected timing hack.)
 - **Context menu** (user's layout): Download, Save/Unsave and Share side by
   side on top (`ControlGroup`); then Add to Watchlist (plus.circle) /
   Remove from Watchlist (minus.circle), Mark as Watched
   (rectangle.badge.checkmark, in Watchlist), Remove from Recently Watched
   (trash, in History, hidden while downloaded; the Library still says
   "History"). Only when downloaded: a separate, red Remove Download
-  (trash), so there is never more than one trash item. UIKit screens use
-  `VideoContextMenus`, SwiftUI screens `VideoLibraryActions`.
+  (trash), so there is never more than one trash item. Every screen uses
+  `VideoContextMenus`.
 - **Downloads** (`Services/Downloads`, user's design, personal use; App
   Store guideline 5.2.3 forbids them): `DownloadManager` uses background
   `AVAssetDownloadURLSession`s (Wi-Fi only / with mobile data), pins the
@@ -188,25 +189,30 @@ what is intentional, what was measured, and what is still open.
   custom gray popover, confirmation dialogs). History Remove All keeps
   downloaded videos.
 
-### Screens (UIKit rebuild in progress)
+### Screens (all UIKit)
 
-- **App shell (UIKit since c653c39):** `AppDelegate` is the entry point and
-  does the launch work; `SceneDelegate` builds the window with
-  `AppTabBarController` (`UITab`s: Home, Explore, Library, Search; Search
-  is a normal tab in the bar at the user's request). Explore, Library and
-  Search are SwiftUI in `UIHostingController`s (with the library, the
-  download manager, the model container and `sceneRestoration` in their
-  environment) until they are rebuilt. The tab bar controller shows the
-  download failure alert. Restoration: `@SceneStorage` does not work in a
-  UIKit scene, so `SceneRestoration` saves the selected tab, Home's open
-  detail screens and the SwiftUI tabs' paths (`RestorableNavigationStack`)
-  in the scene's `stateRestorationActivity` (type listed in
-  `NSUserActivityTypes`).
-- Home (`HomeViewController`) and the detail screen
-  (`VideoDetailViewController`) are UIKit screens in a
-  `VideoNavigationController` (the Home tab); videos open through
-  `VideoNavigator` with UIKit's zoom (`preferredTransition = .zoom`) from
-  the card's artwork. Home owns the `PlaybackStarter` for the featured
+- **App shell (c653c39):** `AppDelegate` is the entry point and does the
+  launch work; `SceneDelegate` builds the window with `AppTabBarController`
+  (`UITab`s: Home, Explore, Library, Search; Search is a normal tab in the
+  bar at the user's request). Each tab is a `VideoNavigationController`
+  with its own `VideoNavigator`; screens on a stack are `AppRoute`s
+  (video, topic, library list) built by the tab bar controller. The tab
+  bar controller also shows the download failure alert. Restoration:
+  `@SceneStorage` does not work in a UIKit scene, so `SceneRestoration`
+  saves the selected tab and each tab's routes in the scene's
+  `stateRestorationActivity` (type listed in `NSUserActivityTypes`). The
+  only SwiftUI left is the embedded web player fallback.
+- Screens: `HomeViewController`, `ExploreViewController` (topic tiles, two
+  columns, and Trending Now), `SearchViewController` (a `UISearchController`
+  with the system's search suggestions over the shared list),
+  `LibraryViewController` (inset grouped list with colored symbol tiles and
+  counts), the shared `VideoListViewController` (full-width cards with
+  `.search` artwork: search and topic results via `SearchResults`, Saved,
+  Downloaded, History; `UIContentUnavailableConfiguration` for loading,
+  empty and error states; Remove All as a system menu) and
+  `VideoDetailViewController`. Videos open through `VideoNavigator` with
+  UIKit's zoom (`preferredTransition = .zoom`) from the card's artwork.
+  Home owns the `PlaybackStarter` for the featured
   Play button and presents its outcome itself: the embedded fallback
   (`EmbeddedPlayerScreen.controller`) and the Use Mobile Data alert;
   leaving Home (another tab or a detail screen) cancels a start that is
@@ -234,15 +240,11 @@ what is intentional, what was measured, and what is still open.
   bars and home indicator wherever the cell lies, which squeezed cards and
   slid titles over them; with estimated sizes the layout recursed in
   `_updateVisibleCellsNow` until an assertion crashed the app (iOS 27).
-  Home follows it completely since e172af5. Cells are reused across items,
-  so each sets its own background configuration.
-- Search, Library and Explore are SwiftUI until they are rebuilt; they show
-  the detail controller in a thin SwiftUI shell (`VideoDetailView`) with
-  their own toolbar and zoom. Their navigation is value-based in every
-  `NavigationStack`: `VideoLink` / `videoDestination(transition:)` for
-  videos, route enums for library and Explore topics. Never mix
-  view-destination `NavigationLink`s with value-based ones (that caused
-  videos to pop right after opening).
+  Card screens follow it completely. The one exception is the Library's
+  three-row entry list, Apple's `UICollectionLayoutListConfiguration`
+  with `UIListContentConfiguration` (self-sizing by design; no SwiftUI).
+  Cells are reused across items, so each sets its own background
+  configuration.
 - **Detail loading** (user's design): one task loads the details first;
   the description and info line are placeholders until then and everything
   appears in one animation; then Up Next, then the stream is prefetched
@@ -361,19 +363,11 @@ before building):
    a restored detail screen loads an unknown video itself. Still open:
    prefer per-screen bar appearance over the detail screen changing the
    shared bar's tint in `viewWillAppear` (Home resets it today).
-3. **Search, Library and Explore in UIKit:** collection views with the same
-   card and menu; Library lists with `UICollectionLayoutListConfiguration`
-   and its swipe actions; Search as a normal tab in the bar, not separated,
-   with recent searches; the Library's entry screen stays the compact list
-   with icons. They open videos through their own `VideoNavigator`s and
-   restore through `SceneRestoration`. Afterwards remove the SwiftUI
-   leftovers: `VideoCard`, `VideoArtwork`, `SectionHeader`, `VideoLink`,
-   `RestorableNavigationStack` and the `sceneRestoration` environment
-   value, the `VideoDetailView` shell, `DownloadControls` (with
-   `DownloadToolbarButton`), `DownloadProgressRing`, `VideoLibraryActions`,
-   and the hosting in `AppTabBarController`. (Removed already:
-   `PlayButtonContent`, `VideoHeroArtwork`, the SwiftUI Home cards,
-   `HomeTab`, `RootTabView`, `AppleVideosApp`.)
+3. **Search, Library and Explore in UIKit** (done: d3874d0, 83639e1,
+   abd6a71, leftovers removed in 72dd286; untested on device). Same look
+   and behavior as the SwiftUI versions. Possible later, each only when the
+   user asks: recent searches, swipe actions in the Library's lists, the
+   embedded web player as a UIKit controller.
 4. **The detail hero** (build it only when the user says so). Until then
    the UIKit detail screen has no Play button, title or description; only
    Home's featured video can be played from a Play button. Reference is
@@ -388,8 +382,8 @@ before building):
    a sheet; the info line (duration · views · date, then badges such as HD
    and CC). Until the details load, the description and info line are
    placeholders; then everything appears in one animation (UIKit:
-   `UIView.animate` with `.flushUpdates`; `VideoDetailModel` still uses
-   SwiftUI's `withAnimation`, which does nothing on the UIKit screen).
+   `UIView.animate` with `.flushUpdates`; `VideoDetailModel` changes all
+   of it in one step).
    Behind the text a dark gray gradient for legibility: a long even area
    and a short, quick fade above about the Play button, not over the image
    itself, ending seamlessly in the page's black at the artwork's edge; a

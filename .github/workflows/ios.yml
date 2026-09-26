@@ -61,6 +61,14 @@ jobs:
             COMPILER_INDEX_STORE_ENABLE=NO \
             build | tee xcodebuild-device.log
 
+      # Surface compiler errors as annotations so they are visible without
+      # downloading the full build log.
+      - name: Report compiler errors
+        if: failure()
+        run: |
+          grep -hE "error:" xcodebuild-simulator.log xcodebuild-device.log 2>/dev/null \
+            | sort -u | head -20 | sed 's/^/::error::/' || true
+
       - name: Package unsigned IPA
         if: success()
         run: |

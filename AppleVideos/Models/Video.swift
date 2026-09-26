@@ -4,6 +4,22 @@ enum ArtworkQuality: Sendable {
     case compact
     case search
     case hero
+
+    /// The widest the artwork is drawn, in points. Images are downsampled to
+    /// this width times the display scale.
+    var displayWidth: CGFloat {
+        switch self {
+        case .compact: 272
+        case .search, .hero: 440
+        }
+    }
+}
+
+/// One artwork URL to try. Large variants are optional downloads: they are
+/// skipped in Low Data Mode and requested without constrained-network access.
+struct ArtworkCandidate: Hashable, Sendable {
+    let url: URL
+    let isLarge: Bool
 }
 
 struct Video: Identifiable, Hashable, Codable, Sendable {
@@ -17,7 +33,13 @@ struct Video: Identifiable, Hashable, Codable, Sendable {
     let channelName: String
     let thumbnailURL: URL?
     let duration: String?
+    /// A label from the source, such as YouTube's "3 days ago", or an editorial
+    /// label for curated videos. Used when `publishedAt` is unknown.
     let publishedText: String?
+    /// When the video was published. Stored as a date so the relative label
+    /// is formatted at display time and never goes stale. Optional so that
+    /// libraries saved before this field existed still decode.
+    let publishedAt: Date?
     let viewCountText: String?
     let descriptionText: String?
     let badges: [String]?
@@ -29,28 +51,66 @@ struct Video: Identifiable, Hashable, Codable, Sendable {
         return URL(string: "https://www.youtube.com/watch?v=\(id)")
     }
 
-    func artworkURLs(for quality: ArtworkQuality) -> [URL] {
-        guard source == .youtube else { return [thumbnailURL].compactMap { $0 } }
+    /// YouTube's 1280×720 thumbnail names. They exist only for some videos.
+    static let largeThumbnailNames: Set<String> = ["hq720", "maxresdefault"]
 
-        let medium = URL(string: "https://i.ytimg.com/vi/\(id)/mqdefault.jpg")
-        let maximum = URL(string: "https://i.ytimg.com/vi/\(id)/maxresdefault.jpg")
+    /// Whether `url` is one of YouTube's 1280×720 thumbnails.
+    static func isLargeThumbnail(_ url: URL?) -> Bool {
+        guard let url else { return false }
+        return largeThumbnailNames.contains(url.deletingPathExtension().lastPathComponent)
+    }
 
-        let candidates: [URL?]
-        switch quality {
-        case .compact:
-            candidates = [medium, thumbnailURL]
-        case .search:
-            candidates = [thumbnailURL, medium]
-        case .hero:
-            candidates = [maximum, thumbnailURL, medium]
+    /// Artwork URLs to try in order, sharpest available first.
+    ///
+    /// YouTube's 16:9 sizes are 320×180 (`mqdefault`, always there), a listed
+    /// thumbnail and 1280×720 (`hq720`, `maxresdefault`). Search results and
+    /// details list a 1280 size exactly when it exists, and every video keeps
+    /// the best one listed as `thumbnailURL`. So the first request normally
+    /// succeeds: the 1280 file when it exists, otherwise the listed image.
+    /// Nothing is requested just to find out it is missing. The later entries
+    /// only matter if a request fails. In Low Data Mode 1280 sizes are left out.
+    func artworkCandidates(lowData: Bool) -> [ArtworkCandidate] {
+        guard source == .youtube else {
+            return [thumbnailURL].compactMap { $0 }.map { ArtworkCandidate(url: $0, isLarge: false) }
+        }
+
+        func image(_ name: String) -> ArtworkCandidate? {
+            URL(string: "https://i.ytimg.com/vi/\(id)/\(name).jpg").map {
+                ArtworkCandidate(url: $0, isLarge: Self.largeThumbnailNames.contains(name))
+            }
+        }
+        let small = image("mqdefault")
+
+        let candidates: [ArtworkCandidate?]
+        if let thumbnailURL {
+            let listedName = thumbnailURL.deletingPathExtension().lastPathComponent
+            // The full-size file of a listed 1280 thumbnail (listed URLs are
+            // often cropped smaller); nil when YouTube has no 1280 size.
+            let large = Self.largeThumbnailNames.contains(listedName) ? image(listedName) : nil
+            let listed = ArtworkCandidate(url: thumbnailURL, isLarge: false)
+            candidates = [large, listed, small]
+        } else {
+            // Without listed sizes, only the size that always exists.
+            candidates = [small]
         }
 
         var seen = Set<URL>()
-        return candidates.compactMap { $0 }.filter { seen.insert($0).inserted }
+        return candidates
+            .compactMap { $0 }
+            .filter { !(lowData && $0.isLarge) }
+            .filter { seen.insert($0.url).inserted }
+    }
+
+    /// "3 days ago" computed now from `publishedAt`, else the stored label.
+    var publishedLabel: String? {
+        if let publishedAt {
+            return publishedAt.formatted(.relative(presentation: .named))
+        }
+        return publishedText
     }
 
     var metadataLine: String {
-        [viewCountText, publishedText]
+        [viewCountText, publishedLabel]
             .compactMap { $0 }
             .filter { !$0.isEmpty }
             .joined(separator: " · ")
@@ -65,7 +125,10 @@ struct Video: Identifiable, Hashable, Codable, Sendable {
             let minutes = values[1]
             return minutes == 0 ? "\(hours)h" : "\(hours)h \(minutes)m"
         case 2:
-            return "\(values[0])m"
+            let minutes = values[0]
+            let seconds = values[1]
+            // Videos under a minute would otherwise read "0m".
+            return minutes == 0 ? "\(seconds)s" : "\(minutes)m"
         default:
             return duration
         }
@@ -78,9 +141,10 @@ extension Video {
             id: "UebSfjmQNvs",
             title: "Do You Have a Free Will?",
             channel: "Kurzgesagt – In a Nutshell",
-            duration: "12:44",
+            duration: "12:18",
             published: "Featured",
             views: "Science & ideas",
+            thumbnailURL: URL(string: "https://i.ytimg.com/vi/UebSfjmQNvs/hq720.jpg"),
             description: "What if every decision you make is the inevitable result of everything that came before? Kurzgesagt explores one of philosophy’s oldest questions through science and animation.",
             badges: ["HD", "CC"]
         ),
@@ -91,6 +155,7 @@ extension Video {
             duration: "22:08",
             published: "Editor’s pick",
             views: "Mathematics",
+            thumbnailURL: URL(string: "https://i.ytimg.com/vi/d6iQrh2TK98/mqdefault.jpg"),
             description: "Veritasium follows a surprising mathematical constant through geometry, probability, and the patterns hidden in the world around us.",
             badges: ["HD", "CC"]
         ),
@@ -101,6 +166,7 @@ extension Video {
             duration: "7:55",
             published: "Essential",
             views: "Animated story",
+            thumbnailURL: URL(string: "https://i.ytimg.com/vi/h6fcK_fRYaI/hq720.jpg"),
             description: "A short animated story about life, identity, and the connections between people, adapted by Kurzgesagt.",
             badges: ["HD", "CC"]
         ),
@@ -111,6 +177,7 @@ extension Video {
             duration: "22:09",
             published: "Staff pick",
             views: "Mathematics",
+            thumbnailURL: URL(string: "https://i.ytimg.com/vi/pTn6Ewhb27k/hq720.jpg"),
             description: "A deceptively simple mathematical problem leads to patterns that have resisted a complete explanation for decades.",
             badges: ["HD", "CC"]
         )
@@ -122,6 +189,7 @@ extension Video {
         channel: String,
         duration: String? = nil,
         published: String? = nil,
+        publishedAt: Date? = nil,
         views: String? = nil,
         thumbnailURL: URL? = nil,
         description: String? = nil,
@@ -134,23 +202,12 @@ extension Video {
             thumbnailURL: thumbnailURL,
             duration: duration,
             publishedText: published,
+            publishedAt: publishedAt,
             viewCountText: views,
             descriptionText: description,
             badges: badges,
             source: .youtube,
             playbackURL: nil
         )
-    }
-}
-
-struct VideoPlaylist: Identifiable, Hashable, Codable, Sendable {
-    let id: UUID
-    var name: String
-    var videoIDs: [String]
-
-    init(id: UUID = UUID(), name: String, videoIDs: [String] = []) {
-        self.id = id
-        self.name = name
-        self.videoIDs = videoIDs
     }
 }

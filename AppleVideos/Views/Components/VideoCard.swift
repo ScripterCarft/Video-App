@@ -1,20 +1,32 @@
 import SwiftUI
 
+/// The SwiftUI video card of the screens that are still SwiftUI (Search,
+/// Library, Explore), with its own context menu. Collection views show the
+/// UIKit card, `VideoCardConfiguration`.
 struct VideoCard: View {
     let video: Video
-    var compact = false
 
     @Environment(LibraryStore.self) private var library
+    @Environment(DownloadManager.self) private var downloads
     @State private var feedback = 0
 
     var body: some View {
+        card
+            .contextMenu {
+                menu
+            } preview: {
+                VideoArtwork(video: video, cornerRadius: 18, quality: .search)
+                    .frame(width: 320)
+                    .padding()
+            }
+            .sensoryFeedback(.selection, trigger: feedback)
+            .accessibilityElement(children: .combine)
+            .accessibilityHint("Opens video details")
+    }
+
+    private var card: some View {
         VStack(alignment: .leading, spacing: 10) {
-            VideoArtwork(
-                video: video,
-                cornerRadius: 14,
-                quality: compact ? .compact : .search
-            )
-            .frame(height: compact ? 153 : nil)
+            VideoArtwork(video: video, cornerRadius: 14, quality: .search)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(video.title)
@@ -22,9 +34,7 @@ struct VideoCard: View {
                     .foregroundStyle(.primary)
                     .lineLimit(2)
                     .truncationMode(.tail)
-                    .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .frame(minHeight: 22, alignment: .topLeading)
 
                 Text(video.channelName)
                     .font(.subheadline)
@@ -42,24 +52,27 @@ struct VideoCard: View {
         .clipped()
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .contentShape(Rectangle())
-        .contextMenu {
+    }
+
+    @ViewBuilder
+    private var menu: some View {
+        // A control group in a menu shows its buttons side by side.
+        ControlGroup {
+            DownloadMenuButton(video: video) {
+                feedback += 1
+            }
+
             Button {
-                library.toggleSaved(video)
+                withAnimation {
+                    library.toggleSaved(video)
+                }
                 feedback += 1
             } label: {
                 Label(
-                    library.isSaved(video) ? "Remove from Saved" : "Save Video",
+                    // Short titles fit the side-by-side buttons, like Podcasts' "Unsave".
+                    library.isSaved(video) ? "Unsave" : "Save",
                     systemImage: library.isSaved(video) ? "bookmark.slash" : "bookmark"
                 )
-            }
-
-            Menu("Add to Playlist", systemImage: "text.badge.plus") {
-                ForEach(library.playlists) { playlist in
-                    Button(playlist.name) {
-                        library.add(video, to: playlist.id)
-                        feedback += 1
-                    }
-                }
             }
 
             if let url = video.youtubeURL {
@@ -67,13 +80,23 @@ struct VideoCard: View {
                     Label("Share", systemImage: "square.and.arrow.up")
                 }
             }
-        } preview: {
-            VideoArtwork(video: video, cornerRadius: 18, quality: .search)
-                .frame(width: 320)
-                .padding()
         }
-        .sensoryFeedback(.selection, trigger: feedback)
-        .accessibilityElement(children: .combine)
-        .accessibilityHint("Opens video details")
+
+        Section {
+            VideoLibraryActions(video: video) {
+                feedback += 1
+            }
+        }
+
+        if downloads.isDownloaded(video) {
+            Section {
+                Button("Remove Download", systemImage: "trash", role: .destructive) {
+                    withAnimation {
+                        downloads.remove(video)
+                    }
+                    feedback += 1
+                }
+            }
+        }
     }
 }

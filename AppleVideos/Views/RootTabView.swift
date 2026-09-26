@@ -13,7 +13,7 @@ struct RootTabView: View {
     var body: some View {
         TabView(selection: $selection) {
             Tab("Home", systemImage: "house", value: .home) {
-                HomeView()
+                HomeTab()
             }
 
             Tab("Explore", systemImage: "safari", value: .explore) {

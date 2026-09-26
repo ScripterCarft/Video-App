@@ -8,6 +8,7 @@ actor YouTubeService {
         let channelName: String?
         let duration: String?
         let publishedText: String?
+        let publishedAt: Date?
         let viewCountText: String?
         let thumbnailURL: URL?
         let description: String?
@@ -28,15 +29,9 @@ actor YouTubeService {
         }
     }
 
-    private struct WebConfiguration: Sendable {
-        let apiKey: String
-        let clientVersion: String
-    }
-
-    private var cachedConfiguration: WebConfiguration?
-    private var configurationTask: Task<WebConfiguration, Error>?
     private var cachedSearches: [String: [Video]] = [:]
     private var cachedDetails: [String: VideoDetails] = [:]
+    private var cachedRelated: [String: [Video]] = [:]
 
     func search(_ query: String, bypassingCache: Bool = false) async throws -> [Video] {
         let normalized = query.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -44,7 +39,7 @@ actor YouTubeService {
         let cacheKey = normalized.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
         if !bypassingCache, let cached = cachedSearches[cacheKey] { return cached }
 
-        let configuration = try await webConfiguration()
+        let configuration = try await YouTubeWebConfiguration.shared.values()
         guard let endpoint = URL(string: "https://www.youtube.com/youtubei/v1/search?key=\(configuration.apiKey)&prettyPrint=false") else {
             throw SearchError.configurationUnavailable
         }
@@ -68,7 +63,7 @@ actor YouTubeService {
 
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse, 200..<300 ~= http.statusCode else {
-            cachedConfiguration = nil
+            await YouTubeWebConfiguration.shared.invalidate()
             throw SearchError.invalidResponse
         }
 
@@ -88,7 +83,7 @@ actor YouTubeService {
     func details(for videoID: String) async throws -> VideoDetails {
         if let cached = cachedDetails[videoID] { return cached }
 
-        let configuration = try await webConfiguration()
+        let configuration = try await YouTubeWebConfiguration.shared.values()
         guard let endpoint = URL(string: "https://www.youtube.com/youtubei/v1/player?key=\(configuration.apiKey)&prettyPrint=false") else {
             throw SearchError.configurationUnavailable
         }
@@ -114,7 +109,7 @@ actor YouTubeService {
         guard let http = response as? HTTPURLResponse, 200..<300 ~= http.statusCode,
               let root = try JSONSerialization.jsonObject(with: data) as? [String: Any]
         else {
-            cachedConfiguration = nil
+            await YouTubeWebConfiguration.shared.invalidate()
             throw SearchError.invalidResponse
         }
 
@@ -129,6 +124,8 @@ actor YouTubeService {
                 .flatMap(Self.durationText),
             publishedText: (playerMicroformat?["publishDate"] as? String)
                 .flatMap(Self.relativePublishedText),
+            publishedAt: (playerMicroformat?["publishDate"] as? String)
+                .flatMap(Self.publishDate),
             viewCountText: (videoDetails?["viewCount"] as? String)
                 .flatMap(Self.viewCountText),
             thumbnailURL: Self.thumbnailURL(from: videoDetails?["thumbnail"]),
@@ -137,6 +134,104 @@ actor YouTubeService {
         )
         cachedDetails[videoID] = details
         return details
+    }
+
+    /// The videos YouTube suggests next to `videoID` (its "Up next" list), from
+    /// the WEB `next` request its watch page makes. Verified with real
+    /// responses: the list arrives as `lockupViewModel` items.
+    func relatedVideos(for videoID: String) async throws -> [Video] {
+        if let cached = cachedRelated[videoID] { return cached }
+
+        let configuration = try await YouTubeWebConfiguration.shared.values()
+        guard let endpoint = URL(string: "https://www.youtube.com/youtubei/v1/next?key=\(configuration.apiKey)&prettyPrint=false") else {
+            throw SearchError.configurationUnavailable
+        }
+
+        var request = URLRequest(url: endpoint)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("https://www.youtube.com", forHTTPHeaderField: "Origin")
+        request.setValue("https://www.youtube.com/", forHTTPHeaderField: "Referer")
+        request.httpBody = try JSONSerialization.data(withJSONObject: [
+            "context": [
+                "client": [
+                    "clientName": "WEB",
+                    "clientVersion": configuration.clientVersion,
+                    "hl": Locale.current.language.languageCode?.identifier ?? "en",
+                    "gl": Locale.current.region?.identifier ?? "US"
+                ]
+            ],
+            "videoId": videoID
+        ])
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse, 200..<300 ~= http.statusCode,
+              let root = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else {
+            await YouTubeWebConfiguration.shared.invalidate()
+            throw SearchError.invalidResponse
+        }
+
+        let watchNext = (root["contents"] as? [String: Any])?["twoColumnWatchNextResults"] as? [String: Any]
+        let secondary = (watchNext?["secondaryResults"] as? [String: Any])?["secondaryResults"] as? [String: Any]
+        let results = secondary?["results"] as? [[String: Any]] ?? []
+        var seen: Set<String> = [videoID]
+        let videos = results
+            .compactMap { $0["lockupViewModel"] as? [String: Any] }
+            .compactMap(Self.video(fromLockup:))
+            .filter { seen.insert($0.id).inserted }
+        cachedRelated[videoID] = videos
+        return videos
+    }
+
+    /// A video from YouTube's `lockupViewModel`: title, a channel row and a
+    /// row with views and age ("4.8M", "1y ago"), the duration badge and the
+    /// listed thumbnail.
+    private static func video(fromLockup lockup: [String: Any]) -> Video? {
+        guard lockup["contentType"] as? String == "LOCKUP_CONTENT_TYPE_VIDEO",
+              let id = lockup["contentId"] as? String,
+              let metadata = (lockup["metadata"] as? [String: Any])?["lockupMetadataViewModel"] as? [String: Any],
+              let title = (metadata["title"] as? [String: Any])?["content"] as? String
+        else { return nil }
+
+        let content = (metadata["metadata"] as? [String: Any])?["contentMetadataViewModel"] as? [String: Any]
+        let rows = content?["metadataRows"] as? [[String: Any]] ?? []
+        let rowParts: [[String]] = rows.map { row in
+            ((row["metadataParts"] as? [[String: Any]]) ?? []).compactMap { part in
+                ((part["text"] as? [String: Any])?["content"] as? String)?.collapsedWhitespace
+            }
+            .filter { !$0.isEmpty }
+        }
+        let details = rowParts.dropFirst().flatMap { $0 }
+        let published = details.first { $0.localizedCaseInsensitiveContains("ago") }
+        let views = details.first { $0 != published && $0.first?.isNumber == true }
+
+        let thumbnail = (lockup["contentImage"] as? [String: Any])?["thumbnailViewModel"] as? [String: Any]
+        let sources = ((thumbnail?["image"] as? [String: Any])?["sources"] as? [[String: Any]]) ?? []
+        let thumbnailURL = (sources.last?["url"] as? String)
+            .flatMap { URLComponents(string: $0) }
+            .map { components -> URLComponents in
+                var components = components
+                components.query = nil
+                return components
+            }?
+            .url
+        let badgeTexts = ((thumbnail?["overlays"] as? [[String: Any]]) ?? []).flatMap { overlay -> [String] in
+            let badges = ((overlay["thumbnailBottomOverlayViewModel"] as? [String: Any])?["badges"] as? [[String: Any]]) ?? []
+            return badges.compactMap { ($0["thumbnailBadgeViewModel"] as? [String: Any])?["text"] as? String }
+        }
+        let duration = badgeTexts.first { $0.contains(":") && $0.allSatisfy { $0.isNumber || $0 == ":" } }
+
+        return .youtube(
+            id: id,
+            title: title,
+            channel: rowParts.first?.first ?? "YouTube",
+            duration: duration,
+            published: published,
+            publishedAt: published.flatMap(approximatePublishDate),
+            views: views.map { "\($0) views" },
+            thumbnailURL: thumbnailURL
+        )
     }
 
     func refreshedVideo(_ video: Video) async throws -> Video {
@@ -149,56 +244,12 @@ actor YouTubeService {
             channel: details.channelName ?? video.channelName,
             duration: details.duration ?? video.duration,
             published: details.publishedText ?? video.publishedText,
+            publishedAt: details.publishedAt ?? video.publishedAt,
             views: details.viewCountText ?? video.viewCountText,
-            thumbnailURL: details.thumbnailURL ?? video.thumbnailURL,
+            thumbnailURL: Self.preferredThumbnail(stored: video.thumbnailURL, fresh: details.thumbnailURL),
             description: details.description ?? video.descriptionText,
             badges: details.badges.isEmpty ? video.badges : details.badges
         )
-    }
-
-    private func webConfiguration() async throws -> WebConfiguration {
-        if let cachedConfiguration { return cachedConfiguration }
-        if let configurationTask { return try await configurationTask.value }
-
-        let task = Task { try await Self.fetchWebConfiguration() }
-        configurationTask = task
-
-        do {
-            let configuration = try await task.value
-            cachedConfiguration = configuration
-            configurationTask = nil
-            return configuration
-        } catch {
-            configurationTask = nil
-            throw error
-        }
-    }
-
-    private static func fetchWebConfiguration() async throws -> WebConfiguration {
-        var request = URLRequest(url: URL(string: "https://www.youtube.com")!)
-        request.setValue(
-            "Mozilla/5.0 (iPhone; CPU iPhone OS 27_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148",
-            forHTTPHeaderField: "User-Agent"
-        )
-        let (data, response) = try await URLSession.shared.data(for: request)
-        guard let http = response as? HTTPURLResponse,
-              200..<300 ~= http.statusCode,
-              let html = String(data: data, encoding: .utf8),
-              let apiKey = capture(#"\"INNERTUBE_API_KEY\":\"([^\"]+)\""#, in: html),
-              let clientVersion = capture(#"\"INNERTUBE_CLIENT_VERSION\":\"([^\"]+)\""#, in: html)
-        else {
-            throw SearchError.configurationUnavailable
-        }
-
-        return WebConfiguration(apiKey: apiKey, clientVersion: clientVersion)
-    }
-
-    private static func capture(_ pattern: String, in text: String) -> String? {
-        guard let regex = try? NSRegularExpression(pattern: pattern),
-              let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
-              let range = Range(match.range(at: 1), in: text)
-        else { return nil }
-        return String(text[range])
     }
 
     private static func collectVideoRenderers(in value: Any) -> [[String: Any]] {
@@ -227,13 +278,15 @@ actor YouTubeService {
             ?? text(from: renderer["longBylineText"])
             ?? "YouTube"
         let thumbnailURL = thumbnailURL(from: renderer["thumbnail"])
+        let publishedText = text(from: renderer["publishedTimeText"])
 
         return .youtube(
             id: id,
             title: title,
             channel: channel,
             duration: text(from: renderer["lengthText"]),
-            published: text(from: renderer["publishedTimeText"]),
+            published: publishedText,
+            publishedAt: publishedText.flatMap(approximatePublishDate),
             views: text(from: renderer["viewCountText"]),
             thumbnailURL: thumbnailURL,
             description: text(from: renderer["descriptionSnippet"]),
@@ -396,23 +449,60 @@ actor YouTubeService {
     }
 
     private static func relativePublishedText(from value: String) -> String? {
-        let components = value.split(separator: "-").compactMap { Int($0) }
-        guard components.count == 3,
-              let date = Calendar(identifier: .gregorian).date(
-                from: DateComponents(
-                    timeZone: TimeZone(secondsFromGMT: 0),
-                    year: components[0],
-                    month: components[1],
-                    day: components[2]
-                )
-              )
-        else {
-            return nil
-        }
+        guard let date = publishDate(from: value) else { return nil }
 
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .full
         return formatter.localizedString(for: date, relativeTo: Date())
+    }
+
+    /// Search results only say "3 days ago" (or "Streamed 3 days ago"). Turn
+    /// that into an approximate date so the label keeps advancing; opening the
+    /// video's detail screen replaces it with the exact publish date. Returns
+    /// nil for other phrasings, which then keep their text.
+    private static func approximatePublishDate(from text: String) -> Date? {
+        // Long ("3 days ago") and compact ("3d ago", "2mo ago") forms; the
+        // compact one comes with YouTube's newer lockup items.
+        guard let regex = try? NSRegularExpression(
+                pattern: #"(\d+)\s*(second|minute|hour|day|week|month|year|mo|min|s|m|h|d|w|y)s?\s+ago"#,
+                options: .caseInsensitive
+              ),
+              let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+              let valueRange = Range(match.range(at: 1), in: text),
+              let unitRange = Range(match.range(at: 2), in: text),
+              let value = Int(text[valueRange])
+        else { return nil }
+
+        let component: Calendar.Component
+        switch text[unitRange].lowercased() {
+        case "second", "s": component = .second
+        case "minute", "min", "m": component = .minute
+        case "hour", "h": component = .hour
+        case "day", "d": component = .day
+        case "week", "w": component = .weekOfYear
+        case "month", "mo": component = .month
+        default: component = .year
+        }
+        return Calendar.current.date(byAdding: component, value: -value, to: .now)
+    }
+
+    /// YouTube sends `publishDate` either as a full timestamp
+    /// ("2024-05-01T07:00:00-07:00") or as a plain date ("2024-05-01").
+    private static func publishDate(from value: String) -> Date? {
+        if let timestamp = try? Date(value, strategy: .iso8601) {
+            return timestamp
+        }
+
+        let components = value.prefix(10).split(separator: "-").compactMap { Int($0) }
+        guard components.count == 3 else { return nil }
+        return Calendar(identifier: .gregorian).date(
+            from: DateComponents(
+                timeZone: TimeZone(secondsFromGMT: 0),
+                year: components[0],
+                month: components[1],
+                day: components[2]
+            )
+        )
     }
 
     private static func isShort(_ renderer: [String: Any]) -> Bool {
@@ -458,6 +548,21 @@ actor YouTubeService {
         return nil
     }
 
+    /// Keeps a stored thumbnail URL, whose image stays current through HTTP
+    /// revalidation, so refreshing does not reload every card. A 1280 thumbnail
+    /// from the details replaces a smaller stored one, which also repairs
+    /// entries that earlier stored a small crop although a 1280 size exists.
+    private static func preferredThumbnail(stored: URL?, fresh: URL?) -> URL? {
+        guard let stored else { return fresh }
+        if !Video.isLargeThumbnail(stored), Video.isLargeThumbnail(fresh) {
+            return fresh
+        }
+        return stored
+    }
+
+    /// The largest 16:9 thumbnail listed. Artwork is downsampled to its drawn
+    /// size, so the largest one is the sharpest without costing memory. (A
+    /// 720-pixel limit here picked a 336×188 image from the details response.)
     private static func thumbnailURL(from value: Any?) -> URL? {
         guard let dictionary = value as? [String: Any],
               let thumbnails = dictionary["thumbnails"] as? [[String: Any]]
@@ -469,7 +574,6 @@ actor YouTubeService {
                   let height = thumbnail["height"] as? Int,
                   width > 0,
                   height > 0,
-                  width <= 720,
                   abs((Double(width) / Double(height)) - (16.0 / 9.0)) < 0.04,
                   let url = URL(string: value.hasPrefix("//") ? "https:\(value)" : value)
             else { return nil }

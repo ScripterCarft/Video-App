@@ -219,7 +219,8 @@ what is intentional, what was measured, and what is still open.
   bars and home indicator wherever the cell lies, which squeezed cards and
   slid titles over them; with estimated sizes the layout recursed in
   `_updateVisibleCellsNow` until an assertion crashed the app (iOS 27).
-  Featured and Spotlight on Home still break this rule (Open work).
+  Home follows it completely since e172af5. Cells are reused across items,
+  so each sets its own background configuration.
 - Search, Library and Explore are SwiftUI until they are rebuilt; they show
   the detail controller in a thin SwiftUI shell (`VideoDetailView`) with
   their own toolbar and zoom. Their navigation is value-based in every
@@ -326,12 +327,15 @@ detail screen, the shared shelf, card and context menu, the detail
 scrolling. Next steps, in the order agreed with the user (explain each
 before building):
 
-1. **Featured and Spotlight on Home in UIKit.** They are still SwiftUI in
-   cells with estimated sizes, the pattern that squeezed and crashed
-   elsewhere. Featured as its own content configuration (with the Play
-   button, `UIButton.Configuration`), Spotlight as a
-   `UIListContentConfiguration` (symbol, title, text) on a rounded
-   `UIBackgroundConfiguration`; sizes computed, not estimated.
+1. **Featured and Spotlight on Home in UIKit** (done, e172af5; untested on
+   device): `FeaturedCardConfiguration` (2:3 stage, height from width) and
+   `SpotlightCardConfiguration` (symbol above title and text, height from
+   the fixed texts at the current text size, on a
+   `UIBackgroundConfiguration`; `UIListContentConfiguration` would put the
+   symbol beside the text, so it was not used). The Play button is
+   `UIButton.Configuration.play(progress:isPreparing:traits:)`, reusable
+   for the hero; its resume bar is drawn into the button's image because
+   the configuration has no progress bar.
 2. **The app shell in UIKit:** `UITabBarController` with `UITab` /
    `UISearchTab` instead of the SwiftUI `TabView`. Brings tab bar minimize
    on scroll and the bottom accessory for a mini player (iOS 26),

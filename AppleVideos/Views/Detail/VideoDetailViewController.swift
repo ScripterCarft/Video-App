@@ -194,6 +194,18 @@ final class VideoDetailViewController: UIViewController, UICollectionViewDelegat
     func scrollViewDidChangeAdjustedContentInset(_ scrollView: UIScrollView) {
         guard scrollView === collectionView else { return }
         collectionView.collectionViewLayout.invalidateLayout()
+        followScroll()
+    }
+
+    /// The artwork follows the page (see `DetailArtworkView.follow`).
+    func scrollViewDidScroll(_ scrollView: UIScrollView) {
+        guard scrollView === collectionView else { return }
+        followScroll()
+    }
+
+    /// How far the page has scrolled from its resting position.
+    private func followScroll() {
+        artwork.follow(offset: collectionView.contentOffset.y + collectionView.adjustedContentInset.top)
     }
 
     // MARK: - Bar buttons
@@ -513,9 +525,30 @@ private final class DetailArtworkView: UIView {
         super.layoutSubviews()
         let width = bounds.width
         let height = DetailStage.height(forWidth: width, scale: traitCollection.displayScale)
-        stage.frame = CGRect(x: 0, y: 0, width: width, height: height)
+        // Bounds and center, not frame: the stage carries the scroll transform.
+        stage.bounds = CGRect(x: 0, y: 0, width: width, height: height)
+        stage.center = CGPoint(x: width / 2, y: height / 2)
         let thumbnailHeight = width * 9 / 16
         imageView.frame = CGRect(x: 0, y: (height - thumbnailHeight) / 2, width: width, height: thumbnailHeight)
+    }
+
+    /// Follows the page, like the TV app: scrolled up by `offset`, the stage
+    /// moves up at half the speed while the page slides over it; pulled down
+    /// past the top, it grows from its top edge, evenly in both directions,
+    /// and fills the gap above the page. One transform on one layer, so
+    /// nothing is drawn or laid out again.
+    func follow(offset: CGFloat) {
+        let height = stage.bounds.height
+        guard height > 0 else { return }
+        if offset >= 0 {
+            stage.transform = CGAffineTransform(translationX: 0, y: -offset / 2)
+        } else {
+            let scale = (height - offset) / height
+            // Scaling around the center moves the top up by half the growth;
+            // moving back down by that keeps the top edge in place.
+            stage.transform = CGAffineTransform(translationX: 0, y: (scale - 1) * height / 2)
+                .scaledBy(x: scale, y: scale)
+        }
     }
 
     private var pendingVideo: Video?

@@ -23,7 +23,7 @@ enum DetailStage {
 /// The bar has Download (with its progress ring) and Share. The screen reads
 /// the observable model and download state in `updateProperties()`, which
 /// UIKit tracks, so the shelf and the Download button update by themselves.
-/// The hero (title, Play, description) comes later.
+/// The hero uses fixed, content-measured heights and scrolls with the page.
 final class VideoDetailViewController: VideoCollectionViewController, RoutedScreen {
     /// Opens a video from Up Next; the view to zoom from is looked up when
     /// the zoom needs it.
@@ -31,12 +31,14 @@ final class VideoDetailViewController: VideoCollectionViewController, RoutedScre
 
     enum Section: Hashable {
         case stage
+        case hero
         case loadError
         case upNext
     }
 
     enum Item: Hashable {
         case stage
+        case hero
         case loadError
         case loadingRelated
         case video(String)
@@ -49,6 +51,8 @@ final class VideoDetailViewController: VideoCollectionViewController, RoutedScre
     var appRoute: AppRoute? { .video(route) }
     private let onOpen: OpenAction
 
+    private let playback = PlaybackStarter.shared
+    private var heroSizingKey: String?
     private var model: VideoDetailModel?
     private var loadTask: Task<Void, Never>?
     private var shownRelated: [Video] = []
@@ -117,6 +121,7 @@ final class VideoDetailViewController: VideoCollectionViewController, RoutedScre
     private func start(with video: Video) {
         let model = VideoDetailModel(video: video)
         self.model = model
+        applySnapshot(related: [], isLoading: !model.relatedLoadFinished, animated: false)
         artwork.load(video)
         configureBarButtons(for: video)
         setNeedsUpdateProperties()
@@ -175,6 +180,7 @@ final class VideoDetailViewController: VideoCollectionViewController, RoutedScre
         // Leaving for good stops what is still loading.
         if isMovingFromParent || navigationController == nil {
             loadTask?.cancel()
+            playback.cancel()
         }
     }
 
@@ -183,6 +189,11 @@ final class VideoDetailViewController: VideoCollectionViewController, RoutedScre
     override func updateProperties() {
         super.updateProperties()
         guard let model else { return }
+        let sizingKey = heroConfiguration()?.sizingKey
+        if heroSizingKey != sizingKey {
+            heroSizingKey = sizingKey
+            collectionView.collectionViewLayout.invalidateLayout()
+        }
         if let refreshed = model.refreshedVideo {
             artwork.upgrade(to: refreshed)
         }
@@ -240,6 +251,17 @@ final class VideoDetailViewController: VideoCollectionViewController, RoutedScre
         navigationItem.rightBarButtonItems = [share, downloadButton.item]
     }
 
+    private func heroConfiguration() -> DetailHeroConfiguration? {
+        guard let model else { return nil }
+        return DetailHeroConfiguration(model: model, library: library, playback: playback) { [weak self, model] in
+            guard let self, let description = model.loadedDescription ?? model.visibleDescription else { return }
+            let sheet = UINavigationController(rootViewController: VideoDescriptionViewController(video: model.shown, description: description))
+            sheet.sheetPresentationController?.detents = [.medium(), .large()]
+            sheet.sheetPresentationController?.prefersGrabberVisible = true
+            self.present(sheet, animated: true)
+        }
+    }
+
     // MARK: - Layout
 
     private func makeLayout() -> UICollectionViewCompositionalLayout {
@@ -253,7 +275,16 @@ final class VideoDetailViewController: VideoCollectionViewController, RoutedScre
                     scale: environment.traitCollection.displayScale
                 )
                 let topInset = self?.collectionView.adjustedContentInset.top ?? 0
-                return VideoDetailViewController.stageSection(height: max(1, stage - topInset))
+                let imageBottom = (stage + environment.container.effectiveContentSize.width * 9 / 16) / 2
+                return VideoDetailViewController.stageSection(height: max(1, imageBottom - 24 - topInset))
+            case .hero:
+                guard let configuration = self?.heroConfiguration() else { return nil }
+                let height = VideoCells.fittingHeight(
+                    key: "detail-hero|" + configuration.sizingKey,
+                    width: environment.container.effectiveContentSize.width,
+                    traits: environment.traitCollection
+                ) { configuration }
+                return VideoDetailViewController.stageSection(height: height)
             case .upNext:
                 let section: NSCollectionLayoutSection
                 if self?.shownRelatedLoading == true {
@@ -299,6 +330,9 @@ final class VideoDetailViewController: VideoCollectionViewController, RoutedScre
     // MARK: - Cells
 
     private func configureDataSource() {
+        let heroRegistration = UICollectionView.CellRegistration<UICollectionViewCell, Item> { [weak self] cell, _, _ in
+            cell.contentConfiguration = self?.heroConfiguration()
+        }
         let stageRegistration = UICollectionView.CellRegistration<UICollectionViewCell, Item> { _, _, _ in }
         let errorRegistration = UICollectionView.CellRegistration<DetailRetryCell, Item> { [weak self] cell, _, _ in
             cell.configure { [weak self] in self?.loadMissingDetails() }
@@ -323,6 +357,9 @@ final class VideoDetailViewController: VideoCollectionViewController, RoutedScre
         }
 
         dataSource = UICollectionViewDiffableDataSource<Section, Item>(collectionView: collectionView) { collectionView, indexPath, item in
+            if item == .hero {
+                return collectionView.dequeueConfiguredReusableCell(using: heroRegistration, for: indexPath, item: item)
+            }
             if item == .stage {
                 return collectionView.dequeueConfiguredReusableCell(using: stageRegistration, for: indexPath, item: item)
             }
@@ -346,6 +383,10 @@ final class VideoDetailViewController: VideoCollectionViewController, RoutedScre
         var snapshot = NSDiffableDataSourceSnapshot<Section, Item>()
         snapshot.appendSections([.stage])
         snapshot.appendItems([.stage], toSection: .stage)
+        if model != nil {
+            snapshot.appendSections([.hero])
+            snapshot.appendItems([.hero], toSection: .hero)
+        }
         if hasLoadFailure {
             snapshot.appendSections([.loadError])
             snapshot.appendItems([.loadError], toSection: .loadError)

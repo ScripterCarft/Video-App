@@ -434,7 +434,7 @@ what is intentional, what was measured, and what is still open.
 
 ## Open work
 
-**Active device investigation: cellular playback (2026-09-26).** User reports
+**Cellular playback confirmed working by the user (2026-09-26).** Previously reported
   native Apple playback over plain 5G, no VPN or offline download, with Streaming
   Use Mobile Data off, also after reopening the app. Cause is not yet proven.
   Device diagnostic aed1872 reported toggle OFF, persisted 0, cellular true,
@@ -442,8 +442,7 @@ what is intentional, what was measured, and what is still open.
   and would-block true. User confirmed the next Play was blocked. This proves
   the gate works in that build, not what caused the original report; initial
   path readiness does not explain this particular attempt. The diagnostic is
-  now removed. Verify that the first Play after a cold launch blocks without
-  the extra dialog/second tap. Streaming waits for NWPathMonitor's first real
+  now removed; the user confirmed the normal build blocks mobile playback. Streaming waits for NWPathMonitor's first real
   path (no timer); offline packages do not wait for network monitoring.
   Also found: an already-created native AVURLAsset retains its initial cellular
   permission; foreground/settings changes are not yet enforced on that asset.
@@ -581,3 +580,19 @@ Keep as is (already Apple's way): `AVPlayerViewController` full screen,
 - `KNOWN_ISSUES.md`: the interactive-dismissal backdrop issue is resolved
   (2026-09-26, confirmed on device): it came from linking against the iOS
   26.5 SDK; the first build with the iOS 27 SDK dismisses smoothly.
+
+## Detail hero implementation (2026-09-26)
+
+The user authorized the hero and then the mini player. The hero now lives in
+`Views/Detail/DetailHeroView.swift`; the full description is a native sheet
+with selectable `UITextView` text. The blue test stage is removed. The hero
+scrolls with the page, starting 24 pt before the thumbnail bottom, with a
+32 pt clear-to-opaque gray gradient, an opaque plateau behind the controls,
+and a 24 pt gray-to-black bottom edge. No blur, shadows or image masking.
+Title, channel, content-sized shared Play button, Saved toggle, description
+and metadata use UIKit. Accessibility text stacks the buttons vertically.
+Hero heights use bounded cached Auto Layout measurements and fixed collection
+layout sizes, never estimated dimensions. Placeholder lines remain until details
+finish loading. Device appearance, larger text and the zoom still need testing.
+Playback outcomes are now presented by the app shell using one shared starter,
+so fallback presentation survives leaving the screen that started playback.

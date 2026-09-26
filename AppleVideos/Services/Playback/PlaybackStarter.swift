@@ -8,6 +8,8 @@ import Observation
 @MainActor
 @Observable
 final class PlaybackStarter {
+    static let shared = PlaybackStarter()
+
     struct Fallback {
         let video: Video
         let diagnostic: String

@@ -13,6 +13,9 @@ final class AppTabBarController: UITabBarController {
         static let search = "search"
     }
 
+    private let playback = PlaybackStarter.shared
+    private weak var fallbackController: UIViewController?
+    private weak var mobileDataAlert: UIAlertController?
     private let library: LibraryStore
     private let downloads = DownloadManager.shared
     /// The UIKit tabs' navigators by tab, whose routes are restored.
@@ -197,6 +200,7 @@ final class AppTabBarController: UITabBarController {
     /// this again when it changes.
     override func updateProperties() {
         super.updateProperties()
+        presentPlaybackOutcome()
         let storageIssue = LibraryStorageStatus.shared.issue
         // Defer storage notices while AVKit, a sheet or another alert owns
         // presentation. Re-check when the tab controller becomes visible.
@@ -230,6 +234,43 @@ final class AppTabBarController: UITabBarController {
             downloads.failure = nil
         })
         (NativePlayback.topViewController() ?? self).present(alert, animated: true)
+    }
+
+    /// Shows what the featured video's Play button reports: the embedded
+    /// player when no native stream plays, or the alert when Use Mobile Data
+    /// is off. Each is shown once and cleared when it closes.
+    private func presentPlaybackOutcome() {
+        if let fallback = playback.fallback, fallbackController == nil {
+            let controller = EmbeddedPlayerScreen.controller(
+                video: fallback.video,
+                diagnostic: fallback.diagnostic,
+                library: library
+            ) { [weak self] in
+                self?.playback.fallback = nil
+                self?.fallbackController?.presentingViewController?.dismiss(animated: true)
+            }
+            fallbackController = controller
+            (NativePlayback.topViewController() ?? self).present(controller, animated: true)
+        }
+
+        if playback.isShowingMobileDataAlert, mobileDataAlert == nil {
+            let alert = UIAlertController(
+                title: "Mobile Data Is Turned Off",
+                message: "Turn on Use Mobile Data in Settings to stream videos over mobile data.",
+                preferredStyle: .alert
+            )
+            alert.addAction(UIAlertAction(title: "Settings", style: .default) { [weak self] _ in
+                self?.playback.isShowingMobileDataAlert = false
+                if let url = URL(string: UIApplication.openSettingsURLString) {
+                    UIApplication.shared.open(url)
+                }
+            })
+            alert.addAction(UIAlertAction(title: "OK", style: .cancel) { [weak self] _ in
+                self?.playback.isShowingMobileDataAlert = false
+            })
+            mobileDataAlert = alert
+            (NativePlayback.topViewController() ?? self).present(alert, animated: true)
+        }
     }
 
     override func viewDidAppear(_ animated: Bool) {

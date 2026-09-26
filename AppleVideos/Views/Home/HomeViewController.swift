@@ -285,10 +285,10 @@ final class HomeViewController: VideoCollectionViewController {
         guard let item = dataSource.itemIdentifier(for: indexPath) else { return }
         switch item {
         case .featured:
-            navigator.open(VideoRoute(video: featured, section: "featured"), zoomSource: zoomSource(for: item))
+            navigator.open(VideoRoute(video: featured), zoomSource: zoomSource(for: item))
         case let .video(shelf, id):
             guard let video = video(in: shelf, id: id) else { return }
-            navigator.open(VideoRoute(video: video, section: shelf), zoomSource: zoomSource(for: item))
+            navigator.open(VideoRoute(video: video), zoomSource: zoomSource(for: item))
         case .spotlight:
             break
         }

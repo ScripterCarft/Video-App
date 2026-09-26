@@ -17,7 +17,6 @@ final class VideoListViewController: VideoCollectionViewController, RoutedScreen
     }
 
     let appRoute: AppRoute?
-    private let section: String
     private let navigator: VideoNavigator
     private let state: @MainActor () -> State
     private let emptyState: UIContentUnavailableConfiguration
@@ -42,11 +41,9 @@ final class VideoListViewController: VideoCollectionViewController, RoutedScreen
         return control
     }()
 
-    /// `section` scopes the zoom transition's source to this list;
     /// `emptyState` shows when `state` has no videos.
     init(
         title: String,
-        section: String,
         route: AppRoute?,
         library: LibraryStore,
         navigator: VideoNavigator,
@@ -54,7 +51,6 @@ final class VideoListViewController: VideoCollectionViewController, RoutedScreen
         state: @escaping @MainActor () -> State
     ) {
         appRoute = route
-        self.section = section
         self.navigator = navigator
         self.emptyState = emptyState
         self.state = state
@@ -183,7 +179,7 @@ final class VideoListViewController: VideoCollectionViewController, RoutedScreen
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
         collectionView.deselectItem(at: indexPath, animated: true)
         guard let id = dataSource.itemIdentifier(for: indexPath), let video = video(id: id) else { return }
-        navigator.open(VideoRoute(video: video, section: section)) { [weak self] in
+        navigator.open(VideoRoute(video: video)) { [weak self] in
             guard let self,
                   let indexPath = self.dataSource.indexPath(for: id),
                   let cell = self.collectionView.cellForItem(at: indexPath)

@@ -28,7 +28,6 @@ final class ExploreViewController: VideoCollectionViewController {
         Topic(title: "Learning", systemImage: "graduationcap", color: .systemOrange)
     ]
 
-    private static let trendingSection = "trending"
     private static let tileHeight: CGFloat = 74
 
     private let navigator: VideoNavigator
@@ -207,7 +206,7 @@ final class ExploreViewController: VideoCollectionViewController {
             navigator.show(.topic(title))
         case let .video(id):
             guard let video = trending.first(where: { $0.id == id }) else { return }
-            navigator.open(VideoRoute(video: video, section: Self.trendingSection)) { [weak self] in
+            navigator.open(VideoRoute(video: video)) { [weak self] in
                 guard let self,
                       let indexPath = self.dataSource.indexPath(for: .video(id)),
                       let cell = self.collectionView.cellForItem(at: indexPath)

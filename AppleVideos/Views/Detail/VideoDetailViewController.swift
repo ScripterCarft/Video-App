@@ -40,7 +40,6 @@ final class VideoDetailViewController: VideoCollectionViewController, RoutedScre
     }
 
     private static let cardWidth: CGFloat = 272
-    private static let shelfID = "upnext"
     private static let shelfBackgroundKind = "detail-shelf-background"
 
     let route: VideoRoute
@@ -316,7 +315,7 @@ final class VideoDetailViewController: VideoCollectionViewController, RoutedScre
               case let .video(id) = item,
               let video = shownRelated.first(where: { $0.id == id })
         else { return }
-        onOpen(VideoRoute(video: video, section: Self.shelfID)) { [weak self] in
+        onOpen(VideoRoute(video: video)) { [weak self] in
             guard let self,
                   let indexPath = self.dataSource.indexPath(for: item),
                   let cell = self.collectionView.cellForItem(at: indexPath)

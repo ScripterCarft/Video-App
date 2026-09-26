@@ -32,7 +32,6 @@ final class SearchViewController: UIViewController, UISearchBarDelegate, UISearc
         self.results = results
         list = VideoListViewController(
             title: "Search",
-            section: "search",
             route: nil,
             library: library,
             navigator: navigator,

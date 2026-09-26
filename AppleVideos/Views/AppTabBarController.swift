@@ -98,7 +98,6 @@ final class AppTabBarController: UITabBarController {
             results.search(title)
             let controller = VideoListViewController(
                 title: title,
-                section: "topic-\(title)",
                 route: route,
                 library: library,
                 navigator: navigator,
@@ -159,7 +158,6 @@ final class AppTabBarController: UITabBarController {
 
         let controller = VideoListViewController(
             title: title,
-            section: list.rawValue,
             route: route,
             library: library,
             navigator: navigator,

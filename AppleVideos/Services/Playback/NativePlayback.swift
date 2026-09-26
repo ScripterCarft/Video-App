@@ -292,6 +292,7 @@ final class NativePlayback: NSObject {
                     guard let self else { return }
                     isAwaitingResumeSeek = false
                     startPlaybackIfReady()
+                    publishTransport()
                 }
             }
             return
@@ -369,7 +370,7 @@ final class NativePlayback: NSObject {
 
     static func toggleMiniPlayerPlayback() {
         guard displayState.isMinimized, let current, !current.isFinished else { return }
-        if current.player.timeControlStatus != .paused {
+        if displayState.isPlaying {
             current.wantsPlayback = false
             current.player.pause()
             current.saveProgress()
@@ -413,8 +414,11 @@ final class NativePlayback: NSObject {
 
     private func publishTransport() {
         guard Self.current === self else { return }
-        Self.displayState.isPlaying = player.timeControlStatus != .paused
-        Self.displayState.isWaiting = player.timeControlStatus == .waitingToPlayAtSpecifiedRate
+        // A resume seek can still be pending when the user minimizes. Expose
+        // its Play intent as cancellable loading, rather than a second Play.
+        let pendingResume = isAwaitingResumeSeek && wantsPlayback
+        Self.displayState.isPlaying = pendingResume || player.timeControlStatus != .paused
+        Self.displayState.isWaiting = pendingResume || player.timeControlStatus == .waitingToPlayAtSpecifiedRate
     }
 
     private func resume() {

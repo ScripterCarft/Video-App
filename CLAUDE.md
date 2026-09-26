@@ -202,14 +202,21 @@ what is intentional, what was measured, and what is still open.
   saves the selected tab and each tab's routes in the scene's
   `stateRestorationActivity` (type listed in `NSUserActivityTypes`). The
   only SwiftUI left is the embedded web player fallback.
-- Screens: `HomeViewController`, `ExploreViewController` (topic tiles, two
-  columns, and Trending Now), `SearchViewController` (a `UISearchController`
-  with the system's search suggestions over the shared list),
-  `LibraryViewController` (inset grouped list with colored symbol tiles and
-  counts), the shared `VideoListViewController` (full-width cards with
-  `.search` artwork: search and topic results via `SearchResults`, Saved,
-  Downloaded, History; `UIContentUnavailableConfiguration` for loading,
-  empty and error states; Remove All as a system menu) and
+- **UIKit's own look, not an imitation of SwiftUI** (user's decision,
+  2026-09-26): use Apple's components as they are and leave out anything
+  the app would draw itself to look like before.
+- Screens: `HomeViewController`, `ExploreViewController` (topic tiles in
+  two columns on their plain system color, `UIBackgroundConfiguration`,
+  and Trending Now), `SearchViewController` (a `UISearchController`; while
+  the field is active and empty its results controller,
+  `SearchSuggestionsViewController`, shows suggestions as a plain list with
+  the magnifying glass in the app's tint), `LibraryViewController` (Apple's
+  plain list like Music's library: symbol in the app's tint, the count as a
+  gray `.label` accessory, disclosure indicator), the shared
+  `VideoListViewController` (full-width cards with `.search` artwork:
+  search and topic results via `SearchResults`, Saved, Downloaded, History;
+  `UIContentUnavailableConfiguration` for loading, empty and error states;
+  Remove All as a system menu; swipe to remove in Saved and History) and
   `VideoDetailViewController`. Videos open through `VideoNavigator` with
   UIKit's zoom (`preferredTransition = .zoom`) from the card's artwork.
   Home owns the `PlaybackStarter` for the featured
@@ -224,7 +231,9 @@ what is intentional, what was measured, and what is still open.
 - Shelves (Continue Watching, Made for Tonight, Up Next) are one component:
   `VideoCells.shelfSection` (fixed sizes), `VideoCardConfiguration` (the
   UIKit card, a `UIContentConfiguration`), `VideoCells.headerConfiguration`
-  (title only; section subtitles removed at the user's request) and
+  (Apple's `extraProminentInsetGroupedHeader`; title only on Home, section
+  subtitles removed there at the user's request; Explore keeps its
+  subtitles) and
   `VideoContextMenus` (removals applied in `willEndContextMenuInteraction`;
   preview: the thumbnail alone in a padded bubble, UIKit preview
   controller, so the menu sits below; the card's artwork is the targeted
@@ -240,11 +249,16 @@ what is intentional, what was measured, and what is still open.
   bars and home indicator wherever the cell lies, which squeezed cards and
   slid titles over them; with estimated sizes the layout recursed in
   `_updateVisibleCellsNow` until an assertion crashed the app (iOS 27).
-  Card screens follow it completely. The one exception is the Library's
-  three-row entry list, Apple's `UICollectionLayoutListConfiguration`
-  with `UIListContentConfiguration` (self-sizing by design; no SwiftUI).
-  Cells are reused across items, so each sets its own background
-  configuration.
+  Card screens follow it. Where Apple's content decides its own height
+  (the headers, Home's Spotlight card, a `UIListContentConfiguration`),
+  `VideoCells.fittingHeight` measures Apple's content view once per
+  content, width and text size (`systemLayoutSizeFitting`, text size
+  applied through trait overrides) and the section uses that fixed height.
+  Exceptions that size themselves, by design of Apple's list layout: the
+  Library's entry list, the search suggestions, and Saved and History,
+  whose swipe actions need `UICollectionLayoutListConfiguration` (commit
+  0894edd, revertible alone if the self-sizing rows misbehave). Cells are
+  reused across items, so each sets its own background configuration.
 - **Detail loading** (user's design): one task loads the details first;
   the description and info line are placeholders until then and everything
   appears in one animation; then Up Next, then the stream is prefetched
@@ -345,16 +359,14 @@ detail screen, the shared shelf, card and context menu, the detail
 scrolling. Next steps, in the order agreed with the user (explain each
 before building):
 
-1. **Featured and Spotlight on Home in UIKit** (done, e172af5; untested on
+1. **Featured and Spotlight on Home in UIKit** (done, e172af5, tested on
    device): `FeaturedCardConfiguration` (2:3 stage, height from width) and
-   `SpotlightCardConfiguration` (symbol above title and text, height from
-   the fixed texts at the current text size, on a
-   `UIBackgroundConfiguration`; `UIListContentConfiguration` would put the
-   symbol beside the text, so it was not used). The Play button is
-   `UIButton.Configuration.play(progress:isPreparing:traits:)`, reusable
-   for the hero; its resume bar is drawn into the button's image because
-   the configuration has no progress bar.
-2. **The app shell in UIKit** (done, c653c39; untested on device; see
+   `SpotlightCard` (since d405709 Apple's `UIListContentConfiguration`,
+   symbol beside title and text, on a `UIBackgroundConfiguration`). The
+   Play button is `UIButton.Configuration.play(progress:isPreparing:traits:)`,
+   reusable for the hero; its resume bar is drawn into the button's image
+   because the configuration has no progress bar (the user kept it).
+2. **The app shell in UIKit** (done, c653c39, tested on device; see
    Screens). It looks the same as before on purpose. Now possible, each
    as its own visible step: tab bar minimize on scroll
    (`tabBarMinimizeBehavior`, iOS 26), the bottom accessory for a mini

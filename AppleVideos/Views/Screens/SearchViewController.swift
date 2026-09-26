@@ -1,9 +1,10 @@
 import UIKit
 
 /// Search as a UIKit screen: a `UISearchController` in the navigation bar,
-/// always visible, with the system's search suggestions, and the results in
-/// the shared video list below. Before a search, and after the field is
-/// cleared, the list shows what to search for.
+/// always visible, and the results in the shared video list below. While
+/// the field is active and empty, the search controller's results
+/// controller shows suggestions as a plain list. Before a search, and after
+/// the field is cleared, the list shows what to search for.
 final class SearchViewController: UIViewController, UISearchBarDelegate, UISearchResultsUpdating {
     private static let suggestions = [
         "Kurzgesagt",
@@ -15,9 +16,13 @@ final class SearchViewController: UIViewController, UISearchBarDelegate, UISearc
 
     private let results: SearchResults
     private let list: VideoListViewController
-    private let searchController = UISearchController(searchResultsController: nil)
+    private let suggestionsController: SearchSuggestionsViewController
+    private let searchController: UISearchController
 
     init(library: LibraryStore, navigator: VideoNavigator) {
+        let suggestionsController = SearchSuggestionsViewController(suggestions: Self.suggestions)
+        self.suggestionsController = suggestionsController
+        searchController = UISearchController(searchResultsController: suggestionsController)
         var idle = UIContentUnavailableConfiguration.empty()
         idle.image = UIImage(systemName: "play.rectangle.on.rectangle")
         idle.text = "Search YouTube"
@@ -44,10 +49,12 @@ final class SearchViewController: UIViewController, UISearchBarDelegate, UISearc
         searchController.searchBar.placeholder = "Videos, topics, or creators"
         searchController.searchBar.delegate = self
         searchController.searchResultsUpdater = self
-        // The results show in this screen's own list.
+        // The results show in this screen's own list; the suggestions only
+        // while the field is empty (see `updateSearchResults`).
         searchController.obscuresBackgroundDuringPresentation = false
-        searchController.searchSuggestions = Self.suggestions.map {
-            UISearchSuggestionItem(localizedSuggestion: $0, localizedDescription: nil, iconImage: UIImage(systemName: "magnifyingglass"))
+        searchController.automaticallyShowsSearchResultsController = false
+        suggestionsController.onSelect = { [weak self] suggestion in
+            self?.search(for: suggestion)
         }
         navigationItem.searchController = searchController
         navigationItem.hidesSearchBarWhenScrolling = false
@@ -88,13 +95,19 @@ final class SearchViewController: UIViewController, UISearchBarDelegate, UISearc
         }
     }
 
-    func updateSearchResults(for searchController: UISearchController) {}
+    /// Called when the field becomes active or inactive and as its text
+    /// changes: the suggestions show while it is active and empty.
+    func updateSearchResults(for searchController: UISearchController) {
+        let text = searchController.searchBar.text ?? ""
+        searchController.showsSearchResultsController = searchController.isActive
+            && text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
 
     /// A suggestion was chosen: search for it right away.
-    func updateSearchResults(for searchController: UISearchController, selecting searchSuggestion: any UISearchSuggestion) {
-        let text = searchSuggestion.localizedSuggestion ?? ""
-        searchController.searchBar.text = text
-        results.search(text)
+    private func search(for suggestion: String) {
+        searchController.searchBar.text = suggestion
+        searchController.showsSearchResultsController = false
         searchController.searchBar.resignFirstResponder()
+        results.search(suggestion)
     }
 }

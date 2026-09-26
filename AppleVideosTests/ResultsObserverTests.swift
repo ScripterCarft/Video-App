@@ -138,6 +138,29 @@ struct ResultsObserverTests {
         #expect(observer.results.isEmpty)
     }
 
+    /// The library deletes a record once it leaves its last list
+    /// (`deleteIfUnused`), and the observer still lists it until it updates.
+    /// The screens may read it in that moment; this must not crash.
+    @Test func readingADeletedRecordBeforeTheUpdateIsSafe() async throws {
+        let video = record("i")
+        video.savedAt = .now
+        context.insert(video)
+        try context.save()
+        let observer = try savedObserver()
+        let shown = try #require(observer.results.first)
+
+        video.savedAt = nil
+        context.delete(video)
+        try context.save()
+        let listed = observer.results.map(\.id)
+        let snapshot = observer.results.map(\.video)
+        probe("deleted record before the update: listed \(listed), title \(shown.title), video \(snapshot.map(\.title)), isDeleted \(shown.isDeleted)")
+
+        try await Task.sleep(for: .milliseconds(300))
+        probe("deleted record after the update: listed \(observer.results.map(\.id))")
+        #expect(observer.results.isEmpty)
+    }
+
     /// The part that matters for the UIKit screens: a view that reads the
     /// results in `updateProperties()` runs it again by itself.
     @Test func uikitUpdatePropertiesTracksResults() async throws {

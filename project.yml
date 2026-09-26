@@ -59,4 +59,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.scriptercarft.AppleVideosTests
         GENERATE_INFOPLIST_FILE: true
         TARGETED_DEVICE_FAMILY: "1"
+        # The app's product name has a space, which XcodeGen's default misses.
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Apple Videos.app/Apple Videos"
+        BUNDLE_LOADER: "$(TEST_HOST)"
 

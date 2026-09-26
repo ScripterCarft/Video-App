@@ -285,7 +285,7 @@ final class HomeViewController: UIViewController, UICollectionViewDelegate {
               case let .video(shelf, id)? = dataSource.itemIdentifier(for: indexPath),
               let video = video(in: shelf, id: id)
         else { return nil }
-        return menus.configuration(for: video) { [weak collectionView] in
+        return menus.configuration(for: video, in: collectionView.cellForItem(at: indexPath)) { [weak collectionView] in
             collectionView?.cellForItem(at: indexPath)
         }
     }

@@ -22,18 +22,28 @@ final class VideoContextMenus {
         self.presenter = presenter
     }
 
-    /// The menu for `video`. `sourceView` anchors the share sheet on iPad.
-    /// No preview controller: the collection view lifts the card's own
-    /// artwork (see `targetedPreview(of:)`).
-    func configuration(for video: Video, sourceView: @escaping () -> UIView?) -> UIContextMenuConfiguration {
-        UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { [weak self] _ in
+    /// The menu for the video in `cell`. `sourceView` anchors the share sheet
+    /// on iPad.
+    ///
+    /// The preview is the thumbnail alone in a padded bubble, a preview
+    /// controller of its own: unlike a preview lifted in place, UIKit moves
+    /// it to leave room for the menu below it. It shows the image the card
+    /// already has, so nothing loads.
+    func configuration(
+        for video: Video,
+        in cell: UICollectionViewCell?,
+        sourceView: @escaping () -> UIView?
+    ) -> UIContextMenuConfiguration {
+        let image = (cell?.contentView as? VideoCardContentView)?.artworkImage
+        return UIContextMenuConfiguration(identifier: nil) {
+            ThumbnailPreviewController(image: image)
+        } actionProvider: { [weak self] _ in
             self?.menu(for: video, sourceView: sourceView)
         }
     }
 
-    /// The thumbnail alone as the menu's preview: the card's own artwork view
-    /// with its rounded corners, lifted in place, without its text. The
-    /// collection view's delegate returns it as the highlight and the
+    /// The card's artwork, where the preview grows out of and returns to.
+    /// The collection view's delegate returns it as the highlight and the
     /// dismissal preview.
     static func targetedPreview(of cell: UICollectionViewCell?) -> UITargetedPreview? {
         guard let card = cell?.contentView as? VideoCardContentView else { return nil }
@@ -145,6 +155,47 @@ final class VideoContextMenus {
         let controller = UIActivityViewController(activityItems: [url], applicationActivities: nil)
         controller.popoverPresentationController?.sourceView = sourceView
         presenter?.present(controller, animated: true)
+    }
+}
+
+/// The context menu's preview: the thumbnail alone, rounded, on a padded
+/// bubble of the system background, 320 points wide.
+private final class ThumbnailPreviewController: UIViewController {
+    private static let width: CGFloat = 320
+    private static let padding: CGFloat = 16
+    private let image: UIImage?
+
+    init(image: UIImage?) {
+        self.image = image
+        super.init(nibName: nil, bundle: nil)
+        preferredContentSize = CGSize(
+            width: Self.width + 2 * Self.padding,
+            height: Self.width * 9 / 16 + 2 * Self.padding
+        )
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is not used")
+    }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .systemBackground
+        let imageView = UIImageView(image: image)
+        imageView.backgroundColor = .quaternarySystemFill
+        imageView.contentMode = .scaleAspectFill
+        imageView.clipsToBounds = true
+        imageView.layer.cornerRadius = 18
+        imageView.layer.cornerCurve = .continuous
+        imageView.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(imageView)
+        NSLayoutConstraint.activate([
+            imageView.topAnchor.constraint(equalTo: view.topAnchor, constant: Self.padding),
+            imageView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: Self.padding),
+            imageView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -Self.padding),
+            imageView.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -Self.padding)
+        ])
     }
 }
 

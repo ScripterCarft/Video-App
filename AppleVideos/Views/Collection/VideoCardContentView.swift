@@ -55,6 +55,9 @@ final class VideoCardContentView: UIView, UIContentView {
     /// The artwork, where the zoom transition to the video's detail screen
     /// starts and returns to.
     var zoomSourceView: UIView { artwork }
+
+    /// The artwork as currently shown, for the context menu's preview.
+    var artworkImage: UIImage? { imageView.image }
     private let imageView = UIImageView()
     private let placeholderSymbol = UIImageView(image: UIImage(systemName: "play.rectangle.fill"))
     private let badge = DurationBadge()

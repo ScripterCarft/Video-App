@@ -335,7 +335,7 @@ final class VideoDetailViewController: UIViewController, UICollectionViewDelegat
               case let .video(id)? = dataSource.itemIdentifier(for: indexPath),
               let video = shownRelated.first(where: { $0.id == id })
         else { return nil }
-        return menus.configuration(for: video) { [weak collectionView] in
+        return menus.configuration(for: video, in: collectionView.cellForItem(at: indexPath)) { [weak collectionView] in
             collectionView?.cellForItem(at: indexPath)
         }
     }

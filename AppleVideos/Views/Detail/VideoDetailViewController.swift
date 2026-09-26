@@ -180,7 +180,7 @@ final class VideoDetailViewController: VideoCollectionViewController, RoutedScre
         // Leaving for good stops what is still loading.
         if isMovingFromParent || navigationController == nil {
             loadTask?.cancel()
-            playback.cancel()
+            if playback.isPreparing { playback.cancel() }
         }
     }
 

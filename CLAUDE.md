@@ -75,8 +75,8 @@ what is intentional, what was measured, and what is still open.
 - **Efficient, not "reload everything".** Honor HTTP caching, Low Data Mode,
   shared downloads and one-time launch work.
 - **Nothing in the app re-renders under AVKit.** Playback state is written
-  to storage during playback and published to the UI when the player
-  closes.
+  to storage during playback and published to the UI when full screen
+  closes. Mini playback publishes saved progress while the library is visible.
 
 ## Intentional design (keep; do not "clean up")
 
@@ -515,9 +515,7 @@ before building):
    accessory opening a `VideoListViewController`. Possible later, only when
    the user asks: recent searches, the embedded web player as a UIKit
    controller.
-4. **The detail hero** (build it only when the user says so). Until then
-   the UIKit detail screen has no Play button, title or description; only
-   Home's featured video can be played from a Play button. Reference is
+4. **The detail hero** (implemented 2026-09-26; see implementation notes below). Reference is
    the Apple TV app's movie/show page on iPhone. Over the bottom of the
    artwork, attached to the scrolling page (it moves with the page, not
    with the artwork): the title (bold, centered, up to three lines) and the
@@ -535,13 +533,13 @@ before building):
    and a short, quick fade above about the Play button, not over the image
    itself, ending seamlessly in the page's black at the artwork's edge; a
    plain gradient, no blur or material. Build it as a content
-   configuration in the page's first cell (`UIButton.Configuration`,
+   configuration in its own measured cell below the artwork (`UIButton.Configuration`,
    observable model read in `updateProperties()`); commit 3557827
    (reverted because it came too early) is a starting point. The light
    blue test stage goes back to the dark stage with it.
-5. **Later phases:** a mini player that is the same player as full screen
-   (one `AVPlayer`: closing full screen keeps playing in the mini player,
-   tapping it enlarges it); `MPNowPlayingSession` (AVKit's
+5. **Mini player** (implemented 2026-09-26, device testing pending): same
+   `AVPlayer` and `AVPlayerViewController` across minimizing/expanding; see below.
+   **Later:** `MPNowPlayingSession` (AVKit's
    `externalMetadata` artist does not appear on the lock screen). Only
    when the user asks: iCloud sync via SwiftData, background refresh, App
    Intents, Spotlight, Handoff, widget.
@@ -596,3 +594,28 @@ layout sizes, never estimated dimensions. Placeholder lines remain until details
 finish loading. Device appearance, larger text and the zoom still need testing.
 Playback outcomes are now presented by the app shell using one shared starter,
 so fallback presentation survives leaving the screen that started playback.
+
+## Mini player implementation (2026-09-26)
+
+`NativePlayback` retains one session across full-screen dismissal. Only a
+completed, non-cancelled AVKit dismissal minimizes; cancelled gestures do not
+change playback or create another player. Expanding presents the same controller
+without resolving, seeking, starting playback or adding observers again. Explicit
+Play on the current video reuses the session; tapping its mini title preserves
+paused state. Close releases KVO/time/notification observers, pauses the player
+and detaches it from AVKit. Replacing it with a web fallback also stops it.
+PiP closing still ends playback; PiP restoration stays with AVKit.
+
+`Services/Playback/PlaybackDisplayState` publishes only video and transport
+changes. `Views/Player/MiniPlayerView` contains thumbnail/title and standard
+Play/Pause/Close buttons in UIKit's `UITabAccessory`, owned by the tab controller.
+UIKit owns the background, shape, transitions and insets. This is a compact
+transport bar with thumbnail, not another video renderer. No new timer, seek-on-
+expand, custom full-screen transition, backdrop or delayed Play was introduced.
+The native and web fallback still follow Streaming Options. Existing AVURLAsset
+settings-change limitations described above are unchanged.
+
+Device test: cancel dismissal repeatedly; dismiss while playing/paused/loading;
+expand repeatedly at the same position; change tabs; start another video; close
+the mini player; PiP close/restore; test mobile-data off and downloaded videos.
+CI compiles Debug simulator and Release device; it does not execute these UI tests.

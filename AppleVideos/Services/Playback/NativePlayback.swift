@@ -27,10 +27,11 @@ final class NativePlayback: NSObject {
 
     /// Keeps the playback alive while it is presented or in Picture in Picture.
     private static var current: NativePlayback?
+    static let displayState = PlaybackDisplayState()
 
     /// Whether a native player (or its Picture in Picture) is open.
     static var isShowingPlayer: Bool {
-        current != nil
+        current != nil && (!displayState.isMinimized || current?.isRestoringFullScreen == true)
     }
 
     private let video: Video
@@ -39,7 +40,10 @@ final class NativePlayback: NSObject {
     private let player: AVPlayer
     private let playerController = AVPlayerViewController()
     private let onProgress: @MainActor (_ position: Double, _ duration: Double) -> Void
-    private let onFinish: @MainActor (Ending) -> Void
+    private var onFinish: @MainActor (Ending) -> Void
+    private let onMinimize: @MainActor () -> Void
+    private var transportObservation: NSKeyValueObservation?
+    private var isRestoringFullScreen = false
     private var statusObservation: NSKeyValueObservation?
     private var timeObserver: Any?
     private var notificationTokens: [NSObjectProtocol] = []
@@ -53,6 +57,7 @@ final class NativePlayback: NSObject {
     /// started and every new position is saved.
     private let continuesSavedProgress: Bool
     private var isAwaitingResumeSeek = false
+    private var wantsPlayback = true
     private var isPresented = false
     private var metadataTask: Task<Void, Never>?
     private var isPictureInPictureActive = false
@@ -86,7 +91,8 @@ final class NativePlayback: NSObject {
         description: String?,
         startTime: Double?,
         onProgress: @escaping @MainActor (_ position: Double, _ duration: Double) -> Void,
-        onFinish: @escaping @MainActor (Ending) -> Void
+        onFinish: @escaping @MainActor (Ending) -> Void,
+        onMinimize: @escaping @MainActor () -> Void
     ) async -> Outcome {
         // A downloaded video plays from its package: offline and without data.
         let downloadURL = DownloadManager.shared.localURL(for: video)
@@ -97,6 +103,13 @@ final class NativePlayback: NSObject {
         let settings = StreamingSettings.current()
         if downloadURL == nil, isMobileDataBlocked(settings) {
             return .mobileDataOff
+        }
+        // Tapping Play for the current mini player reuses its item and position.
+        if let current, current.video.id == video.id, displayState.isMinimized {
+            current.onFinish = onFinish
+            guard current.restoreFullScreen() else { return .unavailable }
+            current.resume()
+            return .presented
         }
         // Also stops loading if the network switches to mobile data while playing.
         let assetOptions = [AVURLAssetAllowsCellularAccessKey: settings.useMobileData]
@@ -148,7 +161,8 @@ final class NativePlayback: NSObject {
             item: item,
             startTime: startTime,
             onProgress: onProgress,
-            onFinish: onFinish
+            onFinish: onFinish,
+            onMinimize: onMinimize
         )
         return playback.present() ? .presented : .unavailable
     }
@@ -191,13 +205,15 @@ final class NativePlayback: NSObject {
         item: AVPlayerItem,
         startTime: Double?,
         onProgress: @escaping @MainActor (Double, Double) -> Void,
-        onFinish: @escaping @MainActor (Ending) -> Void
+        onFinish: @escaping @MainActor (Ending) -> Void,
+        onMinimize: @escaping @MainActor () -> Void
     ) {
         self.video = video
         videoDescription = description?.collapsedWhitespace
         self.item = item
         self.onProgress = onProgress
         self.onFinish = onFinish
+        self.onMinimize = onMinimize
         continuesSavedProgress = startTime != nil
         player = AVPlayer(playerItem: item)
         super.init()
@@ -205,6 +221,9 @@ final class NativePlayback: NSObject {
         item.externalMetadata = playerMetadata(description: videoDescription)
         playerController.player = player
         playerController.delegate = self
+        transportObservation = player.observe(\.timeControlStatus, options: [.initial, .new]) { [weak self] _, _ in
+            Task { @MainActor [weak self] in self?.publishTransport() }
+        }
         pendingStartTime = startTime
         isAwaitingResumeSeek = startTime != nil
         statusObservation = item.observe(\.status, options: [.initial, .new]) { [weak self] _, _ in
@@ -226,6 +245,9 @@ final class NativePlayback: NSObject {
         guard let presenter = Self.topViewController() else { return false }
 
         Self.current = self
+        Self.displayState.video = video
+        Self.displayState.isMinimized = false
+        publishTransport()
         presenter.present(playerController, animated: true) { [weak self] in
             guard let self, !isFinished else { return }
             isPresented = true
@@ -246,7 +268,7 @@ final class NativePlayback: NSObject {
     /// seek to the saved position has finished, so the first frame shown is
     /// the saved position rather than the beginning.
     private func startPlaybackIfReady() {
-        guard isPresented, !isAwaitingResumeSeek, !isFinished, pendingFailure == nil else { return }
+        guard isPresented, wantsPlayback, !isAwaitingResumeSeek, !isFinished, pendingFailure == nil else { return }
         player.play()
     }
 
@@ -289,7 +311,7 @@ final class NativePlayback: NSObject {
     /// transition starts. UIKit's completion, not a timer, releases the fallback.
     private func dismissFailedPlayerIfPossible() {
         guard let diagnostic = pendingFailure, isPresented, !isFinished,
-              !isEndingFullScreen, !isDismissingFailedPlayer else { return }
+              !isEndingFullScreen, !isRestoringFullScreen, !isDismissingFailedPlayer else { return }
         guard playerController.presentingViewController != nil else {
             if !isPictureInPictureActive { finish(.failed(diagnostic: diagnostic)) }
             return
@@ -305,6 +327,8 @@ final class NativePlayback: NSObject {
         guard !isFinished else { return }
         isFinished = true
 
+        transportObservation?.invalidate()
+        transportObservation = nil
         statusObservation?.invalidate()
         statusObservation = nil
         if case .closed = ending {
@@ -319,10 +343,93 @@ final class NativePlayback: NSObject {
             Task { await YouTubeInnertubePlaybackResolver.shared.invalidate(videoID: videoID) }
         }
         player.pause()
+        playerController.player = nil
         if Self.current === self {
             Self.current = nil
+            Self.displayState.isMinimized = false
+            Self.displayState.video = nil
+            Self.displayState.isPlaying = false
+            Self.displayState.isWaiting = false
         }
         onFinish(ending)
+    }
+
+    // MARK: - Mini player
+
+    /// A web fallback must not leave the previous mini/PiP session playing.
+    static func stopForReplacement() {
+        guard let current else { return }
+        current.finish(.closed(reachedWatchThreshold: current.reachedWatchThreshold))
+    }
+
+    static func restoreFromMiniPlayer() {
+        guard displayState.isMinimized else { return }
+        _ = current?.restoreFullScreen()
+    }
+
+    static func toggleMiniPlayerPlayback() {
+        guard displayState.isMinimized, let current, !current.isFinished else { return }
+        if current.player.timeControlStatus != .paused {
+            current.wantsPlayback = false
+            current.player.pause()
+            current.saveProgress()
+        } else {
+            current.resume()
+        }
+        current.publishTransport()
+    }
+
+    static func closeMiniPlayer() {
+        guard displayState.isMinimized, let current, !current.isRestoringFullScreen else { return }
+        current.finish(.closed(reachedWatchThreshold: current.reachedWatchThreshold))
+    }
+
+    /// Re-presents the same controller. No resolve, seek, automatic Play or
+    /// observer installation occurs when expanding a paused mini player.
+    @discardableResult
+    private func restoreFullScreen() -> Bool {
+        guard !isFinished, !isRestoringFullScreen, !isEndingFullScreen,
+              !isPictureInPictureActive,
+              playerController.presentingViewController == nil,
+              let presenter = Self.topViewController(),
+              !presenter.isBeingPresented, !presenter.isBeingDismissed else { return false }
+        isRestoringFullScreen = true
+        presenter.present(playerController, animated: true) { [weak self] in
+            guard let self, !isFinished else { return }
+            isRestoringFullScreen = false
+            Self.displayState.isMinimized = false
+            dismissFailedPlayerIfPossible()
+        }
+        return true
+    }
+
+    private func minimize() {
+        guard !isFinished else { return }
+        saveProgress()
+        Self.displayState.isMinimized = true
+        publishTransport()
+        onMinimize()
+    }
+
+    private func publishTransport() {
+        guard Self.current === self else { return }
+        Self.displayState.isPlaying = player.timeControlStatus != .paused
+        Self.displayState.isWaiting = player.timeControlStatus == .waitingToPlayAtSpecifiedRate
+    }
+
+    private func resume() {
+        guard !isFinished else { return }
+        if DownloadManager.shared.localURL(for: video) == nil, Self.isMobileDataBlocked() {
+            PlaybackStarter.shared.isShowingMobileDataAlert = true
+            return
+        }
+        wantsPlayback = true
+        guard !isAwaitingResumeSeek else { return }
+        let duration = item.duration.seconds
+        if duration.isFinite, player.currentTime().seconds >= duration {
+            player.seek(to: .zero)
+        }
+        player.play()
     }
 
     /// The key window's topmost presented view controller.
@@ -448,7 +555,7 @@ extension NativePlayback: @preconcurrency AVPlayerViewControllerDelegate {
                 if let pendingFailure {
                     finish(.failed(diagnostic: pendingFailure))
                 } else {
-                    finish(.closed(reachedWatchThreshold: reachedWatchThreshold))
+                    minimize()
                 }
             }
         }
@@ -457,7 +564,9 @@ extension NativePlayback: @preconcurrency AVPlayerViewControllerDelegate {
     func playerViewControllerWillStartPictureInPicture(
         _ playerViewController: AVPlayerViewController
     ) {
+        guard Self.current === self, !isFinished else { return }
         isPictureInPictureActive = true
+        Self.displayState.isMinimized = false
     }
 
     func playerViewControllerDidStopPictureInPicture(
@@ -478,7 +587,12 @@ extension NativePlayback: @preconcurrency AVPlayerViewControllerDelegate {
         _ playerViewController: AVPlayerViewController,
         failedToStartPictureInPictureWithError error: Error
     ) {
+        guard Self.current === self, !isFinished else { return }
         isPictureInPictureActive = false
+        if playerController.presentingViewController == nil, !isEndingFullScreen {
+            if pendingFailure != nil { dismissFailedPlayerIfPossible() }
+            else { minimize() }
+        }
     }
 
     func playerViewController(

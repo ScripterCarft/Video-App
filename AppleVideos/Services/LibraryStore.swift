@@ -125,9 +125,11 @@ final class LibraryStore {
     /// finished, most recent activity first. Finishing a video removes it.
     var watchlist: [Video] {
         var latest: [String: (video: Video, date: Date)] = [:]
-        for record in addedToWatchlist?.results ?? [] {
-            if let addedAt = record.watchlistAddedAt {
-                latest[record.id] = (record.video, addedAt)
+        if let records = addedToWatchlist?.results {
+            for record in records {
+                if let addedAt = record.watchlistAddedAt {
+                    latest[record.id] = (record.video, addedAt)
+                }
             }
         }
         for video in recentlyWatched {

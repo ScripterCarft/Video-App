@@ -23,6 +23,10 @@ final class VideoListViewController: UIViewController, UICollectionViewDelegate,
     private let navigator: VideoNavigator
     private let state: @MainActor () -> State
     private let emptyState: UIContentUnavailableConfiguration
+    /// A card's swipe action, such as Remove. Lists with one use Apple's
+    /// list layout, which offers swipe actions and sizes its rows itself;
+    /// the others keep fixed sizes.
+    private let swipeAction: (@MainActor (Video) -> UIContextualAction?)?
 
     /// Runs each time the list appears, such as refreshing stored metadata.
     var onAppear: (@MainActor () async -> Void)?
@@ -54,6 +58,7 @@ final class VideoListViewController: UIViewController, UICollectionViewDelegate,
         library: LibraryStore,
         navigator: VideoNavigator,
         emptyState: UIContentUnavailableConfiguration,
+        swipeAction: (@MainActor (Video) -> UIContextualAction?)? = nil,
         state: @escaping @MainActor () -> State
     ) {
         appRoute = route
@@ -61,6 +66,7 @@ final class VideoListViewController: UIViewController, UICollectionViewDelegate,
         self.library = library
         self.navigator = navigator
         self.emptyState = emptyState
+        self.swipeAction = swipeAction
         self.state = state
         super.init(nibName: nil, bundle: nil)
         self.title = title
@@ -137,19 +143,47 @@ final class VideoListViewController: UIViewController, UICollectionViewDelegate,
     // MARK: - Layout and cells
 
     private func makeLayout() -> UICollectionViewCompositionalLayout {
-        UICollectionViewCompositionalLayout { _, environment in
-            VideoCells.listSection(
-                containerWidth: environment.container.effectiveContentSize.width,
-                traits: environment.traitCollection
-            )
+        let hasSwipeAction = swipeAction != nil
+        return UICollectionViewCompositionalLayout { [weak self] _, environment in
+            guard hasSwipeAction else {
+                return VideoCells.listSection(
+                    containerWidth: environment.container.effectiveContentSize.width,
+                    traits: environment.traitCollection
+                )
+            }
+            // Apple's list layout for its swipe actions, without separators,
+            // spaced like the fixed list.
+            var configuration = UICollectionLayoutListConfiguration(appearance: .plain)
+            configuration.showsSeparators = false
+            configuration.backgroundColor = .systemBackground
+            configuration.trailingSwipeActionsConfigurationProvider = { indexPath in
+                MainActor.assumeIsolated {
+                    self?.swipeConfiguration(at: indexPath)
+                }
+            }
+            let section = NSCollectionLayoutSection.list(using: configuration, layoutEnvironment: environment)
+            section.interGroupSpacing = 22
+            section.contentInsets = NSDirectionalEdgeInsets(top: 16, leading: 16, bottom: 16, trailing: 16)
+            return section
         }
     }
 
+    private func swipeConfiguration(at indexPath: IndexPath) -> UISwipeActionsConfiguration? {
+        guard let swipeAction,
+              let id = dataSource.itemIdentifier(for: indexPath),
+              let video = video(id: id),
+              let action = swipeAction(video)
+        else { return nil }
+        return UISwipeActionsConfiguration(actions: [action])
+    }
+
     private func configureDataSource() {
-        let registration = UICollectionView.CellRegistration<UICollectionViewCell, String> { [weak self] cell, _, id in
+        // List cells, which swipe actions need; clear, so they show only the card.
+        let registration = UICollectionView.CellRegistration<UICollectionViewListCell, String> { [weak self] cell, _, id in
             MainActor.assumeIsolated {
                 guard let video = self?.video(id: id) else { return }
                 cell.contentConfiguration = VideoCardConfiguration(video: video, quality: .search)
+                cell.backgroundConfiguration = .clear()
             }
         }
         dataSource = UICollectionViewDiffableDataSource<Int, String>(collectionView: collectionView) { collectionView, indexPath, id in

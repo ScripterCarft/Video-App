@@ -187,11 +187,10 @@ final class ExploreViewController: UIViewController, UICollectionViewDelegate {
         return configuration
     }
 
-    /// The topic's color as a rounded gradient, lighter at the top, like
-    /// SwiftUI's `Color.gradient`.
+    /// The topic's system color on a rounded surface.
     private static func tileBackground(for topic: Topic) -> UIBackgroundConfiguration {
         var background = UIBackgroundConfiguration.clear()
-        background.customView = TileGradientView(color: topic.color)
+        background.backgroundColor = topic.color
         background.cornerRadius = 18
         return background
     }
@@ -263,36 +262,5 @@ final class ExploreViewController: UIViewController, UICollectionViewDelegate {
         animator: (any UIContextMenuInteractionAnimating)?
     ) {
         menus.willEnd(animator: animator)
-    }
-}
-
-/// A topic tile's gradient: the color, slightly lighter at the top.
-private final class TileGradientView: UIView {
-    private let color: UIColor
-
-    override class var layerClass: AnyClass {
-        CAGradientLayer.self
-    }
-
-    init(color: UIColor) {
-        self.color = color
-        super.init(frame: .zero)
-        isUserInteractionEnabled = false
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) is not used")
-    }
-
-    /// System colors differ between light and dark; UIKit tracks the traits
-    /// read here and calls this again when they change.
-    override func updateProperties() {
-        super.updateProperties()
-        let resolved = color.resolvedColor(with: traitCollection)
-        var hue: CGFloat = 0, saturation: CGFloat = 0, brightness: CGFloat = 0, alpha: CGFloat = 0
-        resolved.getHue(&hue, saturation: &saturation, brightness: &brightness, alpha: &alpha)
-        let lighter = UIColor(hue: hue, saturation: saturation * 0.85, brightness: min(brightness * 1.12, 1), alpha: alpha)
-        (layer as? CAGradientLayer)?.colors = [lighter.cgColor, resolved.cgColor]
     }
 }

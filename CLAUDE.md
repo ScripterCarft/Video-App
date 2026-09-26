@@ -164,14 +164,43 @@ accepted player-dismissal bug.
   Again to Renew" / red "Remove Download"; context menu
   Download / Stop, hidden once downloaded; download symbol beside the
   duration; Library > Downloaded and History each with Remove All.
-- Home is one `UICollectionView` (`HomeCollection`) with a compositional
-  layout: featured, shelves as orthogonal sections
-  (`continuousGroupLeadingBoundary`), Spotlight; Apple's intended design for
-  App Store-style pages (WWDC19). Cells host the SwiftUI cards via
-  `UIHostingConfiguration`; diffable data source; the collection view owns
-  the context menus and applies removals in `willEndContextMenuInteraction`
-  so cards leave after the menu closes. Other screens keep the SwiftUI card
-  menu (`VideoCard.providesContextMenu`).
+- Home (`HomeViewController`) and the detail screen
+  (`VideoDetailViewController`) are UIKit screens in a
+  `VideoNavigationController` (Home tab, inside the SwiftUI `TabView`);
+  videos open through `VideoNavigator` with UIKit's zoom
+  (`preferredTransition = .zoom`) from the card's artwork; open detail
+  screens are kept in `@SceneStorage` and restored. Each screen's
+  collection view is its view: compositional layout, diffable data source,
+  observable data read in `updateProperties()` (UIKit tracks it, iOS 26+).
+  Shelves (Continue Watching, Made for Tonight, Up Next) are one component:
+  `VideoCells.shelfSection` (fixed sizes), `VideoCardConfiguration` (the
+  UIKit card, a `UIContentConfiguration`), `VideoCells.headerConfiguration`
+  (title only; section subtitles removed at the user's request) and
+  `VideoContextMenus` (removals applied in
+  `willEndContextMenuInteraction`; preview: the thumbnail alone in a padded
+  bubble, UIKit preview controller, so the menu sits below; the card's
+  artwork is the targeted highlight/dismissal preview). Featured and
+  Spotlight on Home are still SwiftUI in cells. Search, Library and Explore
+  are SwiftUI on purpose until Phase 3; they show the detail controller in a
+  thin SwiftUI shell (`VideoDetailView`) with their own toolbar and zoom.
+- Never SwiftUI in fixed-size UIKit cells and no estimated sizes on these
+  screens (proved on device): SwiftUI content in a cell gives way to the
+  bars and home indicator wherever the cell lies, which squeezed cards and
+  slid titles over them; with estimated sizes the layout recursed in
+  `_updateVisibleCellsNow` until an assertion crashed the app (iOS 27).
+  Sizes are computed once from the text styles and invalidated on text
+  size changes.
+- Detail scrolling (user's design, like the TV app): the artwork is the
+  collection view's background view, on the light blue TEST stage for now;
+  a clear spacer (stage height minus the top inset; automatic insets, so the
+  bar's scroll edge effect appears only after scrolling) and Up Next on a
+  black page whose section background reaches two screen heights below the
+  shelf. Scrolling down moves the artwork up at half speed; overshoot at
+  the top scales it from its top edge (one transform per scroll frame).
+  At the top a downward drag does not scroll (`DetailCollectionView`), so
+  the zoom's swipe dismisses the screen. Download is a plain bar button
+  item whose image is the progress ring; Share presents the share sheet
+  from the bottom.
 - Library lists (Saved, Downloaded, History) are a plain `List` so
   removals from a card's context menu animate; with ScrollView +
   LazyVStack neighbors jumped under the returning menu preview. Rejected:
@@ -188,11 +217,11 @@ accepted player-dismissal bug.
   pass-through proxy in the app (the app fetches every playlist and
   segment) downloads reliably. Cause unknown; `DownloadURLProviding` is
   the place to add that route.
-- Detail screen: shows refreshed metadata, prefers the full description
-  (two lines, MORE below), does not bounce when content fits, white tint,
-  keeps the system scroll edge effect (user: needed for legibility); its
-  tasks keep finished state so nothing
-  reloads when AVKit re-adds the screen.
+- Detail screen: white bar tint and light status bar (whether the SwiftUI
+  tab view passes the status bar style on is untested), keeps the system
+  scroll edge effect (user: needed for legibility); its loading keeps
+  finished state so nothing reloads when AVKit covers the screen; refreshed
+  metadata is stored when the screen leaves.
 - Keep screens that take part in the zoom transition cheap to draw: the
   zoom redraws the live screen every frame. Proved on device: blurred,
   masked hero copies, text shadows, a material button and TextKit
@@ -211,25 +240,47 @@ accepted player-dismissal bug.
 
 0. **The rebuild (current, user-approved plan).** Goal: the app feels like
    one system, built the way Apple builds the TV and Podcasts apps; big
-   rebuilds are fine. Principle: every screen showing videos is a
-   `UICollectionView` with a compositional layout, one shared cell
-   (`VideoCells`) and one context menu (`VideoContextMenus`); SwiftUI stays
-   for the shell (tabs, navigation, sheets) and for cell content via
-   `UIHostingConfiguration`. Phases, one commit per step, tested on device:
+   rebuilds are fine. User's decision (2026-09-26): rebuild from the ground
+   up in modern UIKit, screen by screen, with iOS 26/27 features checked at
+   every step: real view controllers in UIKit navigation controllers, one
+   UIKit card, one context menu. Done so far (see Intentional design): Home
+   and the detail screen as UIKit screens, the shared shelf and card, the
+   detail scrolling.
+
+   **Next, the detail hero (write it down, build it only when the user
+   says so):** reference is the Apple TV app's movie/show page on iPhone.
+   Over the bottom of the artwork, attached to the scrolling page (it
+   moves with the page, not with the artwork), in the same positions as
+   the former SwiftUI hero: the title (bold, centered, up to three lines)
+   and the channel below it; a solid white Play capsule (play symbol and
+   "Play"; after watching, the play symbol with a short resume bar and the
+   remaining time, e.g. "40m"; while preparing, a spinner and "Cancel")
+   beside a solid dark gray + circle (checkmark when saved), both centered,
+   not glass; two lines of description with MORE below it opening the full
+   description in a sheet; the info line (duration · views · date, then
+   badges such as HD and CC). Until the details load, the description and
+   info line are placeholders; then everything appears in one animation.
+   Behind the text a dark gray gradient for legibility: a long even area
+   and a short, quick, unobtrusive fade above about the Play button, not
+   over the image itself, ending seamlessly in the page's black at the
+   artwork's edge; a plain gradient, no blur or material (the zoom redraws
+   the screen every frame). Build it in UIKit as a content configuration in
+   the page's first cell (`UIButton.Configuration`, observable model read
+   in `updateProperties()`); commit 3557827 (reverted because it came too
+   early) is a starting point. The light blue test stage goes back to the
+   dark stage with it.
+
+   Earlier phases, for reference:
    1. Foundation (done): shared cell + menu (`VideoCells`,
       `VideoContextMenus`); slim `VideoRoute` (ID + section) with
       `VideoCatalog` and `RestorableNavigationStack` per tab; watch progress
       as its own model; library lists via `@Query`. `Video` (value type for
       network results and routes) and `StoredVideo` (persistence) stay two
       types on purpose.
-   2. Detail screen (done, awaiting device test): `DetailCollection`, a
-      scrolling collection view with the hero cell (`DetailHero` reading the
-      `@Observable` `VideoDetailModel`) and an Up Next shelf of related
-      videos (WEB `next`, `lockupViewModel`; 4:3 `hqdefault` cropped to
-      16:9). Hero under the bar via `contentInsetAdjustmentBehavior =
-      .never`, not `backgroundExtensionEffect` (that is for SwiftUI views).
-      Play and + solid. Related videos open through the `openVideo`
-      environment action each tab stack provides.
+   2. Detail screen (done; since rebuilt in UIKit, see above): Up Next
+      shelf of related videos (WEB `next`, `lockupViewModel`; 4:3
+      `hqdefault` cropped to 16:9); `VideoDetailModel` loads details, then
+      Up Next, then the stream.
    3. Explore, Search and the Library's video lists on the same collection
       view. Search gets `Tab(role: .search)` but must stay a normal tab in
       the bar, not separated (research the iOS 27 option first); recent

@@ -3,7 +3,7 @@
 Read this first in every new session. `README.md` describes behavior and
 structure; this file holds the workflow, the principles behind decisions,
 what is intentional, what was measured, and what is still open.
-`KNOWN_ISSUES.md` holds the accepted player-dismissal bug.
+`KNOWN_ISSUES.md` records the player-dismissal bug, resolved by the iOS 27 SDK.
 
 ## Workflow
 
@@ -190,12 +190,27 @@ what is intentional, what was measured, and what is still open.
 
 ### Screens (UIKit rebuild in progress)
 
+- **App shell (UIKit since c653c39):** `AppDelegate` is the entry point and
+  does the launch work; `SceneDelegate` builds the window with
+  `AppTabBarController` (`UITab`s: Home, Explore, Library, Search; Search
+  is a normal tab in the bar at the user's request). Explore, Library and
+  Search are SwiftUI in `UIHostingController`s (with the library, the
+  download manager, the model container and `sceneRestoration` in their
+  environment) until they are rebuilt. The tab bar controller shows the
+  download failure alert. Restoration: `@SceneStorage` does not work in a
+  UIKit scene, so `SceneRestoration` saves the selected tab, Home's open
+  detail screens and the SwiftUI tabs' paths (`RestorableNavigationStack`)
+  in the scene's `stateRestorationActivity` (type listed in
+  `NSUserActivityTypes`).
 - Home (`HomeViewController`) and the detail screen
   (`VideoDetailViewController`) are UIKit screens in a
-  `VideoNavigationController` (Home tab, inside the SwiftUI `TabView`);
-  videos open through `VideoNavigator` with UIKit's zoom
-  (`preferredTransition = .zoom`) from the card's artwork; open detail
-  screens are kept in `@SceneStorage` and restored. Each screen's
+  `VideoNavigationController` (the Home tab); videos open through
+  `VideoNavigator` with UIKit's zoom (`preferredTransition = .zoom`) from
+  the card's artwork. Home owns the `PlaybackStarter` for the featured
+  Play button and presents its outcome itself: the embedded fallback
+  (`EmbeddedPlayerScreen.controller`) and the Use Mobile Data alert;
+  leaving Home (another tab or a detail screen) cancels a start that is
+  still resolving, the player covering Home does not. Each screen's
   collection view is its view: compositional layout, diffable data source,
   observable data read in `updateProperties()` (UIKit tracks it, iOS 26+).
   Home's title is inline-large (`largeTitleDisplayMode = .inline`,
@@ -246,9 +261,10 @@ what is intentional, what was measured, and what is still open.
   the zoom's swipe dismisses the screen. Download is a plain bar button
   item whose image is the progress ring; Share presents the share sheet
   from the bottom with the video's title and YouTube's own image.
-- Detail screen: white bar tint and light status bar (whether the SwiftUI
-  tab view passes the status bar style on is untested), keeps the system
-  scroll edge effect (user: needed for legibility).
+- Detail screen: white bar tint and light status bar (the tab bar
+  controller and `VideoNavigationController` pass the style on through
+  `childForStatusBarStyle`), keeps the system scroll edge effect (user:
+  needed for legibility).
 - Keep screens that take part in the zoom transition cheap to draw: the
   zoom redraws the live screen every frame. Proved on device: blurred,
   masked hero copies, text shadows, a material button and TextKit
@@ -336,27 +352,28 @@ before building):
    `UIButton.Configuration.play(progress:isPreparing:traits:)`, reusable
    for the hero; its resume bar is drawn into the button's image because
    the configuration has no progress bar.
-2. **The app shell in UIKit:** `UITabBarController` with `UITab` /
-   `UISearchTab` instead of the SwiftUI `TabView`. Brings tab bar minimize
-   on scroll and the bottom accessory for a mini player (iOS 26),
-   `prominentTabIdentifier` and `barMinimizeBehavior` (iOS 27) where they
-   fit, and makes the detail screen's light status bar reliable
-   (`childForStatusBarStyle` is only honoured if every parent passes it on).
-   Restoration moves from `@SceneStorage` to the scene's
-   `stateRestorationActivity` with `UIScene.extendStateRestoration` for
-   detail screens whose video must load first. Prefer per-screen bar
-   appearance over the detail screen changing the shared bar's tint in
-   `viewWillAppear` (Home resets it today).
+2. **The app shell in UIKit** (done, c653c39; untested on device; see
+   Screens). It looks the same as before on purpose. Now possible, each
+   as its own visible step: tab bar minimize on scroll
+   (`tabBarMinimizeBehavior`, iOS 26), the bottom accessory for a mini
+   player (iOS 26), `prominentTabIdentifier` and `barMinimizeBehavior`
+   (iOS 27) where they fit. `UIScene.extendStateRestoration` is not needed:
+   a restored detail screen loads an unknown video itself. Still open:
+   prefer per-screen bar appearance over the detail screen changing the
+   shared bar's tint in `viewWillAppear` (Home resets it today).
 3. **Search, Library and Explore in UIKit:** collection views with the same
    card and menu; Library lists with `UICollectionLayoutListConfiguration`
    and its swipe actions; Search as a normal tab in the bar, not separated,
    with recent searches; the Library's entry screen stays the compact list
-   with icons. Afterwards remove the SwiftUI leftovers: `VideoCard`,
-   `VideoArtwork`, `VideoHeroArtwork`, `SectionHeader`, `VideoLink`,
-   `RestorableNavigationStack`, the `VideoDetailView` shell,
-   `DownloadToolbarButton`, `DownloadProgressRing`, `VideoLibraryActions`
-   (`HomeCards`, `PlayButtonContent` and `VideoHeroArtwork` go with step 1,
-   `HomeTab` and `RootTabView` with step 2).
+   with icons. They open videos through their own `VideoNavigator`s and
+   restore through `SceneRestoration`. Afterwards remove the SwiftUI
+   leftovers: `VideoCard`, `VideoArtwork`, `SectionHeader`, `VideoLink`,
+   `RestorableNavigationStack` and the `sceneRestoration` environment
+   value, the `VideoDetailView` shell, `DownloadControls` (with
+   `DownloadToolbarButton`), `DownloadProgressRing`, `VideoLibraryActions`,
+   and the hosting in `AppTabBarController`. (Removed already:
+   `PlayButtonContent`, `VideoHeroArtwork`, the SwiftUI Home cards,
+   `HomeTab`, `RootTabView`, `AppleVideosApp`.)
 4. **The detail hero** (build it only when the user says so). Until then
    the UIKit detail screen has no Play button, title or description; only
    Home's featured video can be played from a Play button. Reference is
@@ -418,10 +435,6 @@ Keep as is (already Apple's way): `AVPlayerViewController` full screen,
 - Known App Store blockers, the user's call: Innertube stream access
   (guideline 5.2.3 / YouTube terms) and "Apple" in the app name and texts
   (5.2.5).
-- `KNOWN_ISSUES.md`: the interactive-dismissal backdrop issue is accepted.
-  Do not retry fixes without a new, discriminating idea. One such idea
-  exists now: every earlier attempt ran with the app linked against the
-  iOS 26.5 SDK, and since 2026-09-26 it is linked against iOS 27, which can
-  change AVKit's behavior. A plain recheck on device answers whether the
-  issue remains; after that, the next step would be a brand-new minimal
-  Xcode project and a Feedback Assistant report.
+- `KNOWN_ISSUES.md`: the interactive-dismissal backdrop issue is resolved
+  (2026-09-26, confirmed on device): it came from linking against the iOS
+  26.5 SDK; the first build with the iOS 27 SDK dismisses smoothly.

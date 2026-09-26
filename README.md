@@ -1,8 +1,9 @@
 # Apple Videos
 
 A native personal video app for iOS 27. It is being rebuilt screen by screen
-in modern UIKit: Home and the video detail screen are UIKit; Search, Library,
-Explore and the tab bar are still SwiftUI.
+in modern UIKit: the app shell (scene delegate and tab bar controller), Home
+and the video detail screen are UIKit; Search, Library and Explore are still
+SwiftUI, hosted in the tab bar.
 
 ## Naming
 
@@ -27,12 +28,13 @@ The YouTube and Innertube representations stay inside the service and resolver l
 
 ## Project structure
 
-- `App/`: app entry point, app delegate (audio session, orientation) and launch-time setup
+- `App/`: the app delegate (entry point, launch-time setup, audio session, orientation), the scene delegate and the scene's state restoration (`SceneRestoration`)
+- `Views/AppTabBarController.swift`: the tab bar (`UITab`s) and the download failure alert
 - `Models/`: provider-neutral app models and the SwiftData store (`StoredVideo`, `WatchProgress`, `LibraryDatabase`)
 - `Services/`: YouTube search and details, the video catalog, the on-device library and artwork loading
 - `Services/Playback/`: the provider-neutral resolver contract, the YouTube resolver and `NativePlayback`
 - `Services/Downloads/`: offline downloads
-- `Views/Home/`: the UIKit Home screen (`HomeViewController`) and its SwiftUI tab wrapper and cards
+- `Views/Home/`: the UIKit Home screen (`HomeViewController`) and its Featured and Spotlight cards
 - `Views/Detail/`: the UIKit video detail screen and its loading model
 - `Views/Collection/`: the shared UIKit card (`VideoCardConfiguration`), shelf layout (`VideoCells`), context menus and share item
 - `Views/Navigation/`: `VideoNavigator`, which opens detail screens with UIKit's zoom transition
@@ -41,7 +43,7 @@ The YouTube and Innertube representations stay inside the service and resolver l
 - `Views/Player/`: the embedded YouTube fallback
 - `Support/`: small Foundation extensions
 
-Navigation carries only a video's ID (`VideoRoute`); the destination reads the video from `VideoCatalog`. The Home tab is a UIKit navigation controller: `VideoNavigator` pushes `VideoDetailViewController` with `preferredTransition = .zoom` from the tapped card's artwork. The SwiftUI tabs each own one `NavigationStack` and register the video detail destination once with `videoDestination(transition:)` on its root; links use `VideoLink`, which scopes the zoom-transition ID to the section a video was tapped in. Do not add further `navigationDestination(for:)` declarations for videos inside pushed screens.
+Navigation carries only a video's ID (`VideoRoute`); the destination reads the video from `VideoCatalog`. The Home tab is a UIKit navigation controller: `VideoNavigator` pushes `VideoDetailViewController` with `preferredTransition = .zoom` from the tapped card's artwork. After a relaunch the scene restores the selected tab and the open screens through its state restoration activity. The SwiftUI tabs each own one `NavigationStack` and register the video detail destination once with `videoDestination(transition:)` on its root; links use `VideoLink`, which scopes the zoom-transition ID to the section a video was tapped in. Do not add further `navigationDestination(for:)` declarations for videos inside pushed screens.
 
 Artwork comes from `ArtworkLoader`: shared downloads, HTTP caching, downsampling to the drawn size and an in-memory cache. A video keeps the best 16:9 thumbnail YouTube lists; a 1280 image, once known, is never replaced by a smaller one (Up Next lists only small ones), and the detail screen loads the 1280 image as soon as the video's details list it.
 
@@ -72,7 +74,7 @@ Playback follows Apple's AVKit guidance:
 - Watch progress is saved per video on device (`LibraryStore`, in SwiftData, up to 200 videos): every five seconds while playing, and immediately on pause, at the end, when the player closes and when the app enters the background. After a crash at most the last few seconds are lost. Positions under ten seconds or past 95 % are not kept. Play resumes at the saved position: the seek is issued as soon as the item is ready and playback starts only after it finishes, so the first frame shown is the saved position, and Play buttons show the play symbol, a progress gauge and the remaining time instead of the word Play. Today that is the Play button of Home's featured video; the UIKit detail screen gets its Play button with its hero (title, Play, description), which is not built yet. During playback progress is only written to storage; the UI picks it up when the player closes.
 - Dismissal is reported by `playerViewController(_:willEndFullScreenPresentationWithAnimationCoordinator:)`. The detail screen hears back exactly once, after the player or Picture in Picture has closed. Restoring from Picture in Picture presents the same controller again.
 - The app is portrait only; only `AVPlayerViewController` may rotate (`AppDelegate.application(_:supportedInterfaceOrientationsFor:)`).
-- When the resolver has no compatible source, the embedded YouTube player is shown as a separate full-screen SwiftUI overlay.
+- When the resolver has no compatible source, the embedded YouTube player (SwiftUI, `EmbeddedPlayerScreen`) is presented full screen.
 
 ## Downloads
 
@@ -85,7 +87,7 @@ Playback follows Apple's AVKit guidance:
 - A downloaded video plays from its package, without network or data. The detail button of a downloaded video offers Download Again to Renew and Remove Download; Library > Downloaded offers Remove All.
 - Known limitation: YouTube refuses the direct system download for many videos with HTTP 401, although the same requests succeed from the app. See CLAUDE.md for what was ruled out.
 
-Do not add a custom pan gesture, transform private AVKit subviews, or stack a second player overlay over Apple's controls. Keep player changes on public AVKit APIs and validate them on a physical device. See [KNOWN_ISSUES.md](KNOWN_ISSUES.md) for the open interactive-dismissal backdrop issue.
+Do not add a custom pan gesture, transform private AVKit subviews, or stack a second player overlay over Apple's controls. Keep player changes on public AVKit APIs and validate them on a physical device. See [KNOWN_ISSUES.md](KNOWN_ISSUES.md) for the interactive-dismissal backdrop issue, resolved by building with the iOS 27 SDK.
 
 ## Generate and build
 

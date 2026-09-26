@@ -79,7 +79,6 @@ final class DownloadManager: NSObject {
             guard let path = record.downloadPath, !Self.packageExists(atPath: path) else { continue }
             record.downloadPath = nil
             record.downloadedAt = nil
-            LibraryDatabase.deleteIfUnused(record)
         }
         LibraryDatabase.save()
 
@@ -203,7 +202,6 @@ final class DownloadManager: NSObject {
         }
         record.downloadPath = nil
         record.downloadedAt = nil
-        LibraryDatabase.deleteIfUnused(record)
     }
 
     /// Deletes the download and loads the video again with a fresh link.

@@ -68,7 +68,7 @@ final class LibraryStore {
     func toggleSaved(_ video: Video) {
         let record = LibraryDatabase.record(for: freshest(video))
         record.savedAt = record.savedAt == nil ? .now : nil
-        commit(record)
+        LibraryDatabase.save()
     }
 
     // MARK: - History
@@ -78,7 +78,7 @@ final class LibraryStore {
         record.update(from: freshest(video))
         record.watchedAt = .now
         trimHistory()
-        commit(record)
+        LibraryDatabase.save()
     }
 
     func isInRecentlyWatched(_ video: Video) -> Bool {
@@ -92,7 +92,7 @@ final class LibraryStore {
         record.watchedAt = nil
         LibraryDatabase.setProgress(nil, for: record.id)
         progress[video.id] = nil
-        commit(record)
+        LibraryDatabase.save()
     }
 
     /// Empties History except the videos `keeping` returns true for, such as
@@ -103,7 +103,6 @@ final class LibraryStore {
             record.watchedAt = nil
             LibraryDatabase.setProgress(nil, for: record.id)
             progress[record.id] = nil
-            LibraryDatabase.deleteIfUnused(record)
         }
         LibraryDatabase.save()
     }
@@ -115,7 +114,6 @@ final class LibraryStore {
             .sorted { $0.watchedAt! > $1.watchedAt! }
         for record in watched.dropFirst(Self.historyLimit) {
             record.watchedAt = nil
-            LibraryDatabase.deleteIfUnused(record)
         }
     }
 
@@ -149,7 +147,7 @@ final class LibraryStore {
         let record = LibraryDatabase.record(for: freshest(video))
         guard record.watchlistAddedAt == nil else { return }
         record.watchlistAddedAt = .now
-        commit(record)
+        LibraryDatabase.save()
     }
 
     /// Removes the entry added by hand and forgets the saved position; the
@@ -159,7 +157,7 @@ final class LibraryStore {
         record.watchlistAddedAt = nil
         LibraryDatabase.setProgress(nil, for: record.id)
         progress[video.id] = nil
-        commit(record)
+        LibraryDatabase.save()
     }
 
     /// Takes `video` off the Watchlist and records it in History as watched.
@@ -224,7 +222,7 @@ final class LibraryStore {
     func updateMetadata(of video: Video) {
         refreshedThisLaunch[video.id] = video
         guard let record = LibraryDatabase.record(id: video.id), record.update(from: video) else { return }
-        commit(record)
+        LibraryDatabase.save()
     }
 
     // MARK: - Watch progress
@@ -276,7 +274,6 @@ final class LibraryStore {
         for id in finished {
             guard let record = LibraryDatabase.record(id: id), record.watchlistAddedAt != nil else { continue }
             record.watchlistAddedAt = nil
-            LibraryDatabase.deleteIfUnused(record)
         }
         LibraryDatabase.save()
     }
@@ -294,15 +291,6 @@ final class LibraryStore {
             LibraryDatabase.allProgress().map { ($0.videoID, $0.progress) },
             uniquingKeysWith: { first, _ in first }
         )
-    }
-
-    // MARK: - Storage
-
-    /// Saves a change to `record` and drops it when nothing needs it any
-    /// more. The lists update by themselves after the save.
-    private func commit(_ record: StoredVideo) {
-        LibraryDatabase.deleteIfUnused(record)
-        LibraryDatabase.save()
     }
 }
 

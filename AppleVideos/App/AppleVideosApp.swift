@@ -26,6 +26,9 @@ struct AppleVideosApp: App {
         // once, before anything reads the store.
         LegacyLibraryMigration.run()
         LibraryDatabase.migrateProgress()
+        // Records that left all their lists, deleted only here, before the
+        // stores observe the lists (see `deleteUnusedRecords`).
+        LibraryDatabase.deleteUnusedRecords()
         // Reconnects to downloads that kept running while the app was closed.
         _ = DownloadManager.shared
         let library = LibraryStore()

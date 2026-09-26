@@ -138,10 +138,12 @@ struct ResultsObserverTests {
         #expect(observer.results.isEmpty)
     }
 
-    /// The library deletes a record once it leaves its last list
-    /// (`deleteIfUnused`), and the observer still lists it until it updates.
-    /// The screens may read it in that moment; this must not crash.
-    @Test func readingADeletedRecordBeforeTheUpdateIsSafe() async throws {
+    /// Measured on iOS 27: reading a record deleted and saved while an
+    /// observer still lists it (until its update, milliseconds later) crashes
+    /// with "Could not cast value of type 'Optional<Any>' to 'String'". So
+    /// records only leave their lists while the app runs; a record leaving
+    /// its last list stays readable.
+    @Test func aRecordLeavingItsLastListStaysReadable() async throws {
         let video = record("i")
         video.savedAt = .now
         context.insert(video)
@@ -150,15 +152,24 @@ struct ResultsObserverTests {
         let shown = try #require(observer.results.first)
 
         video.savedAt = nil
-        context.delete(video)
         try context.save()
-        let listed = observer.results.map(\.id)
-        let snapshot = observer.results.map(\.video)
-        probe("deleted record before the update: listed \(listed), title \(shown.title), video \(snapshot.map(\.title)), isDeleted \(shown.isDeleted)")
-
+        #expect(shown.title == "Title i")
         try await Task.sleep(for: .milliseconds(300))
-        probe("deleted record after the update: listed \(observer.results.map(\.id))")
         #expect(observer.results.isEmpty)
+    }
+
+    /// Unused records are deleted at launch, before any observer exists.
+    @Test func launchDeletesOnlyUnusedRecords() throws {
+        let unused = record("j")
+        let saved = record("k")
+        saved.savedAt = .now
+        context.insert(unused)
+        context.insert(saved)
+        try context.save()
+
+        LibraryDatabase.deleteUnusedRecords(in: context)
+        let remaining = try context.fetch(FetchDescriptor<StoredVideo>()).map(\.id)
+        #expect(remaining == ["k"])
     }
 
     /// The part that matters for the UIKit screens: a view that reads the

@@ -179,7 +179,6 @@ enum LibraryDatabase {
                 context.insert(WatchProgress(videoID: record.id, progress: legacy))
             }
             record.setProgress(nil)
-            deleteIfUnused(record)
         }
         save()
     }
@@ -221,11 +220,17 @@ enum LibraryDatabase {
         try? ResultsObserver(filterBy: filter, sortBy: [sort], modelContext: context)
     }
 
-    /// Deletes `record` when nothing needs it any more.
-    static func deleteIfUnused(_ record: StoredVideo) {
-        if record.isUnused {
+    /// Deletes the records nothing needs any more. Runs once at launch, before
+    /// any `ResultsObserver` exists: while the app runs, records only leave
+    /// their lists. An observer keeps a deleted record for a moment until it
+    /// updates, and reading it then crashes (measured on iOS 27: "Could not
+    /// cast value of type 'Optional<Any>' to 'String'").
+    static func deleteUnusedRecords(in context: ModelContext = context) {
+        let records = (try? context.fetch(FetchDescriptor<StoredVideo>())) ?? []
+        for record in records where record.isUnused {
             context.delete(record)
         }
+        try? context.save()
     }
 
     static func save() {

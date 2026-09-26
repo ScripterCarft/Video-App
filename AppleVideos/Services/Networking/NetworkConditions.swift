@@ -21,20 +21,27 @@ final class NetworkConditions: @unchecked Sendable {
     }
 
     private let monitor = NWPathMonitor()
-    private let state = OSAllocatedUnfairLock(initialState: State())
+    private struct MonitoringState {
+        var path: State?
+        var waiters: [CheckedContinuation<Void, Never>] = []
+    }
+    private let state = OSAllocatedUnfairLock(initialState: MonitoringState())
 
     private init() {
         monitor.pathUpdateHandler = { [state] path in
-            let changed = state.withLock {
+            let (changed, waiters) = state.withLock {
                 let next = State(
                     isConstrained: path.isConstrained,
                     isExpensive: path.isExpensive,
                     usesCellular: path.usesInterfaceType(.cellular)
                 )
-                let changed = $0 != next
-                $0 = next
-                return changed
+                let changed = $0.path != next
+                $0.path = next
+                let waiters = $0.waiters
+                $0.waiters.removeAll()
+                return (changed, waiters)
             }
+            waiters.forEach { $0.resume() }
             if changed {
                 DispatchQueue.main.async {
                     NotificationCenter.default.post(name: Self.didChange, object: nil)
@@ -44,18 +51,33 @@ final class NetworkConditions: @unchecked Sendable {
         monitor.start(queue: DispatchQueue(label: "NetworkConditions", qos: .utility))
     }
 
+    /// NWPathMonitor delivers its first path asynchronously. An unknown path
+    /// must not be treated as Wi-Fi when deciding whether streaming is allowed.
+    func waitUntilReady() async {
+        await withCheckedContinuation { continuation in
+            let ready = state.withLock {
+                if $0.path != nil { return true }
+                $0.waiters.append(continuation)
+                return false
+            }
+            if ready { continuation.resume() }
+        }
+    }
+
+    var isReady: Bool { state.withLock { $0.path != nil } }
+
     /// True while Low Data Mode applies to the current network.
     var isConstrained: Bool {
-        state.withLock { $0.isConstrained }
+        state.withLock { $0.path?.isConstrained ?? false }
     }
 
     /// True on mobile data and on a personal hotspot.
     var isExpensive: Bool {
-        state.withLock { $0.isExpensive }
+        state.withLock { $0.path?.isExpensive ?? false }
     }
 
     /// True while the current path goes over mobile data.
     var usesCellular: Bool {
-        state.withLock { $0.usesCellular }
+        state.withLock { $0.path?.usesCellular ?? false }
     }
 }

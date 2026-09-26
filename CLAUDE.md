@@ -434,6 +434,19 @@ what is intentional, what was measured, and what is still open.
 
 ## Open work
 
+**Active device investigation: cellular playback (2026-09-26).** User reports
+  native Apple playback over plain 5G, no VPN or offline download, with Streaming
+  Use Mobile Data off, also after reopening the app. Cause is not yet proven.
+  A temporary `Views/Player/PlaybackDiagnostics` system alert on the first Play
+  reports the resolved toggle, persisted toggle in the current bundle domain,
+  path flags and offline-package presence. Play waits for NWPathMonitor's first
+  real path instead of treating initial false flags as Wi-Fi. Request the device
+  screenshot; remove the diagnostic before merging/releasing the final fix.
+  Also found: an already-created native AVURLAsset retains its initial cellular
+  permission; foreground/settings changes are not yet enforced on that asset.
+  That alone does not explain a genuinely fresh launch and must not be reported
+  as the proven cause of the user's reproduction.
+
 **Reliability and organization follow-up (2026-09-26):**
 - See README's folder map. Network policy is under `Services/Networking`,
   YouTube access under `Services/YouTube`, library/catalog under

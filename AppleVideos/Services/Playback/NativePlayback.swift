@@ -88,9 +88,15 @@ final class NativePlayback: NSObject {
         onProgress: @escaping @MainActor (_ position: Double, _ duration: Double) -> Void,
         onFinish: @escaping @MainActor (Ending) -> Void
     ) async -> Outcome {
+        let pathWasReady = NetworkConditions.shared.isReady
+        await NetworkConditions.shared.waitUntilReady()
+        guard !Task.isCancelled else { return .cancelled }
         let settings = StreamingSettings.current()
         // A downloaded video plays from its package: offline and without data.
         let downloadURL = DownloadManager.shared.localURL(for: video)
+        if await PlaybackDiagnostics.showOnce(settings: settings, hasDownload: downloadURL != nil, pathWasReady: pathWasReady) {
+            return .cancelled
+        }
         if downloadURL == nil, isMobileDataBlocked(settings) {
             return .mobileDataOff
         }

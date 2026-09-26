@@ -77,18 +77,6 @@ final class DownloadManager: NSObject {
         super.init()
 
         reconcileLibrary()
-        // The library shares the store; its saves may refresh a video's metadata.
-        saveObserver = NotificationCenter.default.addObserver(
-            forName: ModelContext.didSave,
-            object: nil,
-            queue: .main
-        ) { [weak self] notification in
-            MainActor.assumeIsolated {
-                guard let context = LibraryDatabase.context,
-                      notification.object as? ModelContext === context else { return }
-                self?.reloadDownloads()
-            }
-        }
 
         wifiSession = makeSession(identifier: "com.scriptercarft.AppleVideos.downloads", allowsMobileData: false)
         mobileDataSession = makeSession(
@@ -228,7 +216,20 @@ final class DownloadManager: NSObject {
     /// A background completion can arrive while the database is unavailable;
     /// its completed package stays in pending until this commit succeeds.
     func reconcileLibrary() {
-        guard LibraryDatabase.context != nil else { return }
+        guard let context = LibraryDatabase.context else { return }
+        // Register once the durable store opens, including after startup
+        // recovery. NotificationCenter filters the context before delivery.
+        if saveObserver == nil {
+            saveObserver = NotificationCenter.default.addObserver(
+                forName: ModelContext.didSave,
+                object: context,
+                queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    self?.reloadDownloads()
+                }
+            }
+        }
         do {
             try LibraryDatabase.transaction {
                 for record in try LibraryDatabase.allRecords() {

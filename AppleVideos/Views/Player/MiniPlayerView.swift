@@ -8,12 +8,9 @@ final class MiniPlayerView: UIView {
     private let transport = UIButton(type: .system)
     private let close = UIButton(type: .system)
     private var shownVideo: Video?
+    private var shownTextSize: UIContentSizeCategory?
     private var shownPlaying: Bool?
     private var shownWaiting: Bool?
-
-    override var intrinsicContentSize: CGSize {
-        CGSize(width: UIView.noIntrinsicMetric, height: 64)
-    }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -21,6 +18,8 @@ final class MiniPlayerView: UIView {
         // the app's red accent through tintColor.
         tintColor = .label
         [open, transport, close].forEach { $0.tintColor = .label }
+        // The same centered aspect-fill crop as NowPlayingArtwork's square
+        // AirPlay image; reuse the prepared thumbnail instead of re-encoding it.
         artwork.contentMode = .scaleAspectFill
         artwork.clipsToBounds = true
         artwork.layer.cornerRadius = 5
@@ -33,8 +32,10 @@ final class MiniPlayerView: UIView {
         close.addAction(UIAction { _ in NativePlayback.closeMiniPlayer() }, for: .primaryActionTriggered)
         close.accessibilityLabel = "Close player"
         var closeStyle = UIButton.Configuration.plain()
-        closeStyle.image = UIImage(systemName: "xmark")
+        closeStyle.image = UIImage(systemName: "xmark.circle")
         closeStyle.baseForegroundColor = .label
+        closeStyle.buttonSize = .small
+        closeStyle.preferredSymbolConfigurationForImage = UIImage.SymbolConfiguration(textStyle: .body, scale: .small)
         close.configuration = closeStyle
         let row = UIStackView(arrangedSubviews: [artwork, open, transport, close])
         row.alignment = .center
@@ -42,13 +43,13 @@ final class MiniPlayerView: UIView {
         row.translatesAutoresizingMaskIntoConstraints = false
         addSubview(row)
         NSLayoutConstraint.activate([
-            row.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
-            row.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
+            row.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
+            row.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
             row.centerYAnchor.constraint(equalTo: centerYAnchor),
             row.topAnchor.constraint(greaterThanOrEqualTo: topAnchor),
             row.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor),
-            artwork.widthAnchor.constraint(equalToConstant: 72),
-            artwork.heightAnchor.constraint(equalToConstant: 40),
+            artwork.widthAnchor.constraint(equalToConstant: 32),
+            artwork.heightAnchor.constraint(equalToConstant: 32),
             transport.widthAnchor.constraint(greaterThanOrEqualToConstant: 44),
             transport.heightAnchor.constraint(greaterThanOrEqualToConstant: 44),
             close.widthAnchor.constraint(greaterThanOrEqualToConstant: 44),
@@ -64,16 +65,19 @@ final class MiniPlayerView: UIView {
         let state = NativePlayback.displayState
         guard let video = state.video else { return }
         artwork.load(video, quality: .compact)
-        if shownVideo != video {
+        let textSize = traitCollection.preferredContentSizeCategory
+        if shownVideo != video || shownTextSize != textSize {
             shownVideo = video
+            shownTextSize = textSize
             var title = UIButton.Configuration.plain()
             title.title = video.title
             title.subtitle = video.channelName
+            title.titleAlignment = .leading
             title.subtitleLineBreakMode = .byTruncatingTail
             title.contentInsets = NSDirectionalEdgeInsets(top: 8, leading: 0, bottom: 8, trailing: 0)
             title.subtitleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { attributes in
                 var result = attributes
-                result.font = .preferredFont(forTextStyle: .caption2)
+                result.font = .preferredFont(forTextStyle: .caption1)
                 result.foregroundColor = .secondaryLabel
                 return result
             }
@@ -81,7 +85,8 @@ final class MiniPlayerView: UIView {
             title.baseForegroundColor = .label
             title.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { attributes in
                 var result = attributes
-                result.font = .preferredFont(forTextStyle: .subheadline)
+                let size = UIFont.preferredFont(forTextStyle: .footnote).pointSize
+                result.font = .systemFont(ofSize: size, weight: .semibold)
                 return result
             }
             open.configuration = title
@@ -93,7 +98,8 @@ final class MiniPlayerView: UIView {
             shownWaiting = state.isWaiting
             var control = transport.configuration ?? UIButton.Configuration.plain()
             control.baseForegroundColor = .label
-            control.preferredSymbolConfigurationForImage = UIImage.SymbolConfiguration(textStyle: .title3)
+            control.buttonSize = .small
+            control.preferredSymbolConfigurationForImage = UIImage.SymbolConfiguration(textStyle: .body, scale: .small)
             control.indicatorColorTransformer = UIConfigurationColorTransformer { _ in .label }
             control.image = UIImage(systemName: state.isPlaying ? "pause.fill" : "play.fill")
             control.showsActivityIndicator = state.isWaiting
@@ -101,6 +107,8 @@ final class MiniPlayerView: UIView {
             transport.accessibilityLabel = state.isPlaying ? "Pause" : "Play"
             transport.accessibilityValue = state.isWaiting ? "Loading" : nil
         }
+        // UIKit supplies the accessory height. The two-line button's fitting
+        // height and 44 pt hit targets provide the content's minimum height.
         // Keep controls reachable at large text sizes; the full title remains
         // available to VoiceOver and in the full-screen player.
         artwork.isHidden = traitCollection.preferredContentSizeCategory.isAccessibilityCategory

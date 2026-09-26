@@ -636,3 +636,16 @@ explicitly use neutral tintColor as well as configuration colors, including the
 spinner; the red accent is no longer inherited. Button configurations are only
 changed when content/transport changes. Size and red-highlight fixes need device
 verification; the reported flash has not been reproduced on this Windows host.
+
+## Mini-player screenshot reference (2026-09-26)
+
+The user supplied a Podcasts screenshot and clarified the content arrangement:
+left square center-cropped artwork, title/author, small Play/Pause, then Close.
+`MiniPlayerView` uses the shared prepared thumbnail in a square aspect-fill view
+(the same center-crop geometry as `NowPlayingArtwork`, no extra JPEG rendering).
+The 64 pt intrinsic-height override has been removed: UIKit owns accessory sizing.
+Content uses a 32 pt square, 16 pt leading inset, semibold system footnote title
+and system caption1 author. Small body-scale SF Symbols retain 44 pt hit areas;
+Close is `xmark.circle`. These content metrics are app choices guided by the
+screenshot, not published internal Podcasts constants. UIKit still supplies the
+accessory's shape/material, width and placement. Device comparison is required.

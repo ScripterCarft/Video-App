@@ -179,6 +179,7 @@ enum LibraryDatabase {
                 context.insert(WatchProgress(videoID: record.id, progress: legacy))
             }
             record.setProgress(nil)
+            deleteIfUnused(record)
         }
         save()
     }
@@ -208,29 +209,13 @@ enum LibraryDatabase {
         (try? context.fetch(FetchDescriptor<StoredVideo>())) ?? []
     }
 
-    /// The stored videos matching `filter`, kept current by SwiftData
-    /// (`ResultsObserver`, observable). Measured on iOS 27 (see
-    /// `ResultsObserverTests`): the results update about 15–30 ms after a save
-    /// that touches stored videos, not for saving changed watch progress.
-    /// Nil only if the first fetch fails; the list is then empty.
-    static func observe(
-        _ filter: Predicate<StoredVideo>,
-        sortedBy sort: SortDescriptor<StoredVideo>
-    ) -> ResultsObserver<StoredVideo, Never>? {
-        try? ResultsObserver(filterBy: filter, sortBy: [sort], modelContext: context)
-    }
-
-    /// Deletes the records nothing needs any more. Runs once at launch, before
-    /// any `ResultsObserver` exists: while the app runs, records only leave
-    /// their lists. An observer keeps a deleted record for a moment until it
-    /// updates, and reading it then crashes (measured on iOS 27: "Could not
-    /// cast value of type 'Optional<Any>' to 'String'").
-    static func deleteUnusedRecords(in context: ModelContext = context) {
-        let records = (try? context.fetch(FetchDescriptor<StoredVideo>())) ?? []
-        for record in records where record.isUnused {
+    /// Deletes `record` when nothing needs it any more. Safe while lists are
+    /// observed: `StoredVideoList` reads records only after its observer has
+    /// updated, never a deleted one.
+    static func deleteIfUnused(_ record: StoredVideo) {
+        if record.isUnused {
             context.delete(record)
         }
-        try? context.save()
     }
 
     static func save() {

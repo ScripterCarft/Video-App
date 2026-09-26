@@ -138,32 +138,14 @@ struct ResultsObserverTests {
         #expect(observer.results.isEmpty)
     }
 
-    /// Measured on iOS 27: reading a record deleted and saved while an
-    /// observer still lists it (until its update, milliseconds later) crashes
-    /// with "Could not cast value of type 'Optional<Any>' to 'String'". So
-    /// records only leave their lists while the app runs; a record leaving
-    /// its last list stays readable.
-    @Test func aRecordLeavingItsLastListStaysReadable() async throws {
-        let video = record("i")
-        video.savedAt = .now
-        context.insert(video)
-        try context.save()
-        let observer = try savedObserver()
-        let shown = try #require(observer.results.first)
-
-        video.savedAt = nil
-        try context.save()
-        #expect(shown.title == "Title i")
-        try await Task.sleep(for: .milliseconds(300))
-        #expect(observer.results.isEmpty)
-    }
-
-    /// Apple's pattern (WWDC26 "What's new in SwiftData", the map camera
-    /// controller): derive values once the observer has changed, with
-    /// `withContinuousObservation(options: [.didSet])`, so nothing reads the
-    /// models at other times. The app's sequence when a video leaves its last
+    /// Measured on iOS 27: reading a record that was deleted and saved while
+    /// a `ResultsObserver` still lists it (until its update, milliseconds
+    /// later) crashes with "Could not cast value of type 'Optional<Any>' to
+    /// 'String'". `StoredVideoList` follows Apple's pattern (WWDC26 "What's
+    /// new in SwiftData", the map camera controller) and reads only after the
+    /// observer changed. The app's sequence when a video leaves its last
     /// list: clear the list's date, delete the record, save.
-    @Test func continuousObservationNeverReadsADeletedRecord() async throws {
+    @Test func storedVideoListNeverReadsADeletedRecord() async throws {
         let leaving = record("m")
         leaving.savedAt = .now
         let staying = record("n")
@@ -171,36 +153,29 @@ struct ResultsObserverTests {
         context.insert(leaving)
         context.insert(staying)
         try context.save()
-        let titles = ContinuousTitles(observer: try savedObserver())
-        try await Task.sleep(for: .milliseconds(100))
-        probe("continuous observation, initial snapshots: \(titles.snapshots)")
+        let titles = TitleSnapshots()
+        let list = StoredVideoList(
+            #Predicate { $0.savedAt != nil },
+            sortedBy: SortDescriptor(\.savedAt, order: .reverse),
+            in: context
+        ) { records in
+            titles.append(records.map(\.title))
+        }
+        #expect(titles.values.first == ["Title m", "Title n"])
 
         leaving.savedAt = nil
         context.delete(leaving)
         try context.save()
         try await Task.sleep(for: .milliseconds(300))
-        probe("continuous observation after clearing, deleting and saving: \(titles.snapshots)")
-        #expect(titles.snapshots.last == ["Title n"])
+        probe("StoredVideoList after clearing, deleting and saving: \(titles.values)")
+        #expect(titles.values.last == ["Title n"])
 
         context.delete(staying)
         try context.save()
         try await Task.sleep(for: .milliseconds(300))
-        probe("continuous observation after deleting only: \(titles.snapshots)")
-        #expect(titles.snapshots.last == [])
-    }
-
-    /// Unused records are deleted at launch, before any observer exists.
-    @Test func launchDeletesOnlyUnusedRecords() throws {
-        let unused = record("j")
-        let saved = record("k")
-        saved.savedAt = .now
-        context.insert(unused)
-        context.insert(saved)
-        try context.save()
-
-        LibraryDatabase.deleteUnusedRecords(in: context)
-        let remaining = try context.fetch(FetchDescriptor<StoredVideo>()).map(\.id)
-        #expect(remaining == ["k"])
+        probe("StoredVideoList after deleting only: \(titles.values)")
+        #expect(titles.values.last == [])
+        withExtendedLifetime(list) {}
     }
 
     /// The part that matters for the UIKit screens: a view that reads the
@@ -293,23 +268,13 @@ struct ResultsObserverTests {
     }
 }
 
-/// Keeps value snapshots of the observer's titles, taken after each change
-/// (`withContinuousObservation`, `.didSet`, iOS 27).
+/// The titles a `StoredVideoList` reported, in order.
 @MainActor
-private final class ContinuousTitles {
-    let observer: ResultsObserver<StoredVideo, Never>
-    private(set) var snapshots: [[String]] = []
-    private var token: ObservationTracking.Token?
+private final class TitleSnapshots {
+    private(set) var values: [[String]] = []
 
-    init(observer: ResultsObserver<StoredVideo, Never>) {
-        self.observer = observer
-        token = withContinuousObservation(options: [.didSet]) { @MainActor [weak self] _ in
-            self?.takeSnapshot()
-        }
-    }
-
-    private func takeSnapshot() {
-        snapshots.append(observer.results.map(\.title))
+    func append(_ titles: [String]) {
+        values.append(titles)
     }
 }
 

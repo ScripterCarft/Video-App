@@ -13,8 +13,6 @@ final class AppTabBarController: UITabBarController {
         static let search = "search"
     }
 
-    private lazy var miniPlayerAccessory = UITabAccessory(contentView: MiniPlayerView())
-    private var isMiniPlayerVisible = false
     private let playback = PlaybackStarter.shared
     private weak var fallbackController: UIViewController?
     private weak var mobileDataAlert: UIAlertController?
@@ -202,12 +200,6 @@ final class AppTabBarController: UITabBarController {
     /// this again when it changes.
     override func updateProperties() {
         super.updateProperties()
-        let showMiniPlayer = NativePlayback.displayState.isMinimized
-        if showMiniPlayer != isMiniPlayerVisible {
-            isMiniPlayerVisible = showMiniPlayer
-            setBottomAccessory(showMiniPlayer ? miniPlayerAccessory : nil,
-                               animated: view.window != nil && !UIAccessibility.isReduceMotionEnabled)
-        }
         presentPlaybackOutcome()
         let storageIssue = LibraryStorageStatus.shared.issue
         // Defer storage notices while AVKit, a sheet or another alert owns

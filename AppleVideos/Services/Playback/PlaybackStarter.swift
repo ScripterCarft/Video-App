@@ -51,8 +51,7 @@ final class PlaybackStarter {
                             self?.fallBack(to: video, diagnostic: diagnostic)
                         }
                     }
-                },
-                onMinimize: { library.publishProgress() }
+                }
             )
             guard !Task.isCancelled, let self, requestID == id else { return }
             self.isPreparing = false

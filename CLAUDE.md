@@ -5,44 +5,21 @@ structure; this file holds the workflow, the principles behind decisions,
 what is intentional, what was measured, and what is still open.
 `KNOWN_ISSUES.md` records the player-dismissal bug, resolved by the iOS 27 SDK.
 
-## Active device investigation: mini-player waiting (2026-09-26)
+## Current playback decision (2026-09-26)
 
-The user confirms the mini sometimes waits indefinitely after full-screen
-swipe dismissal; expanding to full screen does NOT recover it. Changing the
-iPhone Liquid Glass Appearance setting fixed only the perceived transparency,
-not playback. The accessory uses UITabAccessory; no custom glass/blur/alpha is
-present. Keep that native appearance and the now-approved layout unchanged.
-Device diagnostic 1 confirms that the original item and controller remain
-attached, and that completed AVKit dismissal changes rate 1 to 0. The completed
-transition now restores the rate captured at dismissal start, only for a paused,
-nonfailed, unfinished session permitted by network policy. Cancelled gestures,
-PiP and playback paused before dismissal are not resumed. No timer/new player.
-The independent waiting cause is NOT proven: ready item/player, buffer-empty,
-waitingToMinimizeStalls and CoreMedia -16840. Do not change buffering policy or
-attach/detach based on this alone. Diagnostic 2 includes the last six stream
-errors with their dates and descriptions (URLs removed), to establish whether
-the reported network error coincides with the stall and why the request failed.
-Mini Play/Pause now uses UIKit symbolContentTransition (.replace), disabled
-for Reduce Motion; the layout and native glass remain unchanged.
-A TEST diagnostic captures the last 24 AVPlayer status/wait-reason/transition
-events and an on-demand snapshot (item identity, buffer ranges, error domain/code,
-network policy). Long-press mini Play/Pause -> Copy Playback Diagnostics.
-It does not change transport behavior and does not collect stream URLs, credentials
-or send anything. Remove via git revert after diagnosis; do not merge to main.
-Verified code gap: post-start item failures are left to AVKit, which has no visible
-error UI when minimized. Establish whether the reported stall is this failure
-path or an actual waiting state from device evidence before choosing the fix.
+The user removed the mini player entirely. Its last experimental state is
+preserved at 5f40d6a; see Docs/PlaybackLifecycle.md for findings, Apple references
+and the device acceptance matrix. There is no settings toggle or hidden mini UI.
+Full-screen dismissal closes playback unless PiP owns it. Lock/background policy
+uses AVPlayer's .pauses; no custom lock detection, delayed Play or decoder resets.
+PiP restoration retains the same controller and protects its in-flight transition.
+The reported gray PiP frame and CoreMedia -16840 are NOT proven fixed by cleanup.
+Windows cannot measure iPhone network/decoder behavior; avoid efficiency claims
+beyond the implementation and Apple's documented API behavior.
 
-## Current UI decision (2026-09-26, supersedes hero notes below)
-
-The user rejected the hero and asked to rebuild it step by step later.
-DetailHeroView is removed. VideoDetailViewController, DetailArtworkView and
-VideoCells are restored exactly from 9662ee8: blue test stage, original Up Next,
-no title/Play/description hero. Do not reintroduce the hero without a new request.
-Mini playback remains. Its title is bold, author regular and full-contrast
-(label color, white in dark appearance); titlePadding is zero. Play/Pause and
-Close use title3/medium SF Symbols, with no extra gap between their minimum
-44 pt hit areas. This replaces the too-small body/small symbols.
+The rejected detail hero stays removed. The blue test stage and original Up Next
+remain; do not reintroduce a hero without a new request. Historical mini/hero notes
+below are superseded by this decision.
 
 ## Workflow
 

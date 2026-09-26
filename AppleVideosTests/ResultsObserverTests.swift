@@ -10,7 +10,7 @@ import UIKit
 /// reports changes, before the library lists are built on it. Each case also
 /// prints a `PROBE` line with what it measured; CI shows those lines.
 @MainActor
-@Suite(.serialized)
+@Suite(.serialized, .timeLimit(.minutes(1)))
 struct ResultsObserverTests {
     let container: ModelContainer
     var context: ModelContext { container.mainContext }

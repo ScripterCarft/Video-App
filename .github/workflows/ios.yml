@@ -88,6 +88,15 @@ jobs:
             Payload/Apple\ Videos.app
           zip -qry AppleVideos-unsigned.ipa Payload
 
+      # Uploaded before the tests, so a stuck or failing test never holds it.
+      - name: Upload IPA
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: AppleVideos-iPhone
+          path: AppleVideos-unsigned.ipa
+          retention-days: 14
+
       # Unit tests on an iPhone simulator, hosted in the app, after the IPA so
       # a failing test never withholds a build. They need a simulator runtime
       # for the deployment target, which only an Xcode with that SDK brings;
@@ -95,6 +104,8 @@ jobs:
       # record measured behavior.
       - name: Run tests
         if: success()
+        # The suite takes seconds; a hang must not hold the runner for an hour.
+        timeout-minutes: 10
         run: |
           set -o pipefail
           TARGET_MAJOR=$(grep -A1 'deploymentTarget:' project.yml | grep -oE '[0-9]+' | head -1)
@@ -126,6 +137,9 @@ jobs:
             -derivedDataPath TestDerivedData \
             CODE_SIGNING_ALLOWED=NO \
             COMPILER_INDEX_STORE_ENABLE=NO \
+            -test-timeouts-enabled YES \
+            -default-test-execution-time-allowance 60 \
+            -maximum-test-execution-time-allowance 120 \
             test 2>&1 | tee -a xcodebuild-test.log
 
       - name: Report test results
@@ -139,16 +153,17 @@ jobs:
           }
           grep -hE "SETUP|Downloading|Download|Installed" xcodebuild-test.log 2>/dev/null | annotate notice 20
           grep -h "PROBE" xcodebuild-test.log 2>/dev/null | sort -u | annotate notice 40
-          grep -hE "Test run with|Suite .* (passed|failed)|✘|Test .* (passed|failed)" xcodebuild-test.log 2>/dev/null | annotate notice 40
+          grep -hE "Test run with|Suite .* (passed|failed)|✘|Test .* (started|passed|failed)|Testing started|Test Suite|timed out|Restarting|crash" xcodebuild-test.log 2>/dev/null | annotate notice 60
+          # The end of the log: where a stuck or crashed run stopped.
+          tail -25 xcodebuild-test.log 2>/dev/null | annotate notice 25
           grep -hiE "error|failed|unable" xcodebuild-test.log 2>/dev/null | grep -v PROBE | sort -u | annotate warning 30
 
-      - name: Upload build output
+      - name: Upload logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: AppleVideos-iPhone
+          name: AppleVideos-logs
           path: |
-            AppleVideos-unsigned.ipa
             xcodebuild-simulator.log
             xcodebuild-test.log
             xcodebuild-device.log

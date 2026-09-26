@@ -317,7 +317,7 @@ final class VideoDetailViewController: UIViewController, UICollectionViewDelegat
                   let indexPath = self.dataSource.indexPath(for: item),
                   let cell = self.collectionView.cellForItem(at: indexPath)
             else { return nil }
-            return (cell.contentView as? VideoCardContentView)?.zoomSourceView ?? cell.contentView
+            return VideoCells.zoomSource(of: cell)
         }
     }
 
@@ -413,10 +413,14 @@ private final class DownloadBarButton {
     }
 }
 
-/// A 22-point ring filling up with the download's progress, with a stop
-/// symbol in the middle; tapping it stops the download. Two shape layers,
-/// whose stroke end animates by itself.
-private final class DownloadRingView: UIControl {
+/// The ring filling up with the download's progress, with a stop symbol in
+/// the middle; tapping it stops the download. A button, so the tap sends its
+/// primary action. The ring and the symbol keep their 22-point size however
+/// large the bar makes the button; two shape layers draw the ring, and the
+/// stroke end animates by itself.
+private final class DownloadRingView: UIButton {
+    private static let diameter: CGFloat = 22
+
     var progress: Double = 0 {
         didSet {
             fill.strokeEnd = CGFloat(min(max(progress, 0), 1))
@@ -426,10 +430,17 @@ private final class DownloadRingView: UIControl {
 
     private let track = CAShapeLayer()
     private let fill = CAShapeLayer()
-    private let stop = UIImageView(image: UIImage(systemName: "stop.fill"))
 
     override init(frame: CGRect) {
-        super.init(frame: CGRect(x: 0, y: 0, width: 22, height: 22))
+        super.init(frame: CGRect(x: 0, y: 0, width: 30, height: 30))
+        var configuration = UIButton.Configuration.plain()
+        configuration.image = UIImage(
+            systemName: "stop.fill",
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 8, weight: .bold)
+        )
+        configuration.contentInsets = .zero
+        self.configuration = configuration
+
         for layer in [track, fill] {
             layer.fillColor = nil
             layer.lineWidth = 2.5
@@ -437,12 +448,7 @@ private final class DownloadRingView: UIControl {
             self.layer.addSublayer(layer)
         }
         fill.strokeEnd = 0
-        stop.preferredSymbolConfiguration = UIImage.SymbolConfiguration(pointSize: 8, weight: .bold)
-        stop.isUserInteractionEnabled = false
-        addSubview(stop)
-        isAccessibilityElement = true
         accessibilityLabel = "Stop Download"
-        accessibilityTraits = .button
         updateColors()
         registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (self: Self, _) in
             self.updateColors()
@@ -455,7 +461,7 @@ private final class DownloadRingView: UIControl {
     }
 
     override var intrinsicContentSize: CGSize {
-        CGSize(width: 22, height: 22)
+        CGSize(width: 30, height: 30)
     }
 
     override func tintColorDidChange() {
@@ -465,24 +471,21 @@ private final class DownloadRingView: UIControl {
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        let inset = track.lineWidth / 2
-        // Starts at the top and runs clockwise.
+        // A fixed-size ring in the middle, starting at the top, clockwise.
         let path = UIBezierPath(
             arcCenter: CGPoint(x: bounds.midX, y: bounds.midY),
-            radius: min(bounds.width, bounds.height) / 2 - inset,
+            radius: Self.diameter / 2 - track.lineWidth / 2,
             startAngle: -.pi / 2,
             endAngle: .pi * 1.5,
             clockwise: true
         ).cgPath
         track.path = path
         fill.path = path
-        stop.center = CGPoint(x: bounds.midX, y: bounds.midY)
     }
 
     private func updateColors() {
         track.strokeColor = UIColor.secondaryLabel.withAlphaComponent(0.35).resolvedColor(with: traitCollection).cgColor
         fill.strokeColor = tintColor.resolvedColor(with: traitCollection).cgColor
-        stop.tintColor = tintColor
     }
 }
 

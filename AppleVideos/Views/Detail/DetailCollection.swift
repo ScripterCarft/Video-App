@@ -174,7 +174,12 @@ final class DetailCollectionController: UIViewController, UICollectionViewDelega
     // MARK: - Cells
 
     private func configureDataSource() {
-        let stageRegistration = UICollectionView.CellRegistration<UICollectionViewCell, Item> { _, _, _ in }
+        let stageRegistration = UICollectionView.CellRegistration<UICollectionViewCell, Item> { cell, _, _ in
+            MainActor.assumeIsolated {
+                // TEST (do not merge): the stage spacer, transparent red.
+                cell.backgroundColor = UIColor.systemRed.withAlphaComponent(0.35)
+            }
+        }
         // TEST (do not merge): pure UIKit cards of the real card size, colored
         // with the cell's background configuration, no SwiftUI.
         let placeholderRegistration = UICollectionView.CellRegistration<UICollectionViewCell, Item> { cell, _, item in
@@ -209,6 +214,8 @@ final class DetailCollectionController: UIViewController, UICollectionViewDelega
                 configuration.directionalLayoutMargins = NSDirectionalEdgeInsets(top: 22, leading: 16, bottom: 0, trailing: 16)
                 configuration.axesPreservingSuperviewLayoutMargins = []
                 header.contentConfiguration = configuration
+                // TEST (do not merge): the header, orange.
+                header.backgroundColor = UIColor.systemOrange.withAlphaComponent(0.7)
             }
         }
 
@@ -375,7 +382,8 @@ private final class DetailArtworkView: UIView {
 private final class DetailShelfBackground: UICollectionReusableView {
     override init(frame: CGRect) {
         super.init(frame: frame)
-        backgroundColor = .black
+        // TEST (do not merge): the page background, dark green instead of black.
+        backgroundColor = UIColor(red: 0, green: 0.3, blue: 0.15, alpha: 1)
     }
 
     @available(*, unavailable)

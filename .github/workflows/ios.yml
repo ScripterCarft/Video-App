@@ -13,7 +13,7 @@ jobs:
   build:
     name: Build Apple Videos
     runs-on: macos-26
-    timeout-minutes: 30
+    timeout-minutes: 60
 
     steps:
       - name: Check out source
@@ -55,11 +55,26 @@ jobs:
             xcrun simctl list runtimes available
             xcodebuild -project AppleVideos.xcodeproj -scheme AppleVideos -showdestinations
           } 2>&1 | tee xcodebuild-test.log
-          # The first iPhone simulator of the newest iOS runtime.
-          RUNTIME=$(xcrun simctl list runtimes available | grep -E '^iOS ' | tail -1 | awk '{print $1" "$2}')
+          # The runner image may lack a simulator for the SDK's iOS version
+          # (the app requires iOS 27); download it with Xcode if so.
+          SDK_VERSION=$(xcrun --sdk iphonesimulator --show-sdk-version)
+          SDK_MAJOR=${SDK_VERSION%%.*}
+          echo "SETUP simulator SDK $SDK_VERSION" | tee -a xcodebuild-test.log
+          if ! xcrun simctl list runtimes available | grep -qE "^iOS $SDK_MAJOR\."; then
+            xcodebuild -downloadPlatform iOS 2>&1 | tail -5 | tee -a xcodebuild-test.log
+            xcrun simctl list runtimes available 2>&1 | tee -a xcodebuild-test.log
+          fi
+          RUNTIME_LINE=$(xcrun simctl list runtimes available | grep -E "^iOS $SDK_MAJOR\." | tail -1)
+          RUNTIME=$(echo "$RUNTIME_LINE" | awk '{print $1" "$2}')
+          RUNTIME_ID=$(echo "$RUNTIME_LINE" | grep -oE 'com\.apple\.CoreSimulator\.SimRuntime\.[A-Za-z0-9.-]+')
+          # Its first iPhone simulator, or a new one of the newest iPhone type.
           DEVICE=$(xcrun simctl list devices available | awk -v runtime="-- $RUNTIME --" '
             /^-- / { section = $0; next }
             section == runtime && /iPhone/ { match($0, /[0-9A-F-]{36}/); print substr($0, RSTART, RLENGTH); exit }')
+          if [ -z "$DEVICE" ] && [ -n "$RUNTIME_ID" ]; then
+            TYPE=$(xcrun simctl list devicetypes | grep -E '^iPhone' | tail -1 | grep -oE 'com\.apple\.CoreSimulator\.SimDeviceType\.[A-Za-z0-9.-]+')
+            DEVICE=$(xcrun simctl create "Test iPhone" "$TYPE" "$RUNTIME_ID")
+          fi
           echo "SETUP runtime '$RUNTIME', device '$DEVICE'" | tee -a xcodebuild-test.log
           xcodebuild \
             -project AppleVideos.xcodeproj \
@@ -80,7 +95,7 @@ jobs:
             lines=$(cat | head -"$2" | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
             [ -n "$lines" ] && echo "::$1::$lines" || true
           }
-          grep -hE "SETUP|^iOS " xcodebuild-test.log 2>/dev/null | annotate notice 20
+          grep -hE "SETUP|^iOS |Downloading|Download|Installed" xcodebuild-test.log 2>/dev/null | annotate notice 20
           grep -h "PROBE" xcodebuild-test.log 2>/dev/null | sort -u | annotate notice 40
           grep -hE "Test run with|Suite .* (passed|failed)|✘|Test .* (passed|failed)" xcodebuild-test.log 2>/dev/null | annotate notice 40
           grep -hiE "error|failed|unable" xcodebuild-test.log 2>/dev/null | grep -v PROBE | sort -u | annotate warning 30

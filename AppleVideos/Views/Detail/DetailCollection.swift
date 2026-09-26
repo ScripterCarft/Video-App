@@ -52,8 +52,6 @@ final class DetailCollectionController: UIViewController, UICollectionViewDelega
     enum Item: Hashable {
         case stage
         case video(String)
-        /// TEST (do not merge): a plain colored card in place of a video.
-        case placeholder(Int)
     }
 
     private static let cardWidth: CGFloat = 272
@@ -182,18 +180,6 @@ final class DetailCollectionController: UIViewController, UICollectionViewDelega
 
     private func configureDataSource() {
         let stageRegistration = UICollectionView.CellRegistration<UICollectionViewCell, Item> { _, _, _ in }
-        // TEST (do not merge): pure UIKit cards of the real card size, colored
-        // with the cell's background configuration, no SwiftUI.
-        let placeholderRegistration = UICollectionView.CellRegistration<UICollectionViewCell, Item> { cell, _, item in
-            MainActor.assumeIsolated {
-                guard case let .placeholder(index) = item else { return }
-                let colors: [UIColor] = [.systemBlue, .systemRed, .systemGreen, .systemOrange, .systemPurple]
-                var background = UIBackgroundConfiguration.clear()
-                background.backgroundColor = colors[index % colors.count]
-                background.cornerRadius = 14
-                cell.backgroundConfiguration = background
-            }
-        }
         let videoRegistration = UICollectionView.CellRegistration<UICollectionViewCell, Item> { [weak self] cell, _, item in
             MainActor.assumeIsolated {
                 self?.configureVideo(cell, for: item)
@@ -220,9 +206,6 @@ final class DetailCollectionController: UIViewController, UICollectionViewDelega
         }
 
         dataSource = UICollectionViewDiffableDataSource<Section, Item>(collectionView: collectionView) { collectionView, indexPath, item in
-            if case .placeholder = item {
-                return collectionView.dequeueConfiguredReusableCell(using: placeholderRegistration, for: indexPath, item: item)
-            }
             if item == .stage {
                 return collectionView.dequeueConfiguredReusableCell(using: stageRegistration, for: indexPath, item: item)
             }
@@ -261,8 +244,10 @@ final class DetailCollectionController: UIViewController, UICollectionViewDelega
         snapshot.appendItems([.stage], toSection: .stage)
         if !related.isEmpty {
             snapshot.appendSections([.upNext])
-            // TEST (do not merge): five colored placeholders instead of the videos.
-            snapshot.appendItems((0..<5).map { .placeholder($0) }, toSection: .upNext)
+            // Unique IDs: the data source requires them.
+            var seen = Set<String>()
+            let ids = related.map(\.id).filter { seen.insert($0).inserted }
+            snapshot.appendItems(ids.map { .video($0) }, toSection: .upNext)
         }
         dataSource.apply(snapshot, animatingDifferences: animated)
     }

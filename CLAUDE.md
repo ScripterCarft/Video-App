@@ -193,6 +193,17 @@ what is intentional, what was measured, and what is still open.
   `readyToPlay` and starts playback only after the seek. The Play button
   shows the play symbol, a capsule `ProgressView` (8 pt) and the remaining
   time ("40m", "1m" under a minute).
+- **Durable playback updates:** `LibraryStore.recordProgress` commits History,
+  position and completed Watchlist removal together using the existing
+  SwiftData transaction/rollback. Closing only publishes snapshots; it is not
+  needed to make those changes durable. Pending playback writes defer list
+  publication until `publishProgress`, including shared-context save notices.
+  Invalid positions/durations are ignored. `AVPlayerItem.timeJumpedNotification`
+  resets periodic watch-time sampling even for short seeks; crossing the watch
+  threshold saves on that sample. `Tests/Persistence` checks reopen without a
+  close callback, completed manual entries, replay, deferred UI and failed saves.
+  This covers native finite-duration playback; the embedded fallback still
+  records History only, and live/unknown-duration streams have no resume entry.
 
 ### Library and downloads
 

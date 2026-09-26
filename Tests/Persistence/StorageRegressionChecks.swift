@@ -131,6 +131,50 @@ struct StorageRegressionChecks {
         try expect(try LibraryDatabase.progress(id: legacy.id)?.position == 30, "Legacy progress not migrated")
         try WatchProgressMigration.run()
         try expect(try LibraryDatabase.allProgress().count == 2, "Progress migration was not idempotent")
+        try playbackChecks(at: folder.appendingPathComponent("playback.store"), video: video, another: another)
         print("PASS: unavailable store, malformed import, rollback, durable reopen, idempotency, save failure, UI snapshot, retry, progress migration")
+    }
+
+    static func playbackChecks(at url: URL, video: Video, another: Video) throws {
+        LibraryDatabase.useTestContainer(try container(at: url))
+        let playing = try LibraryStore()
+        playing.recordProgress(for: video, position: 30, duration: 300)
+        try expect(playing.recentlyWatched.isEmpty && playing.watchlist.isEmpty,
+                   "Playback changed the lists beneath AVKit")
+
+        // No player-close callback: reopen only what was committed to disk.
+        LibraryDatabase.useTestContainer(try container(at: url))
+        let reopened = try LibraryStore()
+        try expect(reopened.isInRecentlyWatched(video), "Playback position has no durable history entry")
+        try expect(reopened.isInWatchlist(video), "Interrupted playback is missing from Continue Watching")
+        try expect(reopened.resumePosition(for: video) == 30, "Interrupted playback lost its position")
+        reopened.addToWatchlist(video)
+        reopened.recordProgress(for: video, position: 290, duration: 300)
+        try expect(reopened.isInWatchlist(video), "Completion published before the player closed")
+
+        LibraryDatabase.useTestContainer(try container(at: url))
+        let finished = try LibraryStore()
+        try expect(!finished.isInWatchlist(video), "Completed manual entry survived a restart")
+        try expect(finished.isInRecentlyWatched(video), "Completion removed history")
+        try expect(finished.resumePosition(for: video) == nil, "Completion retained a resume position")
+        finished.recordProgress(for: video, position: 40, duration: 300)
+        finished.publishProgress()
+        try expect(finished.isInWatchlist(video), "Replay was removed by stale completion state")
+        finished.recordProgress(for: video, position: .nan, duration: 300)
+        finished.recordProgress(for: video, position: -1, duration: 300)
+        finished.recordProgress(for: another, position: 30, duration: .infinity)
+        try expect(finished.resumePosition(for: video) == 40, "Invalid input overwrote progress")
+        try expect(try LibraryDatabase.record(id: another.id) == nil, "Invalid input created history")
+
+        LibraryDatabase.useTestContainer(try container(at: url, allowsSave: false))
+        let readOnly = try LibraryStore()
+        readOnly.recordProgress(for: video, position: 290, duration: 300)
+        readOnly.recordProgress(for: another, position: 30, duration: 300)
+        readOnly.publishProgress()
+        try expect(readOnly.isInWatchlist(video), "Failed completion removed Continue Watching")
+        try expect(readOnly.resumePosition(for: video) == 40, "Failed completion lost saved progress")
+        try expect(try LibraryDatabase.record(id: another.id) == nil, "Failed playback save left orphan history")
+        try expect(LibraryDatabase.context?.hasChanges == false, "Failed playback save left dirty changes")
+        print("PASS: playback history and position survive reopen, completion is durable, deferred UI, replay, invalid input, atomic save failure")
     }
 }

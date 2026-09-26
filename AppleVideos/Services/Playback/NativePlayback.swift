@@ -521,6 +521,17 @@ private extension NativePlayback {
         let center = NotificationCenter.default
         notificationTokens = [
             center.addObserver(
+                forName: AVPlayerItem.timeJumpedNotification,
+                object: item,
+                queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    // AVFoundation identifies seeks/discontinuities, including
+                    // short seeks that a delta-size heuristic cannot distinguish.
+                    self?.lastObservedTime = nil
+                }
+            },
+            center.addObserver(
                 forName: AVPlayerItem.didPlayToEndTimeNotification,
                 object: item,
                 queue: .main
@@ -555,6 +566,15 @@ private extension NativePlayback {
         defer { self.lastObservedTime = seconds.isFinite ? seconds : nil }
 
         let isPlaying = player.timeControlStatus == .playing
+        let previouslyReachedThreshold = reachedWatchThreshold
+        if isPlaying, let previous = lastObservedTime, seconds.isFinite {
+            let elapsed = seconds - previous
+            // Discontinuities reset the baseline via timeJumpedNotification.
+            // Keep the conservative bound for delayed observer delivery.
+            if elapsed > 0 && elapsed < 2.5 {
+                watchedSeconds += min(elapsed, 1.5)
+            }
+        }
         if isPlaying {
             hasStartedPlaying = true
         }
@@ -563,19 +583,9 @@ private extension NativePlayback {
             if !isPlaying {
                 saveProgress()
             }
-        } else if isPlaying, Date.now.timeIntervalSince(lastProgressSave) >= Self.progressSaveInterval {
+        } else if isPlaying, (!previouslyReachedThreshold && reachedWatchThreshold)
+                    || Date.now.timeIntervalSince(lastProgressSave) >= Self.progressSaveInterval {
             saveProgress()
-        }
-
-        guard isPlaying,
-              let previous = lastObservedTime,
-              seconds.isFinite
-        else { return }
-
-        let elapsed = seconds - previous
-        // Ignore seeks and stalls.
-        if elapsed > 0 && elapsed < 2.5 {
-            watchedSeconds += min(elapsed, 1.5)
         }
     }
 

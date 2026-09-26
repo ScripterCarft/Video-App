@@ -4,14 +4,11 @@ import SwiftData
 
 /// Saved, History, the Watchlist and watch progress, stored in SwiftData with
 /// one `StoredVideo` per video and one `WatchProgress` per started video.
-/// The lists published here are read from the store after each change and
-/// after every save of the shared context; library screens query the store
-/// directly.
+/// The lists published here are value snapshots of the shared store.
 ///
-/// Watch progress is written to the store during playback (it survives a
-/// crash) but `progress`, which the UI reads, changes only when a player has
-/// closed, so nothing re-renders while AVKit is on screen. Because progress is
-/// a separate model, queries over stored videos do not update for it.
+/// Playback commits history, position and completion together. List and
+/// progress snapshots are published after the player closes, keeping these
+/// writes from redrawing the presenting screens beneath AVKit.
 @MainActor
 @Observable
 final class LibraryStore {
@@ -26,8 +23,9 @@ final class LibraryStore {
     /// The freshest copy of every video refreshed since launch.
     @ObservationIgnored private var refreshedThisLaunch: [String: Video] = [:]
     @ObservationIgnored private var refreshingIDs: Set<String> = []
-    /// Videos played to the end in the open player; applied on close.
-    @ObservationIgnored private var finishedSincePublish: Set<String> = []
+    /// Durable playback writes must not redraw lists beneath AVKit. Publishing
+    /// is deferred, not persistence; a new process reads the committed records.
+    @ObservationIgnored private var playbackWritesPendingPublication = false
     @ObservationIgnored private var saveObserver: NSObjectProtocol?
 
     private static let historyLimit = 50
@@ -261,30 +259,29 @@ final class LibraryStore {
     /// but does not update the UI; see `publishProgress()`. Positions near
     /// the start or the end remove the entry.
     func recordProgress(for video: Video, position: Double, duration: Double) {
-        guard position.isFinite, duration.isFinite, duration > 0 else { return }
+        guard position.isFinite, position >= 0, duration.isFinite, duration > 0 else { return }
 
         let entry = PlaybackProgress(position: position, duration: duration, updatedAt: .now)
-        if write({
+        playbackWritesPendingPublication = true
+        write {
+            let record = try LibraryDatabase.record(for: freshest(video))
+            let isNewHistoryEntry = record.watchedAt == nil
+            record.update(from: freshest(video))
+            record.watchedAt = entry.updatedAt
             try LibraryDatabase.setProgress(entry.isResumable ? entry : nil, for: video.id)
+            if entry.fraction >= PlaybackProgress.finishedFraction {
+                record.watchlistAddedAt = nil
+            }
+            if isNewHistoryEntry { try trimHistory() }
             if entry.isResumable { try trimProgress() }
-        }), entry.fraction >= PlaybackProgress.finishedFraction {
-            finishedSincePublish.insert(video.id)
         }
     }
 
-    /// Shows the saved progress in the UI and takes finished videos off the
-    /// Watchlist. Called once a player has closed.
+    /// Publishes the already committed history, Watchlist and progress once
+    /// the player has closed. This callback is not required for durability.
     func publishProgress() {
-        let finished = finishedSincePublish
-        if write({
-            for id in finished {
-                guard let record = try LibraryDatabase.record(id: id), record.watchlistAddedAt != nil else { continue }
-                record.watchlistAddedAt = nil
-                try LibraryDatabase.deleteIfUnused(record)
-            }
-        }) {
-            finishedSincePublish.subtract(finished)
-        }
+        playbackWritesPendingPublication = false
+        reloadLists()
         reloadProgress()
     }
 
@@ -325,6 +322,7 @@ final class LibraryStore {
     /// Reads the lists from the store. A list is only reassigned when it
     /// changed, so observers re-render only for real changes.
     private func reloadLists() {
+        guard !playbackWritesPendingPublication else { return }
         let records: [StoredVideo]
         do {
             records = try LibraryDatabase.allRecords()

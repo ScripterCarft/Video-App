@@ -292,6 +292,21 @@ final class HomeViewController: UIViewController, UICollectionViewDelegate {
 
     func collectionView(
         _ collectionView: UICollectionView,
+        contextMenuConfiguration configuration: UIContextMenuConfiguration,
+        highlightPreviewForItemAt indexPath: IndexPath
+    ) -> UITargetedPreview? {
+        VideoContextMenus.targetedPreview(of: collectionView.cellForItem(at: indexPath))
+    }
+
+    func collectionView(
+        _ collectionView: UICollectionView,
+        contextMenuConfiguration configuration: UIContextMenuConfiguration,
+        dismissalPreviewForItemAt indexPath: IndexPath
+    ) -> UITargetedPreview? {
+        VideoContextMenus.targetedPreview(of: collectionView.cellForItem(at: indexPath))
+    }
+    func collectionView(
+        _ collectionView: UICollectionView,
         willDisplayContextMenu configuration: UIContextMenuConfiguration,
         animator: (any UIContextMenuInteractionAnimating)?
     ) {

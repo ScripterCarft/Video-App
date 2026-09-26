@@ -1,4 +1,3 @@
-import SwiftUI
 import UIKit
 
 /// The context menu of every collection of videos: the same items in the
@@ -11,8 +10,6 @@ import UIKit
 /// and forwards `willDisplayContextMenu` and `willEndContextMenuInteraction`.
 @MainActor
 final class VideoContextMenus {
-    static let previewWidth: CGFloat = 320
-
     private let library: LibraryStore
     private let downloads: DownloadManager
     private weak var presenter: UIViewController?
@@ -26,24 +23,27 @@ final class VideoContextMenus {
     }
 
     /// The menu for `video`. `sourceView` anchors the share sheet on iPad.
+    /// No preview controller: the collection view lifts the card's own
+    /// artwork (see `targetedPreview(of:)`).
     func configuration(for video: Video, sourceView: @escaping () -> UIView?) -> UIContextMenuConfiguration {
-        // The preview is the thumbnail alone: a small preview leaves room for
-        // the menu below it.
-        let preview = {
-            let controller = UIHostingController(
-                rootView: VideoArtwork(video: video, cornerRadius: 18, quality: .search)
-                    .frame(width: Self.previewWidth)
-                    .padding()
-            )
-            controller.preferredContentSize = CGSize(
-                width: Self.previewWidth + 32,
-                height: Self.previewWidth * 9 / 16 + 32
-            )
-            return controller
-        }
-        return UIContextMenuConfiguration(identifier: nil, previewProvider: preview) { [weak self] _ in
+        UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { [weak self] _ in
             self?.menu(for: video, sourceView: sourceView)
         }
+    }
+
+    /// The thumbnail alone as the menu's preview: the card's own artwork view
+    /// with its rounded corners, lifted in place, without its text. The
+    /// collection view's delegate returns it as the highlight and the
+    /// dismissal preview.
+    static func targetedPreview(of cell: UICollectionViewCell?) -> UITargetedPreview? {
+        guard let card = cell?.contentView as? VideoCardContentView else { return nil }
+        let artwork = card.zoomSourceView
+        let parameters = UIPreviewParameters()
+        parameters.visiblePath = UIBezierPath(
+            roundedRect: artwork.bounds,
+            cornerRadius: VideoCardConfiguration.cornerRadius
+        )
+        return UITargetedPreview(view: artwork, parameters: parameters)
     }
 
     func willDisplay() {

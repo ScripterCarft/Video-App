@@ -176,13 +176,16 @@ final class HomeViewController: UIViewController, UICollectionViewDelegate {
                     return VideoCells.shelfSection(
                         cardWidth: HomeViewController.cardWidth,
                         headerTopSpacing: 0,
-                        traits: environment.traitCollection
+                        environment: environment
                     )
                 case .spotlight:
                     let section = HomeViewController.cardSection(
-                        height: SpotlightCardConfiguration.height(forWidth: cardWidth, traits: environment.traitCollection)
+                        height: SpotlightCard.height(forWidth: cardWidth, traits: environment.traitCollection)
                     )
-                    section.boundarySupplementaryItems = [VideoCells.header(traits: environment.traitCollection)]
+                    section.boundarySupplementaryItems = [VideoCells.header(
+                        width: environment.container.effectiveContentSize.width,
+                        traits: environment.traitCollection
+                    )]
                     section.supplementaryContentInsetsReference = .none
                     section.contentInsets.top = 14
                     return section
@@ -230,7 +233,7 @@ final class HomeViewController: UIViewController, UICollectionViewDelegate {
 
     private func configure(_ cell: UICollectionViewCell, for item: Item) {
         // Cells are reused across items, so each sets its own background.
-        cell.backgroundConfiguration = item == .spotlight ? SpotlightCardConfiguration.background : nil
+        cell.backgroundConfiguration = item == .spotlight ? SpotlightCard.background : nil
         switch item {
         case .featured:
             cell.contentConfiguration = FeaturedCardConfiguration(video: featured, library: library, playback: playback)
@@ -240,7 +243,7 @@ final class HomeViewController: UIViewController, UICollectionViewDelegate {
             cell.contentConfiguration = VideoCardConfiguration(video: video)
 
         case .spotlight:
-            cell.contentConfiguration = SpotlightCardConfiguration()
+            cell.contentConfiguration = SpotlightCard.configuration()
         }
     }
 

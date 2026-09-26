@@ -239,7 +239,7 @@ final class VideoDetailViewController: UIViewController, UICollectionViewDelegat
                 let section = VideoCells.shelfSection(
                     cardWidth: VideoDetailViewController.cardWidth,
                     headerTopSpacing: 14,
-                    traits: environment.traitCollection
+                    environment: environment
                 )
                 // The black page, from the artwork's lower edge down. It
                 // reaches two screen heights past the shelf, so the page never

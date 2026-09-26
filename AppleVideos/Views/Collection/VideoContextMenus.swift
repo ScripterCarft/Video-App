@@ -211,46 +211,69 @@ enum VideoCells {
     /// A section title in plain UIKit text, title 2 bold, with only its own
     /// margins (not the cell's, which follow the screen edges). `topSpacing`
     /// is part of the header's fixed height (see `shelfSection`).
-    /// With a `subtitle`, a second line in subheadline secondary text, as
-    /// Explore's sections have.
+    /// Apple's large, bold section header style
+    /// (`extraProminentInsetGroupedHeader`), on one line, with a subtitle
+    /// as its secondary text where a section has one (Explore).
     static func headerConfiguration(title: String, subtitle: String? = nil, topSpacing: CGFloat) -> UIListContentConfiguration {
-        var configuration = UIListContentConfiguration.cell()
+        var configuration = UIListContentConfiguration.extraProminentInsetGroupedHeader()
         configuration.text = title
-        configuration.textProperties.font = headerFont()
-        configuration.textProperties.color = .label
         configuration.textProperties.numberOfLines = 1
-        if let subtitle {
-            configuration.secondaryText = subtitle
-            configuration.secondaryTextProperties.font = .preferredFont(forTextStyle: .subheadline)
-            configuration.secondaryTextProperties.color = .secondaryLabel
-            configuration.secondaryTextProperties.numberOfLines = 1
-            configuration.textToSecondaryTextVerticalPadding = headerSubtitleSpacing
-        }
+        configuration.secondaryText = subtitle
+        configuration.secondaryTextProperties.numberOfLines = 1
         configuration.directionalLayoutMargins = NSDirectionalEdgeInsets(top: topSpacing, leading: 16, bottom: 0, trailing: 16)
         configuration.axesPreservingSuperviewLayoutMargins = []
         return configuration
     }
 
-    private static let headerSubtitleSpacing: CGFloat = 3
-
-    /// The fixed height of a section title from `headerConfiguration`.
-    static func headerHeight(hasSubtitle: Bool, topSpacing: CGFloat, traits: UITraitCollection) -> CGFloat {
-        let title = ceil(UIFont.preferredFont(forTextStyle: .title2, compatibleWith: traits).lineHeight)
-        guard hasSubtitle else { return topSpacing + title }
-        let subtitle = ceil(UIFont.preferredFont(forTextStyle: .subheadline, compatibleWith: traits).lineHeight)
-        return topSpacing + title + headerSubtitleSpacing + subtitle
-    }
-
-    /// A section title as a header of fixed height (see `headerHeight`).
-    static func header(hasSubtitle: Bool = false, topSpacing: CGFloat = 0, traits: UITraitCollection) -> NSCollectionLayoutBoundarySupplementaryItem {
-        NSCollectionLayoutBoundarySupplementaryItem(
-            layoutSize: NSCollectionLayoutSize(
-                widthDimension: .fractionalWidth(1),
-                heightDimension: .absolute(headerHeight(hasSubtitle: hasSubtitle, topSpacing: topSpacing, traits: traits))
-            ),
+    /// A section title as a header of fixed height: Apple's header content
+    /// view measured once per text size (`fittingHeight`). Titles and
+    /// subtitles have one line, so any text gives the height.
+    static func header(
+        hasSubtitle: Bool = false,
+        topSpacing: CGFloat = 0,
+        width: CGFloat,
+        traits: UITraitCollection
+    ) -> NSCollectionLayoutBoundarySupplementaryItem {
+        let height = fittingHeight(key: "header|\(hasSubtitle)|\(topSpacing)", width: width, traits: traits) {
+            headerConfiguration(title: "Title", subtitle: hasSubtitle ? "Subtitle" : nil, topSpacing: topSpacing)
+        }
+        return NSCollectionLayoutBoundarySupplementaryItem(
+            layoutSize: NSCollectionLayoutSize(widthDimension: .fractionalWidth(1), heightDimension: .absolute(height)),
             elementKind: UICollectionView.elementKindSectionHeader,
             alignment: .top
         )
+    }
+
+    /// Heights measured by `fittingHeight`, by content, width and text size.
+    private static var fittingHeights: [String: CGFloat] = [:]
+
+    /// The height Apple's own content view needs for `configuration` at
+    /// `width` and the text size in `traits` (Auto Layout's fitting size).
+    /// Measured once per key, width and text size and then reused, so the
+    /// layout keeps fixed sizes and nothing is measured while scrolling.
+    static func fittingHeight(
+        key: String,
+        width: CGFloat,
+        traits: UITraitCollection,
+        configuration: () -> any UIContentConfiguration
+    ) -> CGFloat {
+        let cacheKey = "\(key)|\(Int(width))|\(traits.preferredContentSizeCategory.rawValue)"
+        if let height = fittingHeights[cacheKey] {
+            return height
+        }
+        var height: CGFloat = 0
+        // Fonts in the configuration and the view follow these traits.
+        traits.performAsCurrent {
+            let view = configuration().makeContentView()
+            view.traitOverrides.preferredContentSizeCategory = traits.preferredContentSizeCategory
+            height = ceil(view.systemLayoutSizeFitting(
+                CGSize(width: width, height: UIView.layoutFittingCompressedSize.height),
+                withHorizontalFittingPriority: .required,
+                verticalFittingPriority: .fittingSizeLevel
+            ).height)
+        }
+        fittingHeights[cacheKey] = height
+        return height
     }
 
     /// A vertical list of full-width video cards between the screen margins,
@@ -267,25 +290,21 @@ enum VideoCells {
         return section
     }
 
-    private static func headerFont() -> UIFont {
-        let descriptor = UIFontDescriptor.preferredFontDescriptor(withTextStyle: .title2)
-        return UIFont(descriptor: descriptor.withSymbolicTraits(.traitBold) ?? descriptor, size: 0)
-    }
-
     /// A horizontal shelf of UIKit video cards (`VideoCardConfiguration`)
     /// with a title header, all of fixed size. Estimated sizes made the
     /// collection view measure cells while it scrolled, which stuttered and,
     /// on iOS 27, ran into a layout loop crash (`_updateVisibleCellsNow`
     /// recursing until an assertion failed).
     ///
-    /// Pass the layout environment's traits from the section provider: UIKit
-    /// tracks the text size read here (automatic trait tracking) and asks for
-    /// the section again when it changes.
+    /// Pass the section provider's layout environment: UIKit tracks the text
+    /// size read from its traits (automatic trait tracking) and asks for the
+    /// section again when it changes.
     static func shelfSection(
         cardWidth: CGFloat,
         headerTopSpacing: CGFloat,
-        traits: UITraitCollection
+        environment: any NSCollectionLayoutEnvironment
     ) -> NSCollectionLayoutSection {
+        let traits = environment.traitCollection
         let cardHeight = VideoCardConfiguration.height(forWidth: cardWidth, traits: traits)
         let itemSize = NSCollectionLayoutSize(widthDimension: .fractionalWidth(1), heightDimension: .absolute(cardHeight))
         let groupSize = NSCollectionLayoutSize(widthDimension: .absolute(cardWidth), heightDimension: .absolute(cardHeight))
@@ -295,7 +314,9 @@ enum VideoCells {
         section.interGroupSpacing = 14
         section.contentInsets = NSDirectionalEdgeInsets(top: 12, leading: 16, bottom: 0, trailing: 16)
         section.supplementaryContentInsetsReference = .none
-        section.boundarySupplementaryItems = [header(topSpacing: headerTopSpacing, traits: traits)]
+        section.boundarySupplementaryItems = [
+            header(topSpacing: headerTopSpacing, width: environment.container.effectiveContentSize.width, traits: traits)
+        ]
         return section
     }
 }

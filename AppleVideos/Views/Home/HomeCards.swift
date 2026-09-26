@@ -291,22 +291,20 @@ private final class CapsuleLabel: UIView {
 
 // MARK: - Spotlight
 
-/// The Spotlight card at the bottom of Home as a UIKit cell content
-/// configuration: a symbol above a title and a short text, on a rounded
-/// background (`background`, Apple's `UIBackgroundConfiguration`). Its height
-/// is computed once per width and text size from the fixed texts.
-struct SpotlightCardConfiguration: UIContentConfiguration {
-    static let title = "A calmer way to watch"
-    static let text = "No noisy counters or clutter. Just videos, collections, and your library."
-    static let padding: CGFloat = 22
-    static let spacing: CGFloat = 8
-
-    func makeContentView() -> any UIView & UIContentView {
-        SpotlightCardContentView(configuration: self)
-    }
-
-    func updated(for state: any UIConfigurationState) -> SpotlightCardConfiguration {
-        self
+/// The Spotlight card at the bottom of Home: Apple's list content (symbol,
+/// title and text) on a rounded gray surface. Its height is Apple's content
+/// view measured once per width and text size (`VideoCells.fittingHeight`).
+enum SpotlightCard {
+    @MainActor
+    static func configuration() -> UIListContentConfiguration {
+        var configuration = UIListContentConfiguration.subtitleCell()
+        configuration.image = UIImage(systemName: "sparkles.tv.fill")
+        configuration.imageProperties.preferredSymbolConfiguration = UIImage.SymbolConfiguration(textStyle: .title1)
+        configuration.text = "A calmer way to watch"
+        configuration.textProperties.font = .preferredFont(forTextStyle: .headline)
+        configuration.secondaryText = "No noisy counters or clutter. Just videos, collections, and your library."
+        configuration.directionalLayoutMargins = NSDirectionalEdgeInsets(top: 18, leading: 18, bottom: 18, trailing: 18)
+        return configuration
     }
 
     /// The card's rounded surface; an opaque system color, cheap to draw.
@@ -318,86 +316,10 @@ struct SpotlightCardConfiguration: UIContentConfiguration {
         return background
     }
 
-    static var symbol: UIImage? {
-        UIImage(
-            systemName: "sparkles.tv.fill",
-            withConfiguration: UIImage.SymbolConfiguration(pointSize: 40)
-                .applying(UIImage.SymbolConfiguration(hierarchicalColor: .label))
-        )
-    }
-
-    static func titleFont(traits: UITraitCollection) -> UIFont {
-        FeaturedCardContentView.font(.title2, bold: true, traits: traits)
-    }
-
-    static func textFont(traits: UITraitCollection) -> UIFont {
-        UIFont.preferredFont(forTextStyle: .subheadline, compatibleWith: traits)
-    }
-
-    /// The card's height at `width` for the texts at the current text size.
+    @MainActor
     static func height(forWidth width: CGFloat, traits: UITraitCollection) -> CGFloat {
-        let textWidth = width - 2 * padding
-        func height(of string: String, font: UIFont) -> CGFloat {
-            ceil((string as NSString).boundingRect(
-                with: CGSize(width: textWidth, height: .greatestFiniteMagnitude),
-                options: [.usesLineFragmentOrigin, .usesFontLeading],
-                attributes: [.font: font],
-                context: nil
-            ).height)
+        VideoCells.fittingHeight(key: "spotlight", width: width, traits: traits) {
+            configuration()
         }
-        return padding
-            + ceil(symbol?.size.height ?? 0) + spacing
-            + height(of: title, font: titleFont(traits: traits)) + spacing
-            + height(of: text, font: textFont(traits: traits))
-            + padding
-    }
-}
-
-final class SpotlightCardContentView: UIView, UIContentView {
-    var configuration: any UIContentConfiguration
-
-    private let symbolView = UIImageView(image: SpotlightCardConfiguration.symbol)
-    private let titleLabel = UILabel()
-    private let textLabel = UILabel()
-
-    init(configuration: SpotlightCardConfiguration) {
-        self.configuration = configuration
-        super.init(frame: .zero)
-
-        symbolView.contentMode = .left
-        titleLabel.text = SpotlightCardConfiguration.title
-        titleLabel.textColor = .label
-        titleLabel.numberOfLines = 0
-        textLabel.text = SpotlightCardConfiguration.text
-        textLabel.textColor = .secondaryLabel
-        textLabel.numberOfLines = 0
-
-        let stack = UIStackView(arrangedSubviews: [symbolView, titleLabel, textLabel])
-        stack.axis = .vertical
-        stack.alignment = .fill
-        stack.spacing = SpotlightCardConfiguration.spacing
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(stack)
-
-        let padding = SpotlightCardConfiguration.padding
-        NSLayoutConstraint.activate([
-            // Top-aligned in the computed height.
-            stack.topAnchor.constraint(equalTo: topAnchor, constant: padding),
-            stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: padding),
-            stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -padding),
-            stack.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor, constant: -padding)
-        ])
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) is not used")
-    }
-
-    /// The fonts follow the text size: UIKit tracks the traits read here.
-    override func updateProperties() {
-        super.updateProperties()
-        titleLabel.font = SpotlightCardConfiguration.titleFont(traits: traitCollection)
-        textLabel.font = SpotlightCardConfiguration.textFont(traits: traitCollection)
     }
 }

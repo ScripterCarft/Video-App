@@ -83,14 +83,19 @@ final class ExploreViewController: UIViewController, UICollectionViewDelegate {
                 guard let section = self?.dataSource?.sectionIdentifier(for: index) else { return nil }
                 switch section {
                 case .topics:
-                    return ExploreViewController.topicSection(traits: environment.traitCollection)
+                    return ExploreViewController.topicSection(environment: environment)
                 case .trending:
                     let section = VideoCells.listSection(
                         containerWidth: environment.container.effectiveContentSize.width,
                         traits: environment.traitCollection
                     )
                     section.boundarySupplementaryItems = [
-                        VideoCells.header(hasSubtitle: true, topSpacing: 16, traits: environment.traitCollection)
+                        VideoCells.header(
+                            hasSubtitle: true,
+                            topSpacing: 16,
+                            width: environment.container.effectiveContentSize.width,
+                            traits: environment.traitCollection
+                        )
                     ]
                     section.contentInsets.top = 14
                     section.interGroupSpacing = 14
@@ -102,7 +107,7 @@ final class ExploreViewController: UIViewController, UICollectionViewDelegate {
     }
 
     /// Two columns of tiles of fixed height, 12 points apart.
-    private static func topicSection(traits: UITraitCollection) -> NSCollectionLayoutSection {
+    private static func topicSection(environment: any NSCollectionLayoutEnvironment) -> NSCollectionLayoutSection {
         let item = NSCollectionLayoutItem(layoutSize: NSCollectionLayoutSize(
             widthDimension: .fractionalWidth(0.5),
             heightDimension: .fractionalHeight(1)
@@ -117,7 +122,12 @@ final class ExploreViewController: UIViewController, UICollectionViewDelegate {
         section.interGroupSpacing = 12
         section.contentInsets = NSDirectionalEdgeInsets(top: 14, leading: 16, bottom: 0, trailing: 16)
         section.supplementaryContentInsetsReference = .none
-        section.boundarySupplementaryItems = [VideoCells.header(hasSubtitle: true, topSpacing: 16, traits: traits)]
+        section.boundarySupplementaryItems = [VideoCells.header(
+            hasSubtitle: true,
+            topSpacing: 16,
+            width: environment.container.effectiveContentSize.width,
+            traits: environment.traitCollection
+        )]
         return section
     }
 

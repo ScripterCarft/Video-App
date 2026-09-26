@@ -209,6 +209,18 @@ enum LibraryDatabase {
         (try? context.fetch(FetchDescriptor<StoredVideo>())) ?? []
     }
 
+    /// The stored videos matching `filter`, kept current by SwiftData
+    /// (`ResultsObserver`, observable). Measured on iOS 27 (see
+    /// `ResultsObserverTests`): the results update about 15–30 ms after a save
+    /// that touches stored videos, not for saving changed watch progress.
+    /// Nil only if the first fetch fails; the list is then empty.
+    static func observe(
+        _ filter: Predicate<StoredVideo>,
+        sortedBy sort: SortDescriptor<StoredVideo>
+    ) -> ResultsObserver<StoredVideo, Never>? {
+        try? ResultsObserver(filterBy: filter, sortBy: [sort], modelContext: context)
+    }
+
     /// Deletes `record` when nothing needs it any more.
     static func deleteIfUnused(_ record: StoredVideo) {
         if record.isUnused {

@@ -48,11 +48,13 @@ final class DownloadManager: NSObject {
         static let pending = "apple-videos.downloads.pending"
     }
 
-    /// Finished downloads, newest first, read from the shared store
-    /// (`StoredVideo.downloadPath`).
-    private(set) var videos: [Video] = []
-    /// Package paths by video ID, relative to the home directory.
-    private var paths: [String: String] = [:]
+    /// Finished downloads, newest first, from the shared store
+    /// (`StoredVideo.downloadPath`, relative to the home directory); updated
+    /// by SwiftData after each save.
+    private let downloaded = LibraryDatabase.observe(
+        #Predicate { $0.downloadPath != nil },
+        sortedBy: SortDescriptor(\.downloadedAt, order: .reverse)
+    )
     private(set) var activities: [String: Activity] = [:]
     var failure: Failure?
 
@@ -68,8 +70,6 @@ final class DownloadManager: NSObject {
     private let provider: any DownloadURLProviding = DirectDownloadURLProvider()
     private let defaults = UserDefaults.standard
 
-    @ObservationIgnored private var saveObserver: NSObjectProtocol?
-
     override private init() {
         pending = Self.decode([String: Pending].self, forKey: Keys.pending) ?? [:]
         super.init()
@@ -82,17 +82,6 @@ final class DownloadManager: NSObject {
             LibraryDatabase.deleteIfUnused(record)
         }
         LibraryDatabase.save()
-        reloadDownloads()
-        // The library shares the store; its saves may refresh a video's metadata.
-        saveObserver = NotificationCenter.default.addObserver(
-            forName: ModelContext.didSave,
-            object: LibraryDatabase.context,
-            queue: .main
-        ) { [weak self] _ in
-            MainActor.assumeIsolated {
-                self?.reloadDownloads()
-            }
-        }
 
         wifiSession = makeSession(identifier: "com.scriptercarft.AppleVideos.downloads", allowsMobileData: false)
         mobileDataSession = makeSession(
@@ -121,8 +110,13 @@ final class DownloadManager: NSObject {
         video.source == .youtube
     }
 
+    /// Finished downloads, newest first.
+    var videos: [Video] {
+        downloaded?.results.map(\.video) ?? []
+    }
+
     func isDownloaded(_ video: Video) -> Bool {
-        paths[video.id] != nil
+        downloadPath(of: video) != nil
     }
 
     func activity(for video: Video) -> Activity? {
@@ -131,13 +125,22 @@ final class DownloadManager: NSObject {
 
     /// The downloaded package to play instead of streaming.
     func localURL(for video: Video) -> URL? {
-        paths[video.id].flatMap(Self.url(forPath:))
+        downloadPath(of: video).flatMap(Self.url(forPath:))
+    }
+
+    private func downloadPath(of video: Video) -> String? {
+        downloaded?.results.first { $0.id == video.id }?.downloadPath
     }
 
     // MARK: - Actions
 
     func download(_ video: Video) {
-        guard canDownload(video), activities[video.id] == nil, !isDownloaded(video) else { return }
+        // The store itself, not the observed list: that follows a save only
+        // a moment later, and Renew downloads right after removing.
+        guard canDownload(video),
+              activities[video.id] == nil,
+              LibraryDatabase.record(id: video.id)?.downloadPath == nil
+        else { return }
         activities[video.id] = .waiting
         let settings = DownloadSettings.current()
 
@@ -185,7 +188,6 @@ final class DownloadManager: NSObject {
         guard let record = LibraryDatabase.record(id: video.id), record.downloadPath != nil else { return }
         removeDownload(of: record)
         LibraryDatabase.save()
-        reloadDownloads()
     }
 
     func removeAll() {
@@ -193,7 +195,6 @@ final class DownloadManager: NSObject {
             removeDownload(of: record)
         }
         LibraryDatabase.save()
-        reloadDownloads()
     }
 
     private func removeDownload(of record: StoredVideo) {
@@ -210,23 +211,6 @@ final class DownloadManager: NSObject {
         let stored = LibraryDatabase.record(id: video.id)?.video ?? video
         remove(video)
         download(stored)
-    }
-
-    /// Reads the finished downloads from the store; reassigns only changes.
-    private func reloadDownloads() {
-        let downloaded = LibraryDatabase.allRecords()
-            .filter { $0.downloadPath != nil }
-            .sorted { ($0.downloadedAt ?? .distantPast) > ($1.downloadedAt ?? .distantPast) }
-        let newVideos = downloaded.map(\.video)
-        if newVideos != videos {
-            videos = newVideos
-        }
-        let newPaths = Dictionary(uniqueKeysWithValues: downloaded.compactMap { record in
-            record.downloadPath.map { (record.id, $0) }
-        })
-        if newPaths != paths {
-            paths = newPaths
-        }
     }
 
     // MARK: - Tasks
@@ -290,7 +274,6 @@ final class DownloadManager: NSObject {
         record.downloadPath = path
         record.downloadedAt = .now
         LibraryDatabase.save()
-        reloadDownloads()
     }
 
     // MARK: - Variant choice

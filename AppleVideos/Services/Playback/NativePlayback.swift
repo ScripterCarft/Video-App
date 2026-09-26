@@ -351,14 +351,16 @@ final class NativePlayback: NSObject {
 
     private func loadArtworkData() async -> Data? {
         // 1280 pixels wide gives the 720×720 square artwork its full height.
-        guard let image = await ArtworkLoader.firstImage(
-            from: video.artworkCandidates(lowData: NetworkConditions.shared.isConstrained),
+        let request = ArtworkRequest(
+            candidates: video.artworkCandidates(lowData: NetworkConditions.shared.isConstrained),
             requiresSixteenByNine: video.source == .youtube,
             maxPixelWidth: 1280
-        ) else {
+        )
+        guard let image = await ArtworkLoader.firstImage(for: request) else {
             return nil
         }
-        return Self.squareArtworkData(from: image)
+        guard !Task.isCancelled else { return nil }
+        return await NowPlayingArtwork.jpegData(from: image)
     }
 
     private func playerMetadata(
@@ -399,41 +401,6 @@ final class NativePlayback: NSObject {
         item.dataType = kCMMetadataBaseDataType_JPEG as String
         item.extendedLanguageTag = "und"
         return item
-    }
-
-    private static func squareArtworkData(
-        from image: UIImage,
-        pixelSize: CGFloat = 720
-    ) -> Data? {
-        guard image.size.width > 0, image.size.height > 0 else { return nil }
-
-        let targetSize = CGSize(width: pixelSize, height: pixelSize)
-        let scale = max(
-            targetSize.width / image.size.width,
-            targetSize.height / image.size.height
-        )
-        let drawSize = CGSize(
-            width: image.size.width * scale,
-            height: image.size.height * scale
-        )
-        let drawRect = CGRect(
-            x: (targetSize.width - drawSize.width) / 2,
-            y: (targetSize.height - drawSize.height) / 2,
-            width: drawSize.width,
-            height: drawSize.height
-        )
-
-        let format = UIGraphicsImageRendererFormat()
-        format.scale = 1
-        format.opaque = true
-
-        let renderer = UIGraphicsImageRenderer(size: targetSize, format: format)
-        let squareImage = renderer.image { context in
-            UIColor.black.setFill()
-            context.fill(CGRect(origin: .zero, size: targetSize))
-            image.draw(in: drawRect)
-        }
-        return squareImage.jpegData(compressionQuality: 0.9)
     }
 }
 

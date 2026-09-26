@@ -121,9 +121,15 @@ what is intentional, what was measured, and what is still open.
 - **Artwork:** YouTube lists `hq720`/`maxresdefault` exactly when they exist
   (verified), so `thumbnailURL` stores the best listed 16:9 image and
   `Video.artworkCandidates` requests the 1280 file only when listed. No
-  size guessing. `ArtworkLoader` owns and shares downloads, uses the default
-  cache policy (YouTube: `max-age=7200` + ETag), downsamples to the drawn
-  width and keeps prepared images in an `NSCache`. The curated videos carry
+  size guessing. `Services/Artwork/ArtworkLoader` owns and shares downloads.
+  An available URLCache response is used immediately even after its freshness
+  lifetime while URLSession checks it with the normal cache policy (YouTube:
+  `max-age=7200` + ETag; stale responses can produce 304). Changed bytes appear
+  after the prepared memory entry is rebuilt, not as a live card replacement.
+  Downloading/decoding/cropping uses `@concurrent`; UIKit prepares the thumbnail
+  for display. No unprepared-image fallback. `ArtworkRequest` keys candidates,
+  crop mode and pixel width, shared by views and prefetching. NSCache uses image
+  byte costs with advisory limits of 64 MiB and 200 images. The curated videos carry
   their known thumbnails. `Video.preferredThumbnail(known:new:)` is the one
   rule: a known URL stays unless the new one is 1280 and the known one is
   smaller. It applies to refreshes and to `VideoCatalog.remember`, so Up
@@ -131,6 +137,17 @@ what is intentional, what was measured, and what is still open.
   Up Next cards stay at the cropped `hqdefault` (480×270, user's decision);
   the detail screen loads the 1280 image once the details list it
   (`DetailArtworkView.upgrade`, cross-dissolve, not in Low Data Mode).
+  Shared `Views/Artwork/ArtworkImageView` gives cards and Featured plain gray
+  placeholders without symbols; cached images appear immediately, asynchronous
+  arrivals cross-dissolve only on screen and with Reduce Motion off. Reuse
+  checks the full request and video ID; size changes request a new preparation.
+  `VideoCollectionViewController` implements UIKit data prefetching once for
+  all card screens, including a Featured request at hero size. Two speculative
+  requests per screen, none in Low Data Mode. Cancellation releases each
+  prefetch owner; the loader cancels only if no other prefetch or card needs it.
+  Snapshot replacements/disappearance clear queued and active prefetch hints.
+  `Services/Artwork/NowPlayingArtwork` renders/encodes lock-screen JPEG data
+  off the main actor using `@concurrent` and `UIGraphicsImageRenderer`.
 - **Low Data Mode** (`NetworkConditions`): no 1280 artwork, no stream
   prefetch, HLS capped at 720p on every network, 60 s buffer; large images
   are requested with `allowsConstrainedNetworkAccess = false` and fall back
@@ -377,7 +394,7 @@ what is intentional, what was measured, and what is still open.
   app code needed; whether they appear for YouTube's HLS is untested).
   No iOS 27 API loads or caches network images; Apple's way stays
   `URLSession` + `byPreparingThumbnail` + a cache, and
-  `UICollectionViewDataSourcePrefetching` (not used yet) to start artwork
+  `UICollectionViewDataSourcePrefetching` to start artwork
   downloads before cells appear.
 
 ## Open work
@@ -449,7 +466,14 @@ Keep as is (already Apple's way): `AVPlayerViewController` full screen,
 
 **Smaller items:**
 
-- `UICollectionViewDataSourcePrefetching` for Home and Up Next artwork.
+- Artwork follow-up completed: shared data prefetching, card/Featured fades
+  and symbol-free placeholders, Up Next loading header and off-main Now
+  Playing artwork. Up Next's observable `relatedLoadFinished` distinguishes
+  waiting from an empty result. The loading row uses a standard list-cell
+  header with an activity-indicator accessory; the diffable snapshot replaces
+  it with the cards, or removes the section. Reduce Motion skips insertion
+  animation. `VideoCells` now has its own file under `Views/Collection/` and
+  `DetailArtworkView` its own under `Views/Detail/`.
 - The context menu's bubble shows the card's 272-point image at 320 points,
   slightly soft; request the larger (`.search`) artwork from the shared
   cache for it.

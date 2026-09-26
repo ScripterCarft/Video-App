@@ -36,6 +36,7 @@ final class VideoDetailViewController: VideoCollectionViewController, RoutedScre
 
     enum Item: Hashable {
         case stage
+        case loadingRelated
         case video(String)
     }
 
@@ -49,6 +50,7 @@ final class VideoDetailViewController: VideoCollectionViewController, RoutedScre
     private var model: VideoDetailModel?
     private var loadTask: Task<Void, Never>?
     private var shownRelated: [Video] = []
+    private var shownRelatedLoading = false
     private var dataSource: UICollectionViewDiffableDataSource<Section, Item>!
     private lazy var collectionView = DetailCollectionView(frame: .zero, collectionViewLayout: makeLayout())
     private let artwork = DetailArtworkView()
@@ -95,6 +97,7 @@ final class VideoDetailViewController: VideoCollectionViewController, RoutedScre
         collectionView.contentInset.bottom = 30
         collectionView.alwaysBounceVertical = true
         collectionView.delegate = self
+        configureArtworkPrefetching(in: collectionView)
         configureDataSource()
         applySnapshot(related: [], animated: false)
 
@@ -166,8 +169,10 @@ final class VideoDetailViewController: VideoCollectionViewController, RoutedScre
             artwork.upgrade(to: refreshed)
         }
         let related = model.related
-        if related != shownRelated {
-            applySnapshot(related: related, animated: view.window != nil)
+        let isLoading = !model.relatedLoadFinished
+        if related != shownRelated || isLoading != shownRelatedLoading {
+            applySnapshot(related: related, isLoading: isLoading,
+                          animated: view.window != nil && !UIAccessibility.isReduceMotionEnabled)
         }
         downloadButton.update(
             activity: downloads.activity(for: model.video),
@@ -230,11 +235,22 @@ final class VideoDetailViewController: VideoCollectionViewController, RoutedScre
                 let topInset = self?.collectionView.adjustedContentInset.top ?? 0
                 return VideoDetailViewController.stageSection(height: max(1, stage - topInset))
             case .upNext:
-                let section = VideoCells.shelfSection(
-                    cardWidth: VideoDetailViewController.cardWidth,
-                    headerTopSpacing: 14,
-                    environment: environment
-                )
+                let section: NSCollectionLayoutSection
+                if self?.shownRelatedLoading == true {
+                    // Just a header while loading: no fake cards or reserved
+                    // shelf-sized gap. Fixed height avoids self-sizing loops.
+                    let height = VideoCells.fittingHeight(
+                        key: "up-next-loading", width: environment.container.effectiveContentSize.width,
+                        traits: environment.traitCollection
+                    ) { VideoCells.headerConfiguration(title: "Up Next", topSpacing: 14) }
+                    section = VideoDetailViewController.stageSection(height: height)
+                } else {
+                    section = VideoCells.shelfSection(
+                        cardWidth: VideoDetailViewController.cardWidth,
+                        headerTopSpacing: 14,
+                        environment: environment
+                    )
+                }
                 // The black page, from the artwork's lower edge down. It
                 // reaches two screen heights past the shelf, so the page never
                 // ends on screen, even when pulled beyond its end.
@@ -261,6 +277,9 @@ final class VideoDetailViewController: VideoCollectionViewController, RoutedScre
 
     private func configureDataSource() {
         let stageRegistration = UICollectionView.CellRegistration<UICollectionViewCell, Item> { _, _, _ in }
+        let loadingRegistration = UICollectionView.CellRegistration<UpNextHeaderCell, Item> { cell, _, _ in
+            cell.configure(isLoading: true)
+        }
         let videoRegistration = UICollectionView.CellRegistration<UICollectionViewCell, Item> { [weak self] cell, _, item in
             MainActor.assumeIsolated {
                 guard case let .video(id) = item,
@@ -269,17 +288,20 @@ final class VideoDetailViewController: VideoCollectionViewController, RoutedScre
                 cell.contentConfiguration = VideoCardConfiguration(video: video)
             }
         }
-        let headerRegistration = UICollectionView.SupplementaryRegistration<UICollectionViewCell>(
+        let headerRegistration = UICollectionView.SupplementaryRegistration<UpNextHeaderCell>(
             elementKind: UICollectionView.elementKindSectionHeader
         ) { header, _, _ in
             MainActor.assumeIsolated {
-                header.contentConfiguration = VideoCells.headerConfiguration(title: "Up Next", topSpacing: 14)
+                header.configure(isLoading: false)
             }
         }
 
         dataSource = UICollectionViewDiffableDataSource<Section, Item>(collectionView: collectionView) { collectionView, indexPath, item in
             if item == .stage {
                 return collectionView.dequeueConfiguredReusableCell(using: stageRegistration, for: indexPath, item: item)
+            }
+            if item == .loadingRelated {
+                return collectionView.dequeueConfiguredReusableCell(using: loadingRegistration, for: indexPath, item: item)
             }
             return collectionView.dequeueConfiguredReusableCell(using: videoRegistration, for: indexPath, item: item)
         }
@@ -288,25 +310,31 @@ final class VideoDetailViewController: VideoCollectionViewController, RoutedScre
         }
     }
 
-    private func applySnapshot(related: [Video], animated: Bool) {
+    private func applySnapshot(related: [Video], isLoading: Bool = false, animated: Bool) {
         shownRelated = related
+        shownRelatedLoading = isLoading
         var snapshot = NSDiffableDataSourceSnapshot<Section, Item>()
         snapshot.appendSections([.stage])
         snapshot.appendItems([.stage], toSection: .stage)
-        if !related.isEmpty {
+        if isLoading {
+            snapshot.appendSections([.upNext])
+            snapshot.appendItems([.loadingRelated], toSection: .upNext)
+        } else if !related.isEmpty {
             snapshot.appendSections([.upNext])
             // Unique IDs: the data source requires them.
             var seen = Set<String>()
             let ids = related.map(\.id).filter { seen.insert($0).inserted }
             snapshot.appendItems(ids.map { .video($0) }, toSection: .upNext)
         }
+        cancelPendingArtworkPrefetches()
         dataSource.apply(snapshot, animatingDifferences: animated)
     }
 
     // MARK: - Selection and menus
 
     func collectionView(_ collectionView: UICollectionView, shouldSelectItemAt indexPath: IndexPath) -> Bool {
-        dataSource.itemIdentifier(for: indexPath) != .stage
+        if case .video? = dataSource.itemIdentifier(for: indexPath) { return true }
+        return false
     }
 
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
@@ -459,124 +487,6 @@ private final class DetailCollectionView: UICollectionView {
             }
         }
         return super.gestureRecognizerShouldBegin(gestureRecognizer)
-    }
-}
-
-/// The artwork layer: the stage at the top edge with the 16:9 thumbnail
-/// centered in it, on black below. As the collection view's background view
-/// it stays in place; it lays out only when its size changes.
-private final class DetailArtworkView: UIView {
-    private let stage = UIView()
-    private let imageView = UIImageView()
-
-    override init(frame: CGRect) {
-        super.init(frame: frame)
-        backgroundColor = .black
-        // TEST: light blue shows the stage's extent while we build the screen.
-        stage.backgroundColor = UIColor(red: 0.72, green: 0.84, blue: 1, alpha: 1)
-        stage.clipsToBounds = true
-        imageView.contentMode = .scaleAspectFit
-        stage.addSubview(imageView)
-        addSubview(stage)
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) is not used")
-    }
-
-    override func layoutSubviews() {
-        super.layoutSubviews()
-        let width = bounds.width
-        let height = DetailStage.height(forWidth: width, scale: traitCollection.displayScale)
-        // Bounds and center, not frame: the stage carries the scroll transform.
-        stage.bounds = CGRect(x: 0, y: 0, width: width, height: height)
-        stage.center = CGPoint(x: width / 2, y: height / 2)
-        let thumbnailHeight = width * 9 / 16
-        imageView.frame = CGRect(x: 0, y: (height - thumbnailHeight) / 2, width: width, height: thumbnailHeight)
-    }
-
-    /// Follows the page, like the TV app: scrolled up by `offset`, the stage
-    /// moves up at half the speed while the page slides over it; pulled down
-    /// past the top, it grows from its top edge, evenly in both directions,
-    /// and fills the gap above the page. One transform on one layer, so
-    /// nothing is drawn or laid out again.
-    func follow(offset: CGFloat) {
-        let height = stage.bounds.height
-        guard height > 0 else { return }
-        if offset >= 0 {
-            stage.transform = CGAffineTransform(translationX: 0, y: -offset / 2)
-        } else {
-            let scale = (height - offset) / height
-            // Scaling around the center moves the top up by half the growth;
-            // moving back down by that keeps the top edge in place.
-            stage.transform = CGAffineTransform(translationX: 0, y: (scale - 1) * height / 2)
-                .scaledBy(x: scale, y: scale)
-        }
-    }
-
-    private var pendingVideo: Video?
-    private var shownThumbnail: URL?
-    private var loadTask: Task<Void, Never>?
-
-    /// Loads the artwork once, from the shared loader and its cache, as soon
-    /// as the view is on screen and knows its display scale.
-    func load(_ video: Video) {
-        pendingVideo = video
-        loadIfPossible()
-    }
-
-    /// Loads the 1280 thumbnail the details list for a video that was opened
-    /// with a smaller one (Up Next lists only `hqdefault`). Not in Low Data
-    /// Mode, where 1280 artwork is left out.
-    func upgrade(to video: Video) {
-        guard Video.isLargeThumbnail(video.thumbnailURL),
-              !Video.isLargeThumbnail(shownThumbnail),
-              !NetworkConditions.shared.isConstrained
-        else { return }
-        load(video)
-    }
-
-    override func didMoveToWindow() {
-        super.didMoveToWindow()
-        loadIfPossible()
-    }
-
-    private func loadIfPossible() {
-        guard window != nil, let video = pendingVideo else { return }
-        pendingVideo = nil
-        shownThumbnail = video.thumbnailURL
-        // A smaller image still loading must not replace the upgrade.
-        loadTask?.cancel()
-        let candidates = video.artworkCandidates(lowData: NetworkConditions.shared.isConstrained)
-        let maxPixelWidth = ArtworkQuality.hero.displayWidth * traitCollection.displayScale
-        if let cached = ArtworkLoader.cachedImage(for: candidates, maxPixelWidth: maxPixelWidth) {
-            show(cached)
-            return
-        }
-        loadTask = Task { [weak self] in
-            let image = await ArtworkLoader.firstImage(
-                from: candidates,
-                requiresSixteenByNine: video.source == .youtube,
-                maxPixelWidth: maxPixelWidth
-            )
-            guard !Task.isCancelled, let self else { return }
-            // An upgrade that fails keeps the image already shown.
-            if image != nil || self.imageView.image == nil {
-                self.show(image)
-            }
-        }
-    }
-
-    /// Shows `image`, cross-dissolving when it replaces one already shown.
-    private func show(_ image: UIImage?) {
-        guard imageView.image != nil, image != nil else {
-            imageView.image = image
-            return
-        }
-        UIView.transition(with: imageView, duration: 0.25, options: .transitionCrossDissolve) {
-            self.imageView.image = image
-        }
     }
 }
 

@@ -42,16 +42,12 @@ final class FeaturedCardContentView: UIView, UIContentView {
     }
 
     private let stage = UIView()
-    private let imageView = UIImageView()
-    private let placeholderSymbol = UIImageView(image: UIImage(systemName: "play.rectangle.fill"))
+    private let imageView = ArtworkImageView()
     private let gradient = GradientView()
     private let eyebrowLabel = UILabel()
     private let titleLabel = UILabel()
     private let playButton = UIButton(type: .system)
     private let durationLabel = CapsuleLabel()
-
-    private var loadedCandidates: [ArtworkCandidate]?
-    private var imageTask: Task<Void, Never>?
 
     init(configuration: FeaturedCardConfiguration) {
         appliedConfiguration = configuration
@@ -62,10 +58,6 @@ final class FeaturedCardContentView: UIView, UIContentView {
     @available(*, unavailable)
     required init?(coder: NSCoder) {
         fatalError("init(coder:) is not used")
-    }
-
-    deinit {
-        imageTask?.cancel()
     }
 
     private func buildViews() {
@@ -79,8 +71,6 @@ final class FeaturedCardContentView: UIView, UIContentView {
         addSubview(stage)
 
         imageView.contentMode = .scaleAspectFit
-        placeholderSymbol.tintColor = .tertiaryLabel
-        placeholderSymbol.preferredSymbolConfiguration = UIImage.SymbolConfiguration(textStyle: .largeTitle)
 
         eyebrowLabel.textColor = UIColor.white.withAlphaComponent(0.72)
         titleLabel.textColor = .white
@@ -102,7 +92,7 @@ final class FeaturedCardContentView: UIView, UIContentView {
         text.alignment = .fill
         text.spacing = 10
 
-        for view in [imageView, placeholderSymbol, gradient, text] {
+        for view in [imageView, gradient, text] {
             view.translatesAutoresizingMaskIntoConstraints = false
             stage.addSubview(view)
         }
@@ -123,9 +113,6 @@ final class FeaturedCardContentView: UIView, UIContentView {
             gradient.leadingAnchor.constraint(equalTo: stage.leadingAnchor),
             gradient.trailingAnchor.constraint(equalTo: stage.trailingAnchor),
             gradient.bottomAnchor.constraint(equalTo: stage.bottomAnchor),
-
-            placeholderSymbol.centerXAnchor.constraint(equalTo: stage.centerXAnchor),
-            placeholderSymbol.centerYAnchor.constraint(equalTo: stage.centerYAnchor),
 
             text.leadingAnchor.constraint(equalTo: stage.leadingAnchor, constant: padding),
             text.trailingAnchor.constraint(equalTo: stage.trailingAnchor, constant: -padding),
@@ -172,7 +159,7 @@ final class FeaturedCardContentView: UIView, UIContentView {
             playButton.accessibilityValue = nil
         }
 
-        loadArtwork(for: video)
+        imageView.load(video, quality: .hero)
     }
 
     private func playTapped() {
@@ -186,36 +173,6 @@ final class FeaturedCardContentView: UIView, UIContentView {
                 library: configuration.library
             )
         }
-    }
-
-    /// Loads the artwork once per candidate list, from the shared loader and
-    /// its cache.
-    private func loadArtwork(for video: Video) {
-        let candidates = video.artworkCandidates(lowData: NetworkConditions.shared.isConstrained)
-        guard candidates != loadedCandidates else { return }
-        loadedCandidates = candidates
-        imageTask?.cancel()
-
-        let maxPixelWidth = ArtworkQuality.hero.displayWidth * max(traitCollection.displayScale, 1)
-        if let cached = ArtworkLoader.cachedImage(for: candidates, maxPixelWidth: maxPixelWidth) {
-            show(cached)
-            return
-        }
-        show(nil)
-        imageTask = Task { [weak self] in
-            let image = await ArtworkLoader.firstImage(
-                from: candidates,
-                requiresSixteenByNine: video.source == .youtube,
-                maxPixelWidth: maxPixelWidth
-            )
-            guard !Task.isCancelled, let self, self.loadedCandidates == candidates else { return }
-            self.show(image)
-        }
-    }
-
-    private func show(_ image: UIImage?) {
-        imageView.image = image
-        placeholderSymbol.isHidden = image != nil
     }
 
     /// A text style's font at the current text size, bold if asked.

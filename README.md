@@ -35,11 +35,13 @@ The YouTube and Innertube representations stay inside the service and resolver l
 - `Persistence/Models/`: SwiftData records (`StoredVideo`, `WatchProgress`), with their existing schema names and fields
 - `Persistence/`: opening the durable database, atomic writes and storage error state (`LibraryDatabase`, `LibraryStorageStatus`)
 - `Persistence/Migrations/`: importing legacy UserDefaults data and moving old watch positions
-- `Services/`: YouTube search and details, the video catalog, the on-device library and artwork loading
+- `Services/`: YouTube search and details, the video catalog and the on-device library
+- `Services/Artwork/`: shared image requests, caching, preparation and Now Playing JPEG generation
 - `Services/Playback/`: the provider-neutral resolver contract, the YouTube resolver and `NativePlayback`
 - `Services/Downloads/`: offline downloads
 - `Views/Home/`: the UIKit Home screen (`HomeViewController`) and its Featured and Spotlight cards
 - `Views/Detail/`: the UIKit video detail screen and its loading model
+- `Views/Artwork/`: shared card image loading, reuse protection and transitions
 - `Views/Collection/`: the shared card (`VideoCardConfiguration`), shelf and list layouts (`VideoCells`), the video list screen (`VideoListViewController`), search results, the Play button configuration, context menus and share item
 - `Views/Navigation/`: routes (`VideoRoute`, `AppRoute`) and `VideoNavigator`, which pushes screens and opens videos with UIKit's zoom transition
 - `Views/Screens/`: the Explore, Search and Library tabs
@@ -50,6 +52,28 @@ The YouTube and Innertube representations stay inside the service and resolver l
 Navigation carries only a video's ID (`VideoRoute`); the detail screen reads the video from `VideoCatalog`. Every tab is a UIKit navigation controller with its own `VideoNavigator`: it pushes `VideoDetailViewController` with `preferredTransition = .zoom` from the tapped card's artwork, and other screens (a topic's results, a Library list) from their `AppRoute`. After a relaunch the scene restores the selected tab and each tab's screens through its state restoration activity.
 
 Artwork comes from `ArtworkLoader`: shared downloads, HTTP caching, downsampling to the drawn size and an in-memory cache. A video keeps the best 16:9 thumbnail YouTube lists; a 1280 image, once known, is never replaced by a smaller one (Up Next lists only small ones), and the detail screen loads the 1280 image as soon as the video's details list it.
+
+An available HTTP-cache response is displayed immediately, including after its
+freshness lifetime, while URLSession checks it under the normal HTTP cache
+policy. Stale ETag responses can be revalidated without downloading the image
+again. Updated bytes become visible when the prepared memory entry is next
+rebuilt; existing cards do not change beneath the user. The prepared cache keys
+include candidates, cropping and pixel width. NSCache has a 64 MiB cost target
+and a 200-image count target; these are advisory eviction limits.
+
+`VideoCollectionViewController` uses UIKit's data-prefetch callbacks for Home,
+Up Next, Explore and video lists. It starts at most two speculative requests per
+screen, uses the same image size as the cards, cancels obsolete work and clears
+index-path hints before replacing a snapshot. If a card joins a prefetch, its
+shared download survives cancellation of the speculative request. Low Data
+Mode disables speculative image loads.
+
+Card and Featured artwork uses a plain gray placeholder without a symbol.
+Memory-cache hits display immediately; asynchronous deliveries use UIKit's
+cross-dissolve only while on screen and with Reduce Motion off. Up Next shows
+a system header and activity indicator while waiting, then inserts its cards
+using the diffable data source; an empty result removes the section. Now Playing
+artwork is rendered and JPEG-encoded away from the main actor with `@concurrent`.
 
 ## Saved, History, and Watchlist
 

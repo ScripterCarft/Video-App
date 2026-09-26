@@ -9,6 +9,7 @@ import UIKit
 /// data it reads and updates the list by itself. Cards removed from their
 /// context menu leave once the menu has closed.
 final class VideoListViewController: VideoCollectionViewController, RoutedScreen {
+    override var artworkQuality: ArtworkQuality { .search }
     /// What the list shows.
     enum State {
         case videos([Video])
@@ -81,6 +82,7 @@ final class VideoListViewController: VideoCollectionViewController, RoutedScreen
         super.viewDidLoad()
         collectionView.backgroundColor = .systemBackground
         collectionView.delegate = self
+        configureArtworkPrefetching(in: collectionView)
         configureDataSource()
     }
 
@@ -171,6 +173,7 @@ final class VideoListViewController: VideoCollectionViewController, RoutedScreen
         if !reconfigure.isEmpty {
             snapshot.reconfigureItems(reconfigure)
         }
+        cancelPendingArtworkPrefetches()
         dataSource.apply(snapshot, animatingDifferences: animated)
     }
 

@@ -17,11 +17,12 @@ final class VideoDetailModel {
     private(set) var streamBadges: [String] = []
     private(set) var detailsLoadFinished = false
     private(set) var related: [Video] = []
-    @ObservationIgnored private var relatedLoaded = false
+    private(set) var relatedLoadFinished: Bool
     @ObservationIgnored private var streamLoaded = false
 
     init(video: Video) {
         self.video = video
+        relatedLoadFinished = video.source != .youtube
     }
 
     /// The video with the freshest metadata available.
@@ -86,11 +87,11 @@ final class VideoDetailModel {
             }
         }
 
-        if !relatedLoaded, video.source == .youtube {
+        if !relatedLoadFinished, video.source == .youtube {
             let videos = (try? await YouTubeService.shared.relatedVideos(for: video.id)) ?? []
             guard !Task.isCancelled else { return }
             related = videos
-            relatedLoaded = true
+            relatedLoadFinished = true
         }
 
         if !streamLoaded {

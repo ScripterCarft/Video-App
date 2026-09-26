@@ -67,6 +67,7 @@ final class HomeViewController: VideoCollectionViewController {
         super.viewDidLoad()
         collectionView.backgroundColor = .systemBackground
         collectionView.delegate = self
+        configureArtworkPrefetching(in: collectionView)
         configureDataSource()
 
         // The featured video has a Play button right on Home.
@@ -271,6 +272,7 @@ final class HomeViewController: VideoCollectionViewController {
         if !reconfigure.isEmpty {
             snapshot.reconfigureItems(reconfigure)
         }
+        cancelPendingArtworkPrefetches()
         dataSource.apply(snapshot, animatingDifferences: animated)
     }
 
@@ -311,5 +313,14 @@ final class HomeViewController: VideoCollectionViewController {
     override func video(at indexPath: IndexPath) -> Video? {
         guard case let .video(shelf, id)? = dataSource.itemIdentifier(for: indexPath) else { return nil }
         return video(in: shelf, id: id)
+    }
+
+    override func artworkRequest(at indexPath: IndexPath, in collectionView: UICollectionView) -> ArtworkRequest? {
+        if dataSource.itemIdentifier(for: indexPath) == .featured {
+            return ArtworkRequest(video: featured, quality: .hero,
+                                  displayScale: collectionView.traitCollection.displayScale,
+                                  lowData: NetworkConditions.shared.isConstrained)
+        }
+        return super.artworkRequest(at: indexPath, in: collectionView)
     }
 }

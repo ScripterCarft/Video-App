@@ -61,15 +61,11 @@ final class VideoCardContentView: UIView, UIContentView {
 
     /// The artwork as currently shown, for the context menu's preview.
     var artworkImage: UIImage? { imageView.image }
-    private let imageView = UIImageView()
-    private let placeholderSymbol = UIImageView(image: UIImage(systemName: "play.rectangle.fill"))
+    private let imageView = ArtworkImageView()
     private let badge = DurationBadge()
     private let titleLabel = UILabel()
     private let channelLabel = UILabel()
     private let infoLabel = UILabel()
-
-    private var loadedCandidates: [ArtworkCandidate]?
-    private var imageTask: Task<Void, Never>?
 
     init(configuration: VideoCardConfiguration) {
         appliedConfiguration = configuration
@@ -82,10 +78,6 @@ final class VideoCardContentView: UIView, UIContentView {
         fatalError("init(coder:) is not used")
     }
 
-    deinit {
-        imageTask?.cancel()
-    }
-
     // MARK: - Views
 
     private func buildViews() {
@@ -94,11 +86,6 @@ final class VideoCardContentView: UIView, UIContentView {
         artwork.layer.cornerCurve = .continuous
         artwork.layer.borderWidth = 0.5
         artwork.clipsToBounds = true
-
-        placeholderSymbol.tintColor = .tertiaryLabel
-        placeholderSymbol.preferredSymbolConfiguration = UIImage.SymbolConfiguration(textStyle: .largeTitle)
-        placeholderSymbol.translatesAutoresizingMaskIntoConstraints = false
-        artwork.addSubview(placeholderSymbol)
 
         imageView.contentMode = .scaleAspectFill
         imageView.translatesAutoresizingMaskIntoConstraints = false
@@ -136,9 +123,6 @@ final class VideoCardContentView: UIView, UIContentView {
             imageView.leadingAnchor.constraint(equalTo: artwork.leadingAnchor),
             imageView.trailingAnchor.constraint(equalTo: artwork.trailingAnchor),
             imageView.bottomAnchor.constraint(equalTo: artwork.bottomAnchor),
-
-            placeholderSymbol.centerXAnchor.constraint(equalTo: artwork.centerXAnchor),
-            placeholderSymbol.centerYAnchor.constraint(equalTo: artwork.centerYAnchor),
 
             badge.trailingAnchor.constraint(equalTo: artwork.trailingAnchor, constant: -8),
             badge.bottomAnchor.constraint(equalTo: artwork.bottomAnchor, constant: -8)
@@ -183,37 +167,7 @@ final class VideoCardContentView: UIView, UIContentView {
             .filter { !$0.isEmpty }
             .joined(separator: ", ")
 
-        loadArtwork(for: video, quality: appliedConfiguration.quality)
-    }
-
-    /// Loads the artwork once per candidate list, from the shared loader and
-    /// its cache; a reused cell cancels the load of its previous video.
-    private func loadArtwork(for video: Video, quality: ArtworkQuality) {
-        let candidates = video.artworkCandidates(lowData: NetworkConditions.shared.isConstrained)
-        guard candidates != loadedCandidates else { return }
-        loadedCandidates = candidates
-        imageTask?.cancel()
-
-        let maxPixelWidth = quality.displayWidth * max(traitCollection.displayScale, 1)
-        if let cached = ArtworkLoader.cachedImage(for: candidates, maxPixelWidth: maxPixelWidth) {
-            show(cached)
-            return
-        }
-        show(nil)
-        imageTask = Task { [weak self] in
-            let image = await ArtworkLoader.firstImage(
-                from: candidates,
-                requiresSixteenByNine: video.source == .youtube,
-                maxPixelWidth: maxPixelWidth
-            )
-            guard !Task.isCancelled, let self, self.loadedCandidates == candidates else { return }
-            self.show(image)
-        }
-    }
-
-    private func show(_ image: UIImage?) {
-        imageView.image = image
-        placeholderSymbol.isHidden = image != nil
+        imageView.load(video, quality: appliedConfiguration.quality)
     }
 }
 

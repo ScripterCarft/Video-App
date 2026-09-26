@@ -11,67 +11,108 @@ enum ArtworkLoader {
     /// Prepared images by candidate list and target width. Rows that scroll
     /// back into view show their artwork immediately instead of downloading
     /// and decoding it again.
-    private static let cache: NSCache<NSString, UIImage> = {
-        let cache = NSCache<NSString, UIImage>()
+    private static let cache: NSCache<RequestKey, UIImage> = {
+        let cache = NSCache<RequestKey, UIImage>()
         cache.countLimit = 200
+        cache.totalCostLimit = 64 * 1024 * 1024
         return cache
     }()
 
-    private static var inFlight: [NSString: Task<UIImage?, Never>] = [:]
+    private final class Flight {
+        let id = UUID()
+        var task: Task<UIImage?, Never>!
+        var keepAlive: Bool
+        var prefetchOwners: Set<UUID> = []
 
-    /// The image already prepared for these candidates and width, if any.
-    static func cachedImage(for candidates: [ArtworkCandidate], maxPixelWidth: CGFloat) -> UIImage? {
-        cache.object(forKey: cacheKey(for: candidates, maxPixelWidth: maxPixelWidth))
+        init(keepAlive: Bool) { self.keepAlive = keepAlive }
     }
 
-    /// Returns the first candidate that downloads and decodes, downsampled to
-    /// at most `maxPixelWidth`. YouTube's 4:3 sizes are letterboxed, so pass
-    /// `requiresSixteenByNine` to skip them in favor of the next candidate.
-    static func firstImage(
-        from candidates: [ArtworkCandidate],
-        requiresSixteenByNine: Bool,
-        maxPixelWidth: CGFloat
-    ) async -> UIImage? {
-        let key = cacheKey(for: candidates, maxPixelWidth: maxPixelWidth)
-        if let cached = cache.object(forKey: key) {
+    struct Prefetch {
+        let request: ArtworkRequest
+        let owner: UUID
+        let flightID: UUID
+        let task: Task<UIImage?, Never>
+    }
+
+    private static var inFlight: [ArtworkRequest: Flight] = [:]
+
+    /// The image already prepared for these candidates and width, if any.
+    static func cachedImage(for request: ArtworkRequest) -> UIImage? {
+        cache.object(forKey: RequestKey(request))
+    }
+
+    /// Returns the first candidate that downloads and prepares successfully.
+    /// The request controls downsampling and removal of YouTube's black bars.
+    static func firstImage(for request: ArtworkRequest) async -> UIImage? {
+        if let cached = cachedImage(for: request) {
             return cached
         }
-        if let running = inFlight[key] {
-            return await running.value
+        if let running = inFlight[request] {
+            // Once a view needs it, keep the shared download even if UIKit
+            // cancels its earlier speculative request.
+            running.keepAlive = true
+            return await running.task.value
         }
+        return await start(request, keepAlive: true).task.value
+    }
 
+    static func prefetch(_ request: ArtworkRequest) -> Prefetch? {
+        guard cachedImage(for: request) == nil else { return nil }
+        let running = inFlight[request] ?? start(request, keepAlive: false)
+        let owner = UUID()
+        running.prefetchOwners.insert(owner)
+        return Prefetch(request: request, owner: owner, flightID: running.id, task: running.task)
+    }
+
+    static func cancelPrefetch(_ prefetch: Prefetch) {
+        guard let running = inFlight[prefetch.request], running.id == prefetch.flightID else { return }
+        running.prefetchOwners.remove(prefetch.owner)
+        if !running.keepAlive, running.prefetchOwners.isEmpty {
+            running.task.cancel()
+            inFlight[prefetch.request] = nil
+        }
+    }
+
+    private static func start(_ request: ArtworkRequest, keepAlive: Bool) -> Flight {
+        let flight = Flight(keepAlive: keepAlive)
+        let id = flight.id
         // Unstructured on purpose: the download outlives the view that started it.
-        let task = Task {
+        flight.task = Task(priority: keepAlive ? .userInitiated : .utility) {
             let image = await download(
-                candidates,
-                requiresSixteenByNine: requiresSixteenByNine,
-                maxPixelWidth: maxPixelWidth
+                request.candidates,
+                requiresSixteenByNine: request.requiresSixteenByNine,
+                maxPixelWidth: request.maxPixelWidth
             )
+            guard !Task.isCancelled else { return nil }
             if let image {
-                cache.setObject(image, forKey: key)
+                let cost = image.cgImage.map { $0.bytesPerRow * $0.height } ?? 0
+                cache.setObject(image, forKey: RequestKey(request), cost: cost)
             }
-            inFlight[key] = nil
+            if inFlight[request]?.id == id { inFlight[request] = nil }
             return image
         }
-        inFlight[key] = task
-        return await task.value
+        inFlight[request] = flight
+        return flight
     }
 
     /// Loads, decodes and crops off the main actor, so none of it blocks the
     /// interface.
+    @concurrent
     nonisolated private static func download(
         _ candidates: [ArtworkCandidate],
         requiresSixteenByNine: Bool,
         maxPixelWidth: CGFloat
     ) async -> UIImage? {
         for candidate in candidates {
+            guard !Task.isCancelled else { return nil }
             var request = URLRequest(url: candidate.url, timeoutInterval: 20)
             request.setValue("image/avif,image/webp,image/*,*/*;q=0.8", forHTTPHeaderField: "Accept")
             // Large variants are optional. In Low Data Mode the system refuses
             // them and the next, smaller candidate is used instead.
             request.allowsConstrainedNetworkAccess = !candidate.isLarge
 
-            guard let data = await imageData(for: request), let downloaded = UIImage(data: data) else { continue }
+            guard let data = await imageData(for: request), !Task.isCancelled,
+                  let downloaded = UIImage(data: data) else { continue }
 
             let image: UIImage
             if !requiresSixteenByNine || isSixteenByNine(downloaded.size) {
@@ -84,7 +125,9 @@ enum ArtworkLoader {
 
             // Decode (and shrink to the drawn size) in the background, so the
             // main thread never stalls on a large JPEG and memory stays small.
-            return await prepared(image, maxPixelWidth: maxPixelWidth) ?? image
+            if let prepared = await prepared(image, maxPixelWidth: maxPixelWidth) {
+                return prepared
+            }
         }
         return nil
     }
@@ -120,9 +163,14 @@ enum ArtworkLoader {
         return await image.byPreparingThumbnail(ofSize: CGSize(width: maxPixelWidth, height: height))
     }
 
-    private static func cacheKey(for candidates: [ArtworkCandidate], maxPixelWidth: CGFloat) -> NSString {
-        (candidates.map(\.url.absoluteString) + ["\(Int(maxPixelWidth))"])
-            .joined(separator: "|") as NSString
+    private final class RequestKey: NSObject {
+        let request: ArtworkRequest
+
+        init(_ request: ArtworkRequest) { self.request = request }
+        override var hash: Int { request.hashValue }
+        override func isEqual(_ object: Any?) -> Bool {
+            (object as? RequestKey)?.request == request
+        }
     }
 
     /// The 16:9 band of a 4:3 thumbnail. YouTube's `hqdefault` is 4:3 with

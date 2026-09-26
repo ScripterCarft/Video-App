@@ -3,6 +3,7 @@ import UIKit
 /// Explore as a UIKit screen: topic tiles in two columns, each opening that
 /// topic's search results, and the trending videos as full-width cards.
 final class ExploreViewController: VideoCollectionViewController {
+    override var artworkQuality: ArtworkQuality { .search }
     private enum Section: Hashable {
         case topics
         case trending
@@ -56,12 +57,14 @@ final class ExploreViewController: VideoCollectionViewController {
         super.viewDidLoad()
         collectionView.backgroundColor = .systemBackground
         collectionView.delegate = self
+        configureArtworkPrefetching(in: collectionView)
         configureDataSource()
 
         var snapshot = NSDiffableDataSourceSnapshot<Section, Item>()
         snapshot.appendSections([.topics, .trending])
         snapshot.appendItems(Self.topics.map { .topic($0.title) }, toSection: .topics)
         snapshot.appendItems(trending.map { .video($0.id) }, toSection: .trending)
+        cancelPendingArtworkPrefetches()
         dataSource.apply(snapshot, animatingDifferences: false)
     }
 

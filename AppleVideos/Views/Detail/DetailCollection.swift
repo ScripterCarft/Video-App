@@ -86,9 +86,13 @@ final class DetailCollectionController: UIViewController, UICollectionViewDelega
         collectionView.frame = view.bounds
         collectionView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         collectionView.backgroundColor = .black
+        // The artwork fills the whole screen behind the content, bars
+        // included, and stays in place.
         collectionView.backgroundView = artwork
-        // The stage starts under the navigation bar; the bottom is inset by hand.
-        collectionView.contentInsetAdjustmentBehavior = .never
+        // UIKit keeps the content clear of the bars (automatic insets), so at
+        // rest nothing lies under the navigation bar and its scroll edge
+        // effect appears only once the page scrolls, as everywhere else.
+        collectionView.contentInset.bottom = 30
         collectionView.alwaysBounceVertical = true
         collectionView.delegate = self
         view.addSubview(collectionView)
@@ -103,12 +107,10 @@ final class DetailCollectionController: UIViewController, UICollectionViewDelega
         applySnapshot(animated: false)
     }
 
-    override func viewSafeAreaInsetsDidChange() {
-        super.viewSafeAreaInsetsDidChange()
-        collectionView.contentInset.bottom = view.safeAreaInsets.bottom + 30
-        // The scroll indicator keeps clear of the bars by itself
-        // (automaticallyAdjustsScrollIndicatorInsets); setting the safe area
-        // here as well doubled it and started the indicator mid-screen.
+    /// The spacer depends on the top inset (see `stageSection`).
+    func scrollViewDidChangeAdjustedContentInset(_ scrollView: UIScrollView) {
+        guard scrollView === collectionView else { return }
+        collectionView.collectionViewLayout.invalidateLayout()
     }
 
     override func viewWillAppear(_ animated: Bool) {
@@ -134,10 +136,14 @@ final class DetailCollectionController: UIViewController, UICollectionViewDelega
         let layout = UICollectionViewCompositionalLayout { [weak self] index, environment in
             switch self?.dataSource?.sectionIdentifier(for: index) {
             case .stage:
-                return DetailCollectionController.stageSection(height: DetailStage.height(
+                // The content starts below the bars; the spacer ends where the
+                // artwork does, so the black page begins at its lower edge.
+                let stage = DetailStage.height(
                     forWidth: environment.container.effectiveContentSize.width,
                     scale: environment.traitCollection.displayScale
-                ))
+                )
+                let topInset = self?.collectionView.adjustedContentInset.top ?? 0
+                return DetailCollectionController.stageSection(height: max(1, stage - topInset))
             case .upNext:
                 let section = VideoCells.shelfSection(
                     cardWidth: DetailCollectionController.cardWidth,
@@ -165,7 +171,7 @@ final class DetailCollectionController: UIViewController, UICollectionViewDelega
         return UIFont(descriptor: descriptor.withSymbolicTraits(.traitBold) ?? descriptor, size: 0)
     }
 
-    /// A clear spacer exactly over the artwork stage.
+    /// A clear spacer over the artwork stage, below the bars.
     private static func stageSection(height: CGFloat) -> NSCollectionLayoutSection {
         let size = NSCollectionLayoutSize(widthDimension: .fractionalWidth(1), heightDimension: .absolute(height))
         let group = NSCollectionLayoutGroup.vertical(layoutSize: size, subitems: [NSCollectionLayoutItem(layoutSize: size)])
@@ -317,7 +323,7 @@ private final class DetailArtworkView: UIView {
         super.init(frame: frame)
         backgroundColor = .black
         // TEST: light blue shows the stage's extent while we build the screen.
-        stage.backgroundColor = UIColor(red: 0.72, green: 0.84, blue: 1, alpha: 1)
+        stage.backgroundColor = UIColor(red: 0.22, green: 0.36, blue: 0.6, alpha: 1)
         stage.clipsToBounds = true
         imageView.contentMode = .scaleAspectFit
         stage.addSubview(imageView)

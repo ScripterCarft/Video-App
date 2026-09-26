@@ -29,10 +29,13 @@ accepted player-dismissal bug.
   its deployment target is iOS 27, and no iOS 27 API compiled. CI now runs
   on GitHub's `xcode-27` image (public preview, macOS 27, arm64; default
   Xcode 27.0, betas beside it unused), which has the iOS 27 SDK and
-  simulators. Preview means possible queueing and instability. Unit tests
-  (`AppleVideosTests`, Swift Testing, hosted in the app) run after the IPA,
-  so a failing test never withholds a build; lines starting with PROBE
-  report measured behavior as annotations.
+  simulators. Preview means possible queueing and instability. Two jobs run
+  in parallel: "Build IPA" (Release, uploads `AppleVideos-iPhone`) and
+  "Debug build and tests" (`build-for-testing` on a simulator booted
+  while compiling, then `test-without-building`; `AppleVideosTests`, Swift
+  Testing, hosted in the app). The IPA never waits for the tests; lines
+  starting with PROBE report measured behavior as annotations. Poll with
+  one watcher at a time: the unauthenticated API allows 60 calls per hour.
 - **Testing** happens only on the user's iPhone with the CI IPA (English
   device language). Say plainly that a change is untested on device, and
   give a short test list after each build.

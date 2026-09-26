@@ -355,6 +355,7 @@ final class VideoDetailViewController: UIViewController, UICollectionViewDelegat
     ) -> UITargetedPreview? {
         VideoContextMenus.targetedPreview(of: collectionView.cellForItem(at: indexPath))
     }
+
     func collectionView(
         _ collectionView: UICollectionView,
         willDisplayContextMenu configuration: UIContextMenuConfiguration,

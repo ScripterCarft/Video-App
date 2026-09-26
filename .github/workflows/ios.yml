@@ -46,6 +46,36 @@ jobs:
             COMPILER_INDEX_STORE_ENABLE=NO \
             build | tee xcodebuild-simulator.log
 
+      # Unit tests on an iPhone simulator with the newest iOS runtime, hosted in
+      # the app. Lines starting with PROBE record measured behavior.
+      - name: Run tests
+        run: |
+          set -o pipefail
+          xcrun simctl list runtimes
+          RUNTIME=$(xcrun simctl list runtimes available | grep -E '^iOS ' | tail -1 | grep -oE 'com\.apple\.CoreSimulator\.SimRuntime\.[A-Za-z0-9.-]+')
+          DEVICE=$(xcrun simctl list devices available | awk -v runtime="$(xcrun simctl list runtimes available | grep -E '^iOS ' | tail -1 | awk '{print $1" "$2}')" '
+            /^-- / { section = $0; next }
+            index(section, runtime) && /iPhone/ { match($0, /[0-9A-F-]{36}/); print substr($0, RSTART, RLENGTH); exit }')
+          if [ -z "$DEVICE" ]; then
+            DEVICE=$(xcrun simctl create "Test iPhone" "iPhone 17" "$RUNTIME")
+          fi
+          echo "Runtime $RUNTIME, device $DEVICE"
+          xcodebuild \
+            -project AppleVideos.xcodeproj \
+            -scheme AppleVideos \
+            -configuration Debug \
+            -destination "id=$DEVICE" \
+            -derivedDataPath TestDerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            COMPILER_INDEX_STORE_ENABLE=NO \
+            test | tee xcodebuild-test.log
+
+      - name: Report probe results
+        if: always()
+        run: |
+          grep -h "PROBE" xcodebuild-test.log 2>/dev/null | sort -u | head -40 | sed 's/^/::notice::/' || true
+          grep -hE "✘|error:|failed" xcodebuild-test.log 2>/dev/null | grep -v "^PROBE" | sort -u | head -20 | sed 's/^/::warning::/' || true
+
       - name: Build unsigned iPhone app
         run: |
           set -o pipefail
@@ -66,7 +96,7 @@ jobs:
       - name: Report compiler errors
         if: failure()
         run: |
-          grep -hE "error:" xcodebuild-simulator.log xcodebuild-device.log 2>/dev/null \
+          grep -hE "error:" xcodebuild-simulator.log xcodebuild-test.log xcodebuild-device.log 2>/dev/null \
             | sort -u | head -20 | sed 's/^/::error::/' || true
 
       - name: Package unsigned IPA
@@ -86,6 +116,7 @@ jobs:
           path: |
             AppleVideos-unsigned.ipa
             xcodebuild-simulator.log
+            xcodebuild-test.log
             xcodebuild-device.log
           if-no-files-found: warn
           retention-days: 14

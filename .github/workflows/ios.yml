@@ -19,6 +19,15 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v4
 
+      # The image's default Xcode may be older than the newest one installed;
+      # the app targets the newest iOS, so build with the newest Xcode.
+      - name: Select newest Xcode
+        run: |
+          INSTALLED=$(ls -d /Applications/Xcode*.app | tr '\n' ' ')
+          NEWEST=$(ls -d /Applications/Xcode_*.app | sed -E 's/.*Xcode_([0-9.]+).*/\1 &/' | sort -t. -k1,1n -k2,2n -k3,3n | tail -1 | cut -d' ' -f2)
+          sudo xcode-select -s "$NEWEST"
+          echo "::notice::Installed: $INSTALLED%0ASelected: $NEWEST%0A$(xcodebuild -version | tr '\n' ' ')%0AiOS SDK $(xcrun --sdk iphoneos --show-sdk-version)"
+
       - name: Show Apple toolchain
         run: |
           sw_vers

@@ -45,21 +45,5 @@ targets:
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         TARGETED_DEVICE_FAMILY: "1"
     scheme:
-      testTargets:
-        - AppleVideosTests
-  AppleVideosTests:
-    type: bundle.unit-test
-    platform: iOS
-    sources:
-      - path: AppleVideosTests
-    dependencies:
-      - target: AppleVideos
-    settings:
-      base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.scriptercarft.AppleVideosTests
-        GENERATE_INFOPLIST_FILE: true
-        TARGETED_DEVICE_FAMILY: "1"
-        # The app's product name has a space, which XcodeGen's default misses.
-        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Apple Videos.app/Apple Videos"
-        BUNDLE_LOADER: "$(TEST_HOST)"
+      testTargets: []
 

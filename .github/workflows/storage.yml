@@ -1,0 +1,31 @@
+name: Storage Regression Checks
+
+on:
+  push:
+    paths:
+      - 'AppleVideos/Persistence/**'
+      - 'AppleVideos/Services/LibraryStore.swift'
+      - 'AppleVideos/Models/**'
+      - 'Tests/Persistence/**'
+      - '.github/workflows/storage.yml'
+  pull_request:
+    paths:
+      - 'AppleVideos/Persistence/**'
+      - 'AppleVideos/Services/LibraryStore.swift'
+      - 'AppleVideos/Models/**'
+      - 'Tests/Persistence/**'
+      - '.github/workflows/storage.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  storage:
+    runs-on: xcode-27
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      # A small native executable; no simulator boot or app installation.
+      - name: Check persistence failure and recovery
+        run: bash Tests/Persistence/run.sh

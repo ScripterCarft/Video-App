@@ -32,20 +32,34 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         DownloadSettings.registerDefaults()
         // Moves the library from earlier UserDefaults storage into SwiftData
         // once, before anything reads the store.
-        LegacyLibraryMigration.run()
-        LibraryDatabase.migrateProgress()
+        prepareLibrary()
         // Reconnects to downloads that kept running while the app was closed.
         _ = DownloadManager.shared
-        let library = LibraryStore()
-        self.library = library
-
         // Load YouTube's configuration right away so the first search or Play
         // does not wait for it, then refresh the Watchlist exactly once.
         Task {
             await YouTubeWebConfiguration.shared.prewarm()
-            await library.refreshWatchlist()
+            await self.library?.refreshWatchlist()
         }
         return true
+    }
+
+    /// Opening and importing must finish before any library screen is built.
+    /// A failed attempt leaves both the old payload and the durable store in
+    /// place; the scene offers Retry without deleting or replacing either.
+    @discardableResult
+    func prepareLibrary() -> Bool {
+        if library != nil { return true }
+        do {
+            try LibraryDatabase.open()
+            try LegacyLibraryMigration.run()
+            try WatchProgressMigration.run()
+            library = try LibraryStore()
+            return true
+        } catch {
+            LibraryStorageStatus.shared.report(error, operation: "open your library")
+            return false
+        }
     }
 
     func application(

@@ -13,7 +13,7 @@ final class VideoCatalog {
     /// Next lists only a small one for videos Home or the library show large.
     func remember(_ video: Video) {
         guard !Video.isLargeThumbnail(video.thumbnailURL),
-              let knownURL = (known[video.id] ?? LibraryDatabase.record(id: video.id)?.video)?.thumbnailURL,
+              let knownURL = self.video(id: video.id)?.thumbnailURL,
               Video.isLargeThumbnail(knownURL)
         else {
             known[video.id] = video
@@ -23,7 +23,13 @@ final class VideoCatalog {
     }
 
     func video(id: String) -> Video? {
-        known[id] ?? LibraryDatabase.record(id: id)?.video
+        if let video = known[id] { return video }
+        do {
+            return try LibraryDatabase.record(id: id)?.video
+        } catch {
+            LibraryStorageStatus.shared.report(error, operation: "read this video from your library")
+            return nil
+        }
     }
 
     /// Loads a video that is neither shown nor stored, such as one whose

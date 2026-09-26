@@ -31,7 +31,10 @@ The YouTube and Innertube representations stay inside the service and resolver l
 
 - `App/`: the app delegate (entry point, launch-time setup, audio session, orientation), the scene delegate and the scene's state restoration (`SceneRestoration`)
 - `Views/AppTabBarController.swift`: the tab bar (`UITab`s) and the download failure alert
-- `Models/`: provider-neutral app models and the SwiftData store (`StoredVideo`, `WatchProgress`, `LibraryDatabase`)
+- `Models/`: value models used by the app (`Video`, `PlaybackProgress`)
+- `Persistence/Models/`: SwiftData records (`StoredVideo`, `WatchProgress`), with their existing schema names and fields
+- `Persistence/`: opening the durable database, atomic writes and storage error state (`LibraryDatabase`, `LibraryStorageStatus`)
+- `Persistence/Migrations/`: importing legacy UserDefaults data and moving old watch positions
 - `Services/`: YouTube search and details, the video catalog, the on-device library and artwork loading
 - `Services/Playback/`: the provider-neutral resolver contract, the YouTube resolver and `NativePlayback`
 - `Services/Downloads/`: offline downloads
@@ -41,6 +44,7 @@ The YouTube and Innertube representations stay inside the service and resolver l
 - `Views/Navigation/`: routes (`VideoRoute`, `AppRoute`) and `VideoNavigator`, which pushes screens and opens videos with UIKit's zoom transition
 - `Views/Screens/`: the Explore, Search and Library tabs
 - `Views/Player/`: the embedded YouTube fallback (SwiftUI)
+- `Views/Storage/`: native startup recovery when the library cannot be opened or migrated
 - `Support/`: small Foundation extensions
 
 Navigation carries only a video's ID (`VideoRoute`); the detail screen reads the video from `VideoCatalog`. Every tab is a UIKit navigation controller with its own `VideoNavigator`: it pushes `VideoDetailViewController` with `preferredTransition = .zoom` from the tapped card's artwork, and other screens (a topic's results, a Library list) from their `AppRoute`. After a relaunch the scene restores the selected tab and each tab's screens through its state restoration activity.
@@ -49,7 +53,35 @@ Artwork comes from `ArtworkLoader`: shared downloads, HTTP caching, downsampling
 
 ## Saved, History, and Watchlist
 
-`LibraryStore` owns Saved, History and the Watchlist, stored in SwiftData with one `StoredVideo` per video and one `WatchProgress` per started video (`Models/StoredVideo.swift`). After every save of the shared context it reloads its lists synchronously and publishes them as plain values; a record is deleted once no list, progress or download needs it. Home shows the Watchlist under the title Continue Watching.
+`LibraryStore` owns Saved, History and the Watchlist, stored in SwiftData with one `StoredVideo` per video and one `WatchProgress` per started video (`Persistence/Models/`). After every successful save of the shared context it reloads its lists synchronously and publishes them as plain values; a record is deleted once no list, progress or download needs it. Home shows the Watchlist under the title Continue Watching.
+
+### Storage failure and recovery
+
+The store keeps its existing default disk location. An opening failure never
+substitutes an in-memory library or deletes the store: the scene shows a native
+Library Unavailable screen with Try Again. Library screens are created only
+after opening, migrations and initial reads succeed. Background download
+sessions still reconnect even if the library is unavailable.
+
+All database writes use a synchronous main-actor `LibraryDatabase.transaction`.
+Autosave is disabled; a changed context is explicitly saved and any fetch or
+save failure rolls the operation back. Fetch failures are reported and retain
+the last displayed value snapshots. Storage notices wait while another modal
+owns the screen and repeated failures share a notice until acknowledged and a
+later write succeeds.
+
+Legacy imports reject malformed payloads, commit to disk before removing only
+the imported UserDefaults keys, and can run again after an interruption without
+overwriting newer progress. Undecoded old playlist payloads remain untouched.
+Completed downloads keep their recovery entry until the database save succeeds;
+the app retries those commits on activation. Removing a download commits its
+library change before deleting the package, so a failed database save leaves
+the existing offline file intact.
+
+Short persistence regression checks live in `Tests/Persistence/`, outside the
+application target. On a Mac, run `bash Tests/Persistence/run.sh`. Their separate
+CI workflow runs only when the relevant storage files change, without a
+simulator; the app build remains Debug simulator + Release device.
 
 - A video is added to History when its player closes after at least ten seconds of actual playback; seeking does not count. The same rule decides when its position is first saved, so every video with a saved position is in History. History is deduplicated and keeps the 50 most recent videos.
 - The Watchlist holds videos added by hand plus History videos with resumable progress, most recent activity first. A video leaves it when played to the end (applied when the player closes), on Mark as Watched, or on Remove from Watchlist; the last two also clear its progress. Remove from Recently Watched takes a video out of History and clears its progress.

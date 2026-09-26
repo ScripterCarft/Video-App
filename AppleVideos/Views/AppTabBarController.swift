@@ -197,6 +197,23 @@ final class AppTabBarController: UITabBarController {
     /// this again when it changes.
     override func updateProperties() {
         super.updateProperties()
+        let storageIssue = LibraryStorageStatus.shared.issue
+        // Defer storage notices while AVKit, a sheet or another alert owns
+        // presentation. Re-check when the tab controller becomes visible.
+        if let issue = storageIssue, !issue.acknowledged,
+           viewIfLoaded?.window?.windowScene?.activationState == .foregroundActive,
+           presentedViewController == nil {
+            let alert = UIAlertController(
+                title: "Storage Error",
+                message: "Videos couldn't \(issue.operation). Please try again. If this keeps happening, check the available storage on your iPhone.",
+                preferredStyle: .alert
+            )
+            alert.addAction(UIAlertAction(title: "OK", style: .cancel) { _ in
+                LibraryStorageStatus.shared.acknowledge(issue.id)
+            })
+            present(alert, animated: true)
+            return
+        }
         guard let failure = downloads.failure, failure.id != reportedFailureID else { return }
         reportedFailureID = failure.id
 
@@ -213,5 +230,10 @@ final class AppTabBarController: UITabBarController {
             downloads.failure = nil
         })
         (NativePlayback.topViewController() ?? self).present(alert, animated: true)
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        setNeedsUpdateProperties()
     }
 }

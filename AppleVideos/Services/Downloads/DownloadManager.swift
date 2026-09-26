@@ -42,6 +42,8 @@ final class DownloadManager: NSObject {
     private struct Pending: Codable {
         let video: Video
         var path: String?
+        /// Retained until the completed package has a durable library entry.
+        var completedAt: Date?
     }
 
     private enum Keys {
@@ -74,22 +76,16 @@ final class DownloadManager: NSObject {
         pending = Self.decode([String: Pending].self, forKey: Keys.pending) ?? [:]
         super.init()
 
-        // Packages can disappear, for example when a backup is restored.
-        for record in LibraryDatabase.allRecords() {
-            guard let path = record.downloadPath, !Self.packageExists(atPath: path) else { continue }
-            record.downloadPath = nil
-            record.downloadedAt = nil
-            LibraryDatabase.deleteIfUnused(record)
-        }
-        LibraryDatabase.save()
-        reloadDownloads()
+        reconcileLibrary()
         // The library shares the store; its saves may refresh a video's metadata.
         saveObserver = NotificationCenter.default.addObserver(
             forName: ModelContext.didSave,
-            object: LibraryDatabase.context,
+            object: nil,
             queue: .main
-        ) { [weak self] _ in
+        ) { [weak self] notification in
             MainActor.assumeIsolated {
+                guard let context = LibraryDatabase.context,
+                      notification.object as? ModelContext === context else { return }
                 self?.reloadDownloads()
             }
         }
@@ -138,6 +134,10 @@ final class DownloadManager: NSObject {
 
     func download(_ video: Video) {
         guard canDownload(video), activities[video.id] == nil, !isDownloaded(video) else { return }
+        if pending[video.id]?.completedAt != nil {
+            storeCompletedDownload(videoID: video.id)
+            return
+        }
         activities[video.id] = .waiting
         let settings = DownloadSettings.current()
 
@@ -181,42 +181,83 @@ final class DownloadManager: NSObject {
         }
     }
 
-    func remove(_ video: Video) {
-        guard let record = LibraryDatabase.record(id: video.id), record.downloadPath != nil else { return }
-        removeDownload(of: record)
-        LibraryDatabase.save()
-        reloadDownloads()
+    @discardableResult
+    func remove(_ video: Video) -> Bool {
+        removeDownloads { $0.id == video.id }
     }
 
     func removeAll() {
-        for record in LibraryDatabase.allRecords() where record.downloadPath != nil {
-            removeDownload(of: record)
-        }
-        LibraryDatabase.save()
-        reloadDownloads()
+        removeDownloads { _ in true }
     }
 
-    private func removeDownload(of record: StoredVideo) {
-        if let path = record.downloadPath {
-            Self.deletePackage(atPath: path)
+    /// Commit the library change before deleting files. A failed save rolls
+    /// back the record and leaves the playable package untouched.
+    @discardableResult
+    private func removeDownloads(matching includes: (StoredVideo) -> Bool) -> Bool {
+        do {
+            let removedPaths = try LibraryDatabase.transaction {
+                var removed: [String] = []
+                for record in try LibraryDatabase.allRecords() where record.downloadPath != nil && includes(record) {
+                    if let path = record.downloadPath { removed.append(path) }
+                    record.downloadPath = nil
+                    record.downloadedAt = nil
+                    try LibraryDatabase.deleteIfUnused(record)
+                }
+                return removed
+            }
+            LibraryStorageStatus.shared.didSave()
+            for path in removedPaths { Self.deletePackage(atPath: path) }
+            return true
+        } catch {
+            LibraryStorageStatus.shared.report(error, operation: "remove downloads from your library")
+            return false
         }
-        record.downloadPath = nil
-        record.downloadedAt = nil
-        LibraryDatabase.deleteIfUnused(record)
     }
 
     /// Deletes the download and loads the video again with a fresh link.
     func renew(_ video: Video) {
-        let stored = LibraryDatabase.record(id: video.id)?.video ?? video
-        remove(video)
-        download(stored)
+        do {
+            let stored = try LibraryDatabase.record(id: video.id)?.video ?? video
+            if remove(video) { download(stored) }
+        } catch {
+            LibraryStorageStatus.shared.report(error, operation: "read your downloaded video")
+        }
+    }
+
+    /// Also called after startup recovery and when the scene becomes active.
+    /// A background completion can arrive while the database is unavailable;
+    /// its completed package stays in pending until this commit succeeds.
+    func reconcileLibrary() {
+        guard LibraryDatabase.context != nil else { return }
+        do {
+            try LibraryDatabase.transaction {
+                for record in try LibraryDatabase.allRecords() {
+                    guard let path = record.downloadPath, !Self.packageExists(atPath: path) else { continue }
+                    record.downloadPath = nil
+                    record.downloadedAt = nil
+                    try LibraryDatabase.deleteIfUnused(record)
+                }
+            }
+            for id in Array(pending.keys) where pending[id]?.completedAt != nil {
+                storeCompletedDownload(videoID: id)
+            }
+            reloadDownloads()
+        } catch {
+            LibraryStorageStatus.shared.report(error, operation: "restore your downloads")
+        }
     }
 
     /// Reads the finished downloads from the store; reassigns only changes.
     private func reloadDownloads() {
-        let downloaded = LibraryDatabase.allRecords()
-            .filter { $0.downloadPath != nil }
-            .sorted { ($0.downloadedAt ?? .distantPast) > ($1.downloadedAt ?? .distantPast) }
+        let downloaded: [StoredVideo]
+        do {
+            downloaded = try LibraryDatabase.allRecords()
+                .filter { $0.downloadPath != nil }
+                .sorted { ($0.downloadedAt ?? .distantPast) > ($1.downloadedAt ?? .distantPast) }
+        } catch {
+            LibraryStorageStatus.shared.report(error, operation: "read your downloads")
+            return
+        }
         let newVideos = downloaded.map(\.video)
         if newVideos != videos {
             videos = newVideos
@@ -269,11 +310,11 @@ final class DownloadManager: NSObject {
         tasks[videoID] = nil
         observations[videoID] = nil
         activities[videoID] = nil
-        let entry = pending.removeValue(forKey: videoID)
-        persistPending()
-        guard let entry else { return }
+        guard let entry = pending[videoID] else { return }
 
         guard error == nil, let path = entry.path, Self.packageExists(atPath: path) else {
+            pending[videoID] = nil
+            persistPending()
             // Never keep a partial download.
             if let path = entry.path { Self.deletePackage(atPath: path) }
             if let error {
@@ -286,11 +327,32 @@ final class DownloadManager: NSObject {
             return
         }
 
-        let record = LibraryDatabase.record(for: entry.video)
-        record.downloadPath = path
-        record.downloadedAt = .now
-        LibraryDatabase.save()
-        reloadDownloads()
+        pending[videoID]?.completedAt = .now
+        persistPending()
+        storeCompletedDownload(videoID: videoID)
+    }
+
+    private func storeCompletedDownload(videoID: String) {
+        guard let entry = pending[videoID], let completedAt = entry.completedAt,
+              let path = entry.path else { return }
+        guard Self.packageExists(atPath: path) else {
+            pending[videoID] = nil
+            persistPending()
+            failure = Failure(video: entry.video, message: "The downloaded file is no longer available.")
+            return
+        }
+        do {
+            try LibraryDatabase.transaction {
+                let record = try LibraryDatabase.record(for: entry.video)
+                record.downloadPath = path
+                record.downloadedAt = completedAt
+            }
+            pending[videoID] = nil
+            persistPending()
+            LibraryStorageStatus.shared.didSave()
+        } catch {
+            LibraryStorageStatus.shared.report(error, operation: "save your completed download")
+        }
     }
 
     // MARK: - Variant choice
@@ -335,7 +397,11 @@ final class DownloadManager: NSObject {
 
     private static func deletePackage(atPath path: String) {
         guard let url = url(forPath: path) else { return }
-        try? FileManager.default.removeItem(at: url)
+        do {
+            try FileManager.default.removeItem(at: url)
+        } catch {
+            LibraryStorageStatus.shared.report(error, operation: "remove a downloaded file")
+        }
     }
 
     private func persistPending() {

@@ -30,10 +30,13 @@ what is intentional, what was measured, and what is still open.
   need admin rights; compiler errors appear as check-run annotations
   (`/check-runs/{job id}/annotations`). The user can also paste log lines.
   Never look for or read stored credentials.
-- **Testing** happens only on the user's iPhone with the CI IPA (English
-  device language). There are no unit tests in CI (a test job was tried on
-  2026-09-26 and removed at the user's request: too slow). Say plainly that a
-  change is untested on device, and give a short test list after each build.
+- **Device testing** happens on the user's iPhone with the CI IPA (English
+  device language). The slow simulator test job removed on 2026-09-26 stays
+  removed. Storage safety now has a small macOS executable in
+  `Tests/Persistence/`, compiling the production storage code and running only
+  for relevant changes; no simulator or app launch. It covers failed saves,
+  rollback, retained migration sources, retries and durable reopening. Say
+  plainly when a change is untested on device and give a short test list.
 - **Before building, think changes through and double-check them**: read the
   code a change touches, consider timing and every caller, and prefer one
   well-understood change over a change plus follow-up fixes. If a change
@@ -89,7 +92,19 @@ what is intentional, what was measured, and what is still open.
   which loads the API key, client version and visitor data once, is
   prewarmed at launch, shared by all Innertube requests and invalidated
   after rejected requests. Details are cached per video in memory.
-- **Storage:** SwiftData (`LibraryDatabase`): one `StoredVideo` per video
+- **Storage:** implementation in `Persistence/LibraryDatabase.swift`, records
+  in `Persistence/Models/`, migrations in `Persistence/Migrations/` and the
+  recovery screen in `Views/Storage/`. Model names, persisted fields and the
+  default store location are unchanged by this organization. No in-memory
+  fallback: opening/migration/initial read failures show Library Unavailable
+  with Retry, retaining existing data. `LibraryDatabase.transaction` explicitly
+  saves synchronous operations with autosave disabled, rolls back on errors,
+  and throws; callers preserve displayed snapshots and report storage errors.
+  Migration source keys are removed only after a successful durable import;
+  malformed payloads and unhandled old playlist formats are retained. Completed
+  downloads retain their pending recovery entries until the store commits and
+  retry on activation. File removal follows the successful library commit.
+  SwiftData keeps one `StoredVideo` per video
   (metadata once, list membership, download path) and one `WatchProgress`
   per started video, kept apart so queries over videos do not update while
   a video plays. `LibraryStore` and `DownloadManager` do the writes and

@@ -44,6 +44,9 @@ final class DownloadManager: NSObject {
         var path: String?
         /// Retained until the completed package has a durable library entry.
         var completedAt: Date?
+        /// Optional for downloads started by an older app version.
+        var taskIdentity: DownloadTaskIdentity?
+        var cancelRequested: Bool?
     }
 
     private enum Keys {
@@ -64,6 +67,8 @@ final class DownloadManager: NSObject {
     @ObservationIgnored private var pending: [String: Pending]
     @ObservationIgnored private var tasks: [String: AVAssetDownloadTask] = [:]
     @ObservationIgnored private var observations: [String: NSKeyValueObservation] = [:]
+    @ObservationIgnored private let preparation = DownloadPreparation()
+    @ObservationIgnored private var isReconnecting = true
     @ObservationIgnored private var wifiSession: AVAssetDownloadURLSession!
     @ObservationIgnored private var mobileDataSession: AVAssetDownloadURLSession!
     /// The route downloads load from; see `DownloadURLProviding`.
@@ -126,41 +131,49 @@ final class DownloadManager: NSObject {
             storeCompletedDownload(videoID: video.id)
             return
         }
+        // A restored transfer may still be awaiting session enumeration.
+        guard !isReconnecting || pending[video.id] == nil else { return }
         activities[video.id] = .waiting
         let settings = DownloadSettings.current()
 
-        Task {
-            do {
-                let masterURL = try await provider.masterPlaylistURL(for: video)
-                // Mobile data gets the smaller Fast Downloads quality.
-                let maximumHeight = NetworkConditions.shared.isExpensive
-                    ? DownloadSettings.Quality.fast.maximumHeight
-                    : settings.quality.maximumHeight
-                let asset = AVURLAsset(url: masterURL)
-                guard let qualifier = try await Self.h264Qualifier(for: asset, maximumHeight: maximumHeight) else {
-                    throw DownloadError.noCompatibleVariant
-                }
-                // Stopped while resolving.
-                guard activities[video.id] != nil else { return }
-
-                let configuration = AVAssetDownloadConfiguration(asset: asset, title: video.title)
-                configuration.primaryContentConfiguration.variantQualifiers = [qualifier]
-                let session = settings.useMobileData ? mobileDataSession! : wifiSession!
-                let task = session.makeAssetDownloadTask(downloadConfiguration: configuration)
-                task.taskDescription = video.id
-                pending[video.id] = Pending(video: video, path: nil)
-                persistPending()
-                track(task, videoID: video.id)
-                task.resume()
-            } catch {
-                activities[video.id] = nil
-                failure = Failure(video: video, message: error.localizedDescription)
+        preparation.start(for: video.id, prepare: { [self] in
+            let masterURL = try await provider.masterPlaylistURL(for: video)
+            try Task.checkCancellation()
+            // Mobile data gets the smaller Fast Downloads quality.
+            let maximumHeight = NetworkConditions.shared.isExpensive
+                ? DownloadSettings.Quality.fast.maximumHeight
+                : settings.quality.maximumHeight
+            let asset = AVURLAsset(url: masterURL)
+            guard let qualifier = try await Self.h264Qualifier(for: asset, maximumHeight: maximumHeight) else {
+                throw DownloadError.noCompatibleVariant
             }
-        }
+            return (asset, qualifier)
+        }, onReady: { [self] prepared in
+            let (asset, qualifier) = prepared
+            let configuration = AVAssetDownloadConfiguration(asset: asset, title: video.title)
+            configuration.primaryContentConfiguration.variantQualifiers = [qualifier]
+            let session = settings.useMobileData ? mobileDataSession! : wifiSession!
+            let task = session.makeAssetDownloadTask(downloadConfiguration: configuration)
+            task.taskDescription = video.id
+            let identity = DownloadTaskIdentity(sessionIdentifier: session.configuration.identifier!,
+                                                taskIdentifier: task.taskIdentifier)
+            pending[video.id] = Pending(video: video, path: nil, taskIdentity: identity)
+            persistPending()
+            track(task, videoID: video.id, identity: identity)
+            task.resume()
+        }, onFailure: { [self] error in
+            activities[video.id] = nil
+            failure = Failure(video: video, message: error.localizedDescription)
+        })
     }
 
     /// Stops a running download and deletes what it loaded so far.
     func cancel(_ video: Video) {
+        preparation.cancel(video.id)
+        if pending[video.id] != nil {
+            pending[video.id]?.cancelRequested = true
+            persistPending()
+        }
         if let task = tasks[video.id] {
             // The delegate cleans up once the task reports the cancellation.
             task.cancel()
@@ -273,45 +286,63 @@ final class DownloadManager: NSObject {
 
     // MARK: - Tasks
 
-    private func track(_ task: AVAssetDownloadTask, videoID: String) {
+    private func track(_ task: AVAssetDownloadTask, videoID: String, identity: DownloadTaskIdentity) {
         tasks[videoID] = task
         observations[videoID] = task.progress.observe(\.fractionCompleted) { progress, _ in
             let fraction = progress.fractionCompleted
             Task { @MainActor in
-                DownloadManager.shared.updateProgress(fraction, for: videoID)
+                DownloadManager.shared.updateProgress(fraction, for: videoID, identity: identity)
             }
         }
         activities[videoID] = .waiting
     }
 
-    private func updateProgress(_ fraction: Double, for videoID: String) {
-        guard activities[videoID] != nil else { return }
+    private func updateProgress(_ fraction: Double, for videoID: String, identity: DownloadTaskIdentity) {
+        guard pending[videoID]?.taskIdentity == identity, activities[videoID] != nil else { return }
         activities[videoID] = fraction > 0 ? .loading(fraction) : .waiting
     }
 
     /// After a relaunch, shows downloads that kept running without the app.
     private func reconnectRunningTasks() {
         Task {
+            defer { isReconnecting = false }
             for session in [wifiSession!, mobileDataSession!] {
                 for case let task as AVAssetDownloadTask in await session.allTasks {
                     guard let videoID = task.taskDescription, task.state == .running || task.state == .suspended else {
                         continue
                     }
-                    if pending[videoID] == nil {
+                    guard let sessionID = session.configuration.identifier else { continue }
+                    let identity = DownloadTaskIdentity(sessionIdentifier: sessionID, taskIdentifier: task.taskIdentifier)
+                    if !accepts(identity, for: videoID) {
                         task.cancel()
                     } else {
-                        track(task, videoID: videoID)
+                        track(task, videoID: videoID, identity: identity)
+                        if pending[videoID]?.cancelRequested == true { task.cancel() }
                     }
                 }
             }
         }
     }
 
-    private func finish(videoID: String, error: Error?) {
+    /// Legacy pending entries adopt their first session task once. New entries
+    /// have an identity before resume(), including across app relaunches.
+    private func accepts(_ identity: DownloadTaskIdentity, for videoID: String) -> Bool {
+        guard let entry = pending[videoID], entry.completedAt == nil else { return false }
+        if let stored = entry.taskIdentity { return stored == identity }
+        pending[videoID]?.taskIdentity = identity
+        persistPending()
+        return true
+    }
+
+    private func finish(videoID: String, identity: DownloadTaskIdentity, error: Error?) {
+        guard accepts(identity, for: videoID) else { return }
         tasks[videoID] = nil
         observations[videoID] = nil
         activities[videoID] = nil
         guard let entry = pending[videoID] else { return }
+
+        // Cancellation wins even if the system completed just before seeing it.
+        let error = entry.cancelRequested == true ? URLError(.cancelled) : error
 
         guard error == nil, let path = entry.path, Self.packageExists(atPath: path) else {
             pending[videoID] = nil
@@ -426,8 +457,11 @@ extension DownloadManager: AVAssetDownloadDelegate {
         willDownloadTo location: URL
     ) {
         let videoID = assetDownloadTask.taskDescription
+        let identity = session.configuration.identifier.map {
+            DownloadTaskIdentity(sessionIdentifier: $0, taskIdentifier: assetDownloadTask.taskIdentifier)
+        }
         MainActor.assumeIsolated {
-            guard let videoID, pending[videoID] != nil else { return }
+            guard let videoID, let identity, accepts(identity, for: videoID) else { return }
             pending[videoID]?.path = Self.relativePath(of: location)
             persistPending()
         }
@@ -435,10 +469,13 @@ extension DownloadManager: AVAssetDownloadDelegate {
 
     nonisolated func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
         let videoID = task.taskDescription
+        let identity = session.configuration.identifier.map {
+            DownloadTaskIdentity(sessionIdentifier: $0, taskIdentifier: task.taskIdentifier)
+        }
         let error = error.map { $0 as NSError }
         MainActor.assumeIsolated {
-            guard let videoID else { return }
-            finish(videoID: videoID, error: error)
+            guard let videoID, let identity else { return }
+            finish(videoID: videoID, identity: identity, error: error)
         }
     }
 

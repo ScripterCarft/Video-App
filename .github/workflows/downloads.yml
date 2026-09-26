@@ -1,0 +1,26 @@
+name: Download Cancellation Checks
+
+on:
+  push:
+    paths:
+      - 'AppleVideos/Services/Downloads/**'
+      - 'Tests/Downloads/**'
+      - '.github/workflows/downloads.yml'
+  pull_request:
+    paths:
+      - 'AppleVideos/Services/Downloads/**'
+      - 'Tests/Downloads/**'
+      - '.github/workflows/downloads.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cancellation:
+    runs-on: xcode-27
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check cancelled and replaced preparations
+        run: bash Tests/Downloads/run.sh

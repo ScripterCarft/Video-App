@@ -220,6 +220,18 @@ what is intentional, what was measured, and what is still open.
   Again to Renew" / red "Remove Download"; context menu Download / Stop,
   hidden once downloaded; download symbol beside the duration; Library >
   Downloaded and History each with Remove All.
+- **Download cancellation:** `Services/Downloads/DownloadPreparation` owns
+  the pre-transfer Swift tasks. Cancel removes the current job and cancels
+  its task; results/errors publish only for the current job, even when a
+  provider ignores cancellation. The manager checks cancellation between URL
+  resolution and AVAsset variant loading. `DownloadTaskIdentity` persists the
+  session identifier plus task number, so stale progress/path/completion
+  callbacks cannot modify another transfer. Legacy entries adopt an identity
+  on their first matching video callback/reconnection. Cancellation intent
+  is persisted until the system acknowledges completion and partial-package
+  cleanup runs. A pending transfer blocks a duplicate start while the sessions
+  are being enumerated after launch. Deterministic checks in `Tests/Downloads/`
+  exercise delayed success/failure across cancel/restart, without a simulator.
 - Renew/Remove on the detail screen and Remove All (Downloaded, History)
   are system `Menu`s with a section header as the explanation (rejected:
   custom gray popover, confirmation dialogs). History Remove All keeps

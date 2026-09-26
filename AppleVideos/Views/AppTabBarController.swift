@@ -127,22 +127,11 @@ final class AppTabBarController: UITabBarController {
         var empty = UIContentUnavailableConfiguration.empty()
         empty.image = UIImage(systemName: "rectangle.stack.badge.plus")
         var removeAll: UIMenu?
-        // Swiping a card to the left offers the same removal as its context
-        // menu (a trailing swipe action).
-        var swipeAction: (@MainActor (Video) -> UIContextualAction?)?
 
         switch list {
         case .saved:
             title = "Saved"
             videos = { library.savedVideos }
-            swipeAction = { video in
-                let action = UIContextualAction(style: .destructive, title: "Unsave") { _, _, done in
-                    library.toggleSaved(video)
-                    done(true)
-                }
-                action.image = UIImage(systemName: "bookmark.slash")
-                return action
-            }
             empty.text = "No Saved Videos"
             empty.secondaryText = "Use the bookmark button or a video's context menu to save it."
         case .downloaded:
@@ -159,17 +148,6 @@ final class AppTabBarController: UITabBarController {
         case .history:
             title = "History"
             videos = { library.recentlyWatched }
-            // Like the context menu: a downloaded video's only removal is
-            // Remove Download.
-            swipeAction = { video in
-                guard !downloads.isDownloaded(video) else { return nil }
-                let action = UIContextualAction(style: .destructive, title: "Remove") { _, _, done in
-                    library.removeFromRecentlyWatched(video)
-                    done(true)
-                }
-                action.image = UIImage(systemName: "trash")
-                return action
-            }
             empty.text = "No Watch History"
             empty.secondaryText = "Videos you play will appear here."
             removeAll = Self.removeAllMenu(
@@ -186,8 +164,7 @@ final class AppTabBarController: UITabBarController {
             route: route,
             library: library,
             navigator: navigator,
-            emptyState: empty,
-            swipeAction: swipeAction
+            emptyState: empty
         ) {
             .videos(videos())
         }

@@ -1,43 +1,32 @@
 import SwiftUI
 
+/// The SwiftUI video card of the screens that are still SwiftUI (Search,
+/// Library, Explore), with its own context menu. Collection views show the
+/// UIKit card, `VideoCardConfiguration`.
 struct VideoCard: View {
     let video: Video
-    var compact = false
-    /// False where a collection view provides the context menu (Home).
-    var providesContextMenu = true
 
     @Environment(LibraryStore.self) private var library
     @Environment(DownloadManager.self) private var downloads
     @State private var feedback = 0
 
     var body: some View {
-        if providesContextMenu {
-            card
-                .contextMenu {
-                    menu
-                } preview: {
-                    VideoArtwork(video: video, cornerRadius: 18, quality: .search)
-                        .frame(width: 320)
-                        .padding()
-                }
-                .sensoryFeedback(.selection, trigger: feedback)
-                .accessibilityElement(children: .combine)
-                .accessibilityHint("Opens video details")
-        } else {
-            card
-                .accessibilityElement(children: .combine)
-                .accessibilityHint("Opens video details")
-        }
+        card
+            .contextMenu {
+                menu
+            } preview: {
+                VideoArtwork(video: video, cornerRadius: 18, quality: .search)
+                    .frame(width: 320)
+                    .padding()
+            }
+            .sensoryFeedback(.selection, trigger: feedback)
+            .accessibilityElement(children: .combine)
+            .accessibilityHint("Opens video details")
     }
 
     private var card: some View {
         VStack(alignment: .leading, spacing: 10) {
-            VideoArtwork(
-                video: video,
-                cornerRadius: 14,
-                quality: compact ? .compact : .search
-            )
-            .frame(height: compact ? Self.compactArtworkHeight : nil)
+            VideoArtwork(video: video, cornerRadius: 14, quality: .search)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(video.title)
@@ -110,8 +99,4 @@ struct VideoCard: View {
             }
         }
     }
-}
-
-extension VideoCard {
-    static let compactArtworkHeight: CGFloat = 153
 }

@@ -152,6 +152,11 @@ final class VideoContextMenus {
 /// section and the section title. Cells show `VideoCardConfiguration`.
 @MainActor
 enum VideoCells {
+    /// Where the zoom to a video's detail screen starts: a card's artwork,
+    /// or the whole cell for other content.
+    static func zoomSource(of cell: UICollectionViewCell) -> UIView {
+        (cell.contentView as? VideoCardContentView)?.zoomSourceView ?? cell.contentView
+    }
     /// A section title in plain UIKit text, title 2 bold, with only its own
     /// margins (not the cell's, which follow the screen edges). `topSpacing`
     /// is part of the header's fixed height (see `shelfSection`).

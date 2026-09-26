@@ -270,7 +270,7 @@ final class HomeViewController: UIViewController, UICollectionViewDelegate {
                   let indexPath = self.dataSource.indexPath(for: item),
                   let cell = self.collectionView.cellForItem(at: indexPath)
             else { return nil }
-            return (cell.contentView as? VideoCardContentView)?.zoomSourceView ?? cell.contentView
+            return VideoCells.zoomSource(of: cell)
         }
     }
 

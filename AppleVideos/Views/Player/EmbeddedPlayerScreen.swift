@@ -44,39 +44,21 @@ struct EmbeddedPlayerScreen: View {
     }
 }
 
-extension View {
-    /// Shows the embedded player when `starter` falls back, and cancels a start
-    /// that is still resolving when the screen goes away. While AVKit is
-    /// presented nothing is resolving, so presenting the player does not cancel it.
-    func playbackPresentation(_ starter: PlaybackStarter) -> some View {
-        overlay {
-            if let fallback = starter.fallback {
-                EmbeddedPlayerScreen(video: fallback.video, diagnostic: fallback.diagnostic) {
-                    starter.fallback = nil
-                }
-                .ignoresSafeArea()
-            }
-        }
-        .onDisappear {
-            if starter.isPreparing {
-                starter.cancel()
-            }
-        }
-        .alert(
-            "Mobile Data Is Turned Off",
-            isPresented: Binding(
-                get: { starter.isShowingMobileDataAlert },
-                set: { starter.isShowingMobileDataAlert = $0 }
-            )
-        ) {
-            Button("Settings") {
-                if let url = URL(string: UIApplication.openSettingsURLString) {
-                    UIApplication.shared.open(url)
-                }
-            }
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text("Turn on Use Mobile Data in Settings to stream videos over mobile data.")
-        }
+extension EmbeddedPlayerScreen {
+    /// The embedded player as a full-screen controller for UIKit screens.
+    /// `onClose` dismisses it.
+    @MainActor
+    static func controller(
+        video: Video,
+        diagnostic: String,
+        library: LibraryStore,
+        onClose: @escaping () -> Void
+    ) -> UIViewController {
+        let controller = UIHostingController(
+            rootView: EmbeddedPlayerScreen(video: video, diagnostic: diagnostic, onClose: onClose)
+                .environment(library)
+        )
+        controller.modalPresentationStyle = .fullScreen
+        return controller
     }
 }

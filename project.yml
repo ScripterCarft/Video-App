@@ -29,6 +29,9 @@ targets:
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
           UISceneConfigurations: {}
+        # The scene's state restoration activity (SceneRestoration).
+        NSUserActivityTypes:
+          - com.scriptercarft.AppleVideos.restoration
         UIApplicationSupportsIndirectInputEvents: true
         UILaunchScreen: {}
         UIBackgroundModes:

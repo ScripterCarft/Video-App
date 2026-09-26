@@ -63,32 +63,3 @@ struct DownloadMenuButton: View {
         }
     }
 }
-
-extension View {
-    /// Reports a download that could not be completed, wherever the app is.
-    func downloadFailureAlert() -> some View {
-        modifier(DownloadFailureAlert())
-    }
-}
-
-private struct DownloadFailureAlert: ViewModifier {
-    @Environment(DownloadManager.self) private var downloads
-
-    func body(content: Content) -> some View {
-        content.alert(
-            "Download Failed",
-            isPresented: Binding(
-                get: { downloads.failure != nil },
-                set: { if !$0 { downloads.failure = nil } }
-            ),
-            presenting: downloads.failure
-        ) { failure in
-            Button("Try Again") {
-                downloads.download(failure.video)
-            }
-            Button("OK", role: .cancel) {}
-        } message: { failure in
-            Text("“\(failure.video.title)” couldn't be downloaded. \(failure.message)")
-        }
-    }
-}

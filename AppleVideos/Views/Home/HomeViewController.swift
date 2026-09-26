@@ -33,8 +33,12 @@ final class HomeViewController: UIViewController, UICollectionViewDelegate {
 
     private let library: LibraryStore
     private let downloads: DownloadManager
-    private let playback: PlaybackStarter
+    /// Starts the featured video from its Play button.
+    private let playback = PlaybackStarter()
     private let navigator: VideoNavigator
+    /// The embedded player or the Use Mobile Data alert, while shown.
+    private weak var fallbackController: UIViewController?
+    private weak var mobileDataAlert: UIAlertController?
     private let featured = Video.curated[0]
     private let picks = Array(Video.curated.dropFirst())
 
@@ -43,10 +47,9 @@ final class HomeViewController: UIViewController, UICollectionViewDelegate {
     private lazy var collectionView = UICollectionView(frame: .zero, collectionViewLayout: makeLayout())
     private lazy var menus = VideoContextMenus(library: library, downloads: downloads, presenter: self)
 
-    init(library: LibraryStore, downloads: DownloadManager, playback: PlaybackStarter, navigator: VideoNavigator) {
+    init(library: LibraryStore, downloads: DownloadManager, navigator: VideoNavigator) {
         self.library = library
         self.downloads = downloads
-        self.playback = playback
         self.navigator = navigator
         super.init(nibName: nil, bundle: nil)
         title = "Home"
@@ -84,11 +87,23 @@ final class HomeViewController: UIViewController, UICollectionViewDelegate {
         navigationController?.navigationBar.tintColor = nil
     }
 
-    /// Reads the Watchlist; UIKit tracks the read and calls this again when
-    /// it changes. Changed cards are reconfigured in place, added and removed
-    /// ones animate.
+    /// Leaving Home, for another tab or a detail screen, cancels a start that
+    /// is still resolving. The player covering Home does not.
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        let leftHome = tabBarController?.selectedViewController !== navigationController
+            || navigationController?.topViewController !== self
+        if leftHome, playback.isPreparing {
+            playback.cancel()
+        }
+    }
+
+    /// Reads the Watchlist and the Play button's outcome; UIKit tracks the
+    /// reads and calls this again when they change. Changed cards are
+    /// reconfigured in place, added and removed ones animate.
     override func updateProperties() {
         super.updateProperties()
+        presentPlaybackOutcome()
         let newShelves = [
             Shelf(id: "continue", title: "Continue Watching", videos: library.watchlist),
             Shelf(id: "picks", title: "Made for Tonight", videos: picks)
@@ -105,6 +120,43 @@ final class HomeViewController: UIViewController, UICollectionViewDelegate {
         let animated = !shelves.isEmpty && view.window != nil
         shelves = newShelves
         applySnapshot(reconfiguring: changed, animated: animated)
+    }
+
+    /// Shows what the featured video's Play button reports: the embedded
+    /// player when no native stream plays, or the alert when Use Mobile Data
+    /// is off. Each is shown once and cleared when it closes.
+    private func presentPlaybackOutcome() {
+        if let fallback = playback.fallback, fallbackController == nil {
+            let controller = EmbeddedPlayerScreen.controller(
+                video: fallback.video,
+                diagnostic: fallback.diagnostic,
+                library: library
+            ) { [weak self] in
+                self?.playback.fallback = nil
+                self?.fallbackController?.presentingViewController?.dismiss(animated: true)
+            }
+            fallbackController = controller
+            (NativePlayback.topViewController() ?? self).present(controller, animated: true)
+        }
+
+        if playback.isShowingMobileDataAlert, mobileDataAlert == nil {
+            let alert = UIAlertController(
+                title: "Mobile Data Is Turned Off",
+                message: "Turn on Use Mobile Data in Settings to stream videos over mobile data.",
+                preferredStyle: .alert
+            )
+            alert.addAction(UIAlertAction(title: "Settings", style: .default) { [weak self] _ in
+                self?.playback.isShowingMobileDataAlert = false
+                if let url = URL(string: UIApplication.openSettingsURLString) {
+                    UIApplication.shared.open(url)
+                }
+            })
+            alert.addAction(UIAlertAction(title: "OK", style: .cancel) { [weak self] _ in
+                self?.playback.isShowingMobileDataAlert = false
+            })
+            mobileDataAlert = alert
+            (NativePlayback.topViewController() ?? self).present(alert, animated: true)
+        }
     }
 
     // MARK: - Layout

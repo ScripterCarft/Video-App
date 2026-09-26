@@ -93,19 +93,24 @@ struct OpenVideoAction: Sendable {
 
 extension EnvironmentValues {
     @Entry var openVideo = OpenVideoAction { _ in }
+    /// The scene's restoration state, provided by the tab bar controller.
+    @Entry var sceneRestoration: SceneRestoration? = nil
 }
 
 /// A navigation stack whose path survives relaunches, stored with the
-/// path's `CodableRepresentation` in scene storage, as Apple documents for
-/// `NavigationPath`. Every value pushed on it must be `Codable`.
+/// path's `CodableRepresentation`, as Apple documents for `NavigationPath`,
+/// in the scene's restoration state (`SceneRestoration`; `@SceneStorage`
+/// does not work in a UIKit scene). Every value pushed on it must be
+/// `Codable`.
 struct RestorableNavigationStack<Root: View>: View {
-    @SceneStorage private var storedPath: Data?
+    @Environment(\.sceneRestoration) private var restoration
     @State private var path = NavigationPath()
     @State private var didRestore = false
+    private let id: String
     private let root: (Binding<NavigationPath>) -> Root
 
     init(id: String, @ViewBuilder root: @escaping (Binding<NavigationPath>) -> Root) {
-        _storedPath = SceneStorage(id)
+        self.id = id
         self.root = root
     }
 
@@ -121,13 +126,13 @@ struct RestorableNavigationStack<Root: View>: View {
         .onAppear {
             guard !didRestore else { return }
             didRestore = true
-            if let storedPath,
+            if let storedPath = restoration?.paths[id],
                let representation = try? JSONDecoder().decode(NavigationPath.CodableRepresentation.self, from: storedPath) {
                 path = NavigationPath(representation)
             }
         }
         .onChange(of: path) { _, newPath in
-            storedPath = newPath.codable.flatMap { try? JSONEncoder().encode($0) }
+            restoration?.paths[id] = newPath.codable.flatMap { try? JSONEncoder().encode($0) }
         }
     }
 }

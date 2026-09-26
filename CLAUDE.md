@@ -296,9 +296,14 @@ accepted player-dismissal bug.
      `VideoHeroArtwork`, `SectionHeader`, `VideoLink`,
      `RestorableNavigationStack`, the `VideoDetailView` shell,
      `DownloadToolbarButton`, `DownloadProgressRing`, `PlayButtonContent`.
-   - iOS 27 lets the compositional layout's section provider track
-     observable reads and invalidate itself; Home could read the library
-     there instead of rebuilding sections in `updateProperties()`.
+   - Checked against Apple's documentation (2026-09-26): iOS 27's
+     observation tracking in the section provider only invalidates the
+     *layout* (sizes, arrangement); which videos a shelf shows stays the
+     diffable snapshot, applied in `updateProperties()`, which already
+     tracks the library by itself (iOS 26). Use the section provider's
+     tracking only where a section's layout depends on observable state.
+     Text size and light/dark are no longer registered by hand: the
+     section provider and `updateProperties()` track traits automatically.
    - The context menu's bubble shows the card's 272-point image at 320
      points, slightly soft; request the larger (`.search`) artwork from the
      shared cache for it.

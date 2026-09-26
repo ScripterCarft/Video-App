@@ -179,6 +179,9 @@ final class VideoDetailViewController: UIViewController, UICollectionViewDelegat
     override func updateProperties() {
         super.updateProperties()
         guard let model else { return }
+        if let refreshed = model.refreshedVideo {
+            artwork.upgrade(to: refreshed)
+        }
         let related = model.related
         if related != shownRelated {
             applySnapshot(related: related, animated: view.window != nil)
@@ -570,12 +573,25 @@ private final class DetailArtworkView: UIView {
     }
 
     private var pendingVideo: Video?
+    private var shownThumbnail: URL?
+    private var loadTask: Task<Void, Never>?
 
     /// Loads the artwork once, from the shared loader and its cache, as soon
     /// as the view is on screen and knows its display scale.
     func load(_ video: Video) {
         pendingVideo = video
         loadIfPossible()
+    }
+
+    /// Loads the 1280 thumbnail the details list for a video that was opened
+    /// with a smaller one (Up Next lists only `hqdefault`). Not in Low Data
+    /// Mode, where 1280 artwork is left out.
+    func upgrade(to video: Video) {
+        guard Video.isLargeThumbnail(video.thumbnailURL),
+              !Video.isLargeThumbnail(shownThumbnail),
+              !NetworkConditions.shared.isConstrained
+        else { return }
+        load(video)
     }
 
     override func didMoveToWindow() {
@@ -586,19 +602,37 @@ private final class DetailArtworkView: UIView {
     private func loadIfPossible() {
         guard window != nil, let video = pendingVideo else { return }
         pendingVideo = nil
+        shownThumbnail = video.thumbnailURL
+        // A smaller image still loading must not replace the upgrade.
+        loadTask?.cancel()
         let candidates = video.artworkCandidates(lowData: NetworkConditions.shared.isConstrained)
         let maxPixelWidth = ArtworkQuality.hero.displayWidth * traitCollection.displayScale
         if let cached = ArtworkLoader.cachedImage(for: candidates, maxPixelWidth: maxPixelWidth) {
-            imageView.image = cached
+            show(cached)
             return
         }
-        Task { [weak self] in
+        loadTask = Task { [weak self] in
             let image = await ArtworkLoader.firstImage(
                 from: candidates,
                 requiresSixteenByNine: video.source == .youtube,
                 maxPixelWidth: maxPixelWidth
             )
-            self?.imageView.image = image
+            guard !Task.isCancelled, let self else { return }
+            // An upgrade that fails keeps the image already shown.
+            if image != nil || self.imageView.image == nil {
+                self.show(image)
+            }
+        }
+    }
+
+    /// Shows `image`, cross-dissolving when it replaces one already shown.
+    private func show(_ image: UIImage?) {
+        guard imageView.image != nil, image != nil else {
+            imageView.image = image
+            return
+        }
+        UIView.transition(with: imageView, duration: 0.25, options: .transitionCrossDissolve) {
+            self.imageView.image = image
         }
     }
 }

@@ -5,7 +5,9 @@ import SwiftUI
 /// hero and the Up Next shelf. `VideoDetailModel` holds the state and loads.
 struct VideoDetailView: View {
     let video: Video
-    let transition: Namespace.ID
+    /// The SwiftUI zoom source, when a SwiftUI navigation stack opened the
+    /// screen; a UIKit navigation controller sets its own zoom transition.
+    let transition: Namespace.ID?
     let transitionID: String
 
     @Environment(LibraryStore.self) private var library
@@ -16,7 +18,7 @@ struct VideoDetailView: View {
     @State private var feedback = 0
     @State private var showDescription = false
 
-    init(video: Video, transition: Namespace.ID, transitionID: String) {
+    init(video: Video, transition: Namespace.ID?, transitionID: String) {
         self.video = video
         self.transition = transition
         self.transitionID = transitionID
@@ -28,7 +30,6 @@ struct VideoDetailView: View {
             model: model,
             related: model.related,
             playback: playback,
-            transition: transition,
             library: library,
             downloads: downloads,
             onShowDescription: { showDescription = true },
@@ -59,7 +60,7 @@ struct VideoDetailView: View {
                 }
             }
         }
-        .navigationTransition(.zoom(sourceID: transitionID, in: transition))
+        .modifier(SwiftUIZoomTransition(namespace: transition, sourceID: transitionID))
         .playbackPresentation(playback)
         .sheet(isPresented: $showDescription) {
             DescriptionSheet(video: model.shown, description: model.visibleDescription)
@@ -239,6 +240,20 @@ private struct DescriptionPreview: View {
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.white)
                 .buttonStyle(.plain)
+        }
+    }
+}
+
+/// The zoom from a SwiftUI source, only where a SwiftUI stack opened the screen.
+private struct SwiftUIZoomTransition: ViewModifier {
+    let namespace: Namespace.ID?
+    let sourceID: String
+
+    func body(content: Content) -> some View {
+        if let namespace {
+            content.navigationTransition(.zoom(sourceID: sourceID, in: namespace))
+        } else {
+            content
         }
     }
 }

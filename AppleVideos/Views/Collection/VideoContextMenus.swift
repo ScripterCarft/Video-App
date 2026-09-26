@@ -172,6 +172,25 @@ enum VideoCells {
         .margins(.all, 0)
     }
 
+    /// A section title in plain UIKit text, title 2 bold, with only its own
+    /// margins (not the cell's, which follow the screen edges). `topSpacing`
+    /// is part of the header's fixed height (see `shelfSection`).
+    static func headerConfiguration(title: String, topSpacing: CGFloat) -> UIListContentConfiguration {
+        var configuration = UIListContentConfiguration.cell()
+        configuration.text = title
+        configuration.textProperties.font = headerFont()
+        configuration.textProperties.color = .label
+        configuration.textProperties.numberOfLines = 1
+        configuration.directionalLayoutMargins = NSDirectionalEdgeInsets(top: topSpacing, leading: 16, bottom: 0, trailing: 16)
+        configuration.axesPreservingSuperviewLayoutMargins = []
+        return configuration
+    }
+
+    private static func headerFont() -> UIFont {
+        let descriptor = UIFontDescriptor.preferredFontDescriptor(withTextStyle: .title2)
+        return UIFont(descriptor: descriptor.withSymbolicTraits(.traitBold) ?? descriptor, size: 0)
+    }
+
     /// A horizontal shelf of UIKit video cards (`VideoCardConfiguration`)
     /// with a title header, all of fixed size. Estimated sizes made the
     /// collection view measure cells while it scrolled, which stuttered and,

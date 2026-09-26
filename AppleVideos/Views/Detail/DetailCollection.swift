@@ -27,7 +27,6 @@ struct DetailCollection: UIViewControllerRepresentable {
     /// The Up Next videos, passed as a value so SwiftUI updates the shelf when they arrive.
     let related: [Video]
     let playback: PlaybackStarter
-    let transition: Namespace.ID
     let library: LibraryStore
     let downloads: DownloadManager
     let onShowDescription: () -> Void
@@ -164,11 +163,6 @@ final class DetailCollectionController: UIViewController, UICollectionViewDelega
     }
 
     /// The shelf title's font, title 2 bold like the other section headers.
-    private static func headerFont() -> UIFont {
-        let descriptor = UIFontDescriptor.preferredFontDescriptor(withTextStyle: .title2)
-        return UIFont(descriptor: descriptor.withSymbolicTraits(.traitBold) ?? descriptor, size: 0)
-    }
-
     /// A clear spacer over the artwork stage, below the bars.
     private static func stageSection(height: CGFloat) -> NSCollectionLayoutSection {
         let size = NSCollectionLayoutSize(widthDimension: .fractionalWidth(1), heightDimension: .absolute(height))
@@ -189,19 +183,7 @@ final class DetailCollectionController: UIViewController, UICollectionViewDelega
             elementKind: UICollectionView.elementKindSectionHeader
         ) { header, _, _ in
             MainActor.assumeIsolated {
-                // Plain UIKit text: two words need no SwiftUI, and a label
-                // does not react to where on screen its cell is.
-                var configuration = UIListContentConfiguration.cell()
-                configuration.text = "Up Next"
-                configuration.textProperties.font = DetailCollectionController.headerFont()
-                configuration.textProperties.color = .label
-                configuration.textProperties.numberOfLines = 1
-                // The space above the title is part of the header's fixed
-                // height. Only these margins count, not the cell's, which
-                // follow the screen edges.
-                configuration.directionalLayoutMargins = NSDirectionalEdgeInsets(top: 22, leading: 16, bottom: 0, trailing: 16)
-                configuration.axesPreservingSuperviewLayoutMargins = []
-                header.contentConfiguration = configuration
+                header.contentConfiguration = VideoCells.headerConfiguration(title: "Up Next", topSpacing: 22)
             }
         }
 

@@ -43,16 +43,18 @@ extension View {
     /// `NavigationStack`, on the stack's root content.
     func videoDestination(transition: Namespace.ID) -> some View {
         navigationDestination(for: VideoRoute.self) { route in
-            VideoDestination(route: route, transition: transition)
+            VideoDetailScreen(route: route, transition: transition)
         }
     }
 }
 
 /// The detail screen for a route. A video the catalog does not know, such as
 /// one restored after a relaunch, is loaded first on a black screen.
-private struct VideoDestination: View {
+/// `transition` is the SwiftUI zoom source's namespace; nil when a UIKit
+/// navigation controller opens the screen with its own zoom.
+struct VideoDetailScreen: View {
     let route: VideoRoute
-    let transition: Namespace.ID
+    let transition: Namespace.ID?
 
     @State private var loaded: Video?
     @State private var loadFailed = false

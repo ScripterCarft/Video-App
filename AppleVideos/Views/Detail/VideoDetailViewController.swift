@@ -354,7 +354,9 @@ final class VideoDetailViewController: UIViewController, UICollectionViewDelegat
 
 /// The bar's Download button: Download, the progress ring while a download
 /// runs (tap to stop), or the downloaded state, whose system menu offers to
-/// renew or remove the download right at the button.
+/// renew or remove the download right at the button. Always a plain bar
+/// button item, so the bar sizes it like its other buttons; the ring is the
+/// item's image, drawn again only when the progress changes by a percent.
 @MainActor
 private final class DownloadBarButton {
     private enum State: Equatable {
@@ -369,32 +371,42 @@ private final class DownloadBarButton {
     var onRenew: () -> Void = {}
     var onRemove: () -> Void = {}
 
-    private let ring = DownloadRingView()
     private var state: State?
-
-    init() {
-        ring.addAction(UIAction { [weak self] _ in self?.onStop() }, for: .primaryActionTriggered)
-    }
+    private var shownPercent: Int?
 
     func update(activity: DownloadManager.Activity?, isDownloaded: Bool, canDownload: Bool) {
         let newState: State = activity != nil ? .loading : isDownloaded ? .downloaded : .available(canDownload)
-        ring.progress = activity?.progress ?? 0
-        guard newState != state else { return }
-        state = newState
+        if newState != state {
+            state = newState
+            shownPercent = nil
+            configure(for: newState)
+        }
+        if newState == .loading {
+            let percent = Int(((activity?.progress ?? 0) * 100).rounded())
+            if percent != shownPercent {
+                shownPercent = percent
+                item.image = Self.ring(progress: Double(percent) / 100)
+                item.accessibilityValue = "\(percent) %"
+            }
+        }
+    }
 
-        // One kind of button per state; the ring only updates its progress.
-        item.customView = nil
+    private func configure(for state: State) {
         item.primaryAction = nil
         item.menu = nil
         item.isEnabled = true
-        switch newState {
+        item.accessibilityLabel = nil
+        item.accessibilityValue = nil
+        switch state {
         case let .available(canDownload):
             item.primaryAction = UIAction(title: "Download", image: UIImage(systemName: "arrow.down")) { [weak self] _ in
                 self?.onDownload()
             }
             item.isEnabled = canDownload
         case .loading:
-            item.customView = ring
+            item.primaryAction = UIAction(title: "Stop Download", image: Self.ring(progress: 0)) { [weak self] _ in
+                self?.onStop()
+            }
         case .downloaded:
             item.image = UIImage(systemName: "arrow.down.circle.fill")
             item.accessibilityLabel = "Downloaded"
@@ -411,81 +423,42 @@ private final class DownloadBarButton {
             )
         }
     }
-}
 
-/// The ring filling up with the download's progress, with a stop symbol in
-/// the middle; tapping it stops the download. A button, so the tap sends its
-/// primary action. The ring and the symbol keep their 22-point size however
-/// large the bar makes the button; two shape layers draw the ring, and the
-/// stroke end animates by itself.
-private final class DownloadRingView: UIButton {
-    private static let diameter: CGFloat = 22
+    /// A 22-point ring filled to `progress` around a small stop symbol, as a
+    /// template image the bar tints like its other symbols; the unfilled track
+    /// is drawn at 35 % opacity.
+    private static func ring(progress: Double) -> UIImage {
+        let size = CGSize(width: 22, height: 22)
+        let lineWidth: CGFloat = 2.5
+        let center = CGPoint(x: size.width / 2, y: size.height / 2)
+        let radius = size.width / 2 - lineWidth / 2
+        let image = UIGraphicsImageRenderer(size: size).image { _ in
+            let track = UIBezierPath(arcCenter: center, radius: radius, startAngle: 0, endAngle: .pi * 2, clockwise: true)
+            track.lineWidth = lineWidth
+            UIColor.black.withAlphaComponent(0.35).setStroke()
+            track.stroke()
 
-    var progress: Double = 0 {
-        didSet {
-            fill.strokeEnd = CGFloat(min(max(progress, 0), 1))
-            accessibilityValue = "\(Int((progress * 100).rounded())) %"
+            if progress > 0 {
+                // From the top, clockwise.
+                let fill = UIBezierPath(
+                    arcCenter: center,
+                    radius: radius,
+                    startAngle: -.pi / 2,
+                    endAngle: -.pi / 2 + .pi * 2 * min(progress, 1),
+                    clockwise: true
+                )
+                fill.lineWidth = lineWidth
+                fill.lineCapStyle = .round
+                UIColor.black.setStroke()
+                fill.stroke()
+            }
+
+            let stop = UIImage(systemName: "stop.fill", withConfiguration: UIImage.SymbolConfiguration(pointSize: 8, weight: .bold))
+            if let stop {
+                stop.withTintColor(.black).draw(at: CGPoint(x: center.x - stop.size.width / 2, y: center.y - stop.size.height / 2))
+            }
         }
-    }
-
-    private let track = CAShapeLayer()
-    private let fill = CAShapeLayer()
-
-    override init(frame: CGRect) {
-        super.init(frame: CGRect(x: 0, y: 0, width: 30, height: 30))
-        var configuration = UIButton.Configuration.plain()
-        configuration.image = UIImage(
-            systemName: "stop.fill",
-            withConfiguration: UIImage.SymbolConfiguration(pointSize: 8, weight: .bold)
-        )
-        configuration.contentInsets = .zero
-        self.configuration = configuration
-
-        for layer in [track, fill] {
-            layer.fillColor = nil
-            layer.lineWidth = 2.5
-            layer.lineCap = .round
-            self.layer.addSublayer(layer)
-        }
-        fill.strokeEnd = 0
-        accessibilityLabel = "Stop Download"
-        updateColors()
-        registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (self: Self, _) in
-            self.updateColors()
-        }
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) is not used")
-    }
-
-    override var intrinsicContentSize: CGSize {
-        CGSize(width: 30, height: 30)
-    }
-
-    override func tintColorDidChange() {
-        super.tintColorDidChange()
-        updateColors()
-    }
-
-    override func layoutSubviews() {
-        super.layoutSubviews()
-        // A fixed-size ring in the middle, starting at the top, clockwise.
-        let path = UIBezierPath(
-            arcCenter: CGPoint(x: bounds.midX, y: bounds.midY),
-            radius: Self.diameter / 2 - track.lineWidth / 2,
-            startAngle: -.pi / 2,
-            endAngle: .pi * 1.5,
-            clockwise: true
-        ).cgPath
-        track.path = path
-        fill.path = path
-    }
-
-    private func updateColors() {
-        track.strokeColor = UIColor.secondaryLabel.withAlphaComponent(0.35).resolvedColor(with: traitCollection).cgColor
-        fill.strokeColor = tintColor.resolvedColor(with: traitCollection).cgColor
+        return image.withRenderingMode(.alwaysTemplate)
     }
 }
 

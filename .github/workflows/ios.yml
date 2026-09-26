@@ -51,30 +51,39 @@ jobs:
       - name: Run tests
         run: |
           set -o pipefail
-          xcrun simctl list runtimes
-          RUNTIME=$(xcrun simctl list runtimes available | grep -E '^iOS ' | tail -1 | grep -oE 'com\.apple\.CoreSimulator\.SimRuntime\.[A-Za-z0-9.-]+')
-          DEVICE=$(xcrun simctl list devices available | awk -v runtime="$(xcrun simctl list runtimes available | grep -E '^iOS ' | tail -1 | awk '{print $1" "$2}')" '
+          {
+            xcrun simctl list runtimes available
+            xcodebuild -project AppleVideos.xcodeproj -scheme AppleVideos -showdestinations
+          } 2>&1 | tee xcodebuild-test.log
+          # The first iPhone simulator of the newest iOS runtime.
+          RUNTIME=$(xcrun simctl list runtimes available | grep -E '^iOS ' | tail -1 | awk '{print $1" "$2}')
+          DEVICE=$(xcrun simctl list devices available | awk -v runtime="-- $RUNTIME --" '
             /^-- / { section = $0; next }
-            index(section, runtime) && /iPhone/ { match($0, /[0-9A-F-]{36}/); print substr($0, RSTART, RLENGTH); exit }')
-          if [ -z "$DEVICE" ]; then
-            DEVICE=$(xcrun simctl create "Test iPhone" "iPhone 17" "$RUNTIME")
-          fi
-          echo "Runtime $RUNTIME, device $DEVICE"
+            section == runtime && /iPhone/ { match($0, /[0-9A-F-]{36}/); print substr($0, RSTART, RLENGTH); exit }')
+          echo "SETUP runtime '$RUNTIME', device '$DEVICE'" | tee -a xcodebuild-test.log
           xcodebuild \
             -project AppleVideos.xcodeproj \
             -scheme AppleVideos \
             -configuration Debug \
-            -destination "id=$DEVICE" \
+            -destination "platform=iOS Simulator,id=$DEVICE" \
             -derivedDataPath TestDerivedData \
             CODE_SIGNING_ALLOWED=NO \
             COMPILER_INDEX_STORE_ENABLE=NO \
-            test | tee xcodebuild-test.log
+            test 2>&1 | tee -a xcodebuild-test.log
 
       - name: Report probe results
         if: always()
+        # GitHub shows ten annotations per step, so lines are grouped into
+        # multi-line annotations (%0A is a line break there).
         run: |
-          grep -h "PROBE" xcodebuild-test.log 2>/dev/null | sort -u | head -40 | sed 's/^/::notice::/' || true
-          grep -hE "✘|error:|failed" xcodebuild-test.log 2>/dev/null | grep -v "^PROBE" | sort -u | head -20 | sed 's/^/::warning::/' || true
+          annotate() {
+            lines=$(cat | head -"$2" | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+            [ -n "$lines" ] && echo "::$1::$lines" || true
+          }
+          grep -hE "SETUP|^iOS " xcodebuild-test.log 2>/dev/null | annotate notice 20
+          grep -h "PROBE" xcodebuild-test.log 2>/dev/null | sort -u | annotate notice 40
+          grep -hE "Test run with|Suite .* (passed|failed)|✘|Test .* (passed|failed)" xcodebuild-test.log 2>/dev/null | annotate notice 40
+          grep -hiE "error|failed|unable" xcodebuild-test.log 2>/dev/null | grep -v PROBE | sort -u | annotate warning 30
 
       - name: Build unsigned iPhone app
         run: |

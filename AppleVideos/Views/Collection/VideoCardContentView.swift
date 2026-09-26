@@ -72,9 +72,6 @@ final class VideoCardContentView: UIView, UIContentView {
         appliedConfiguration = configuration
         super.init(frame: .zero)
         buildViews()
-        registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (self: Self, _) in
-            self.updateBorderColor()
-        }
     }
 
     @available(*, unavailable)
@@ -94,7 +91,6 @@ final class VideoCardContentView: UIView, UIContentView {
         artwork.layer.cornerCurve = .continuous
         artwork.layer.borderWidth = 0.5
         artwork.clipsToBounds = true
-        updateBorderColor()
 
         placeholderSymbol.tintColor = .tertiaryLabel
         placeholderSymbol.preferredSymbolConfiguration = UIImage.SymbolConfiguration(textStyle: .largeTitle)
@@ -165,10 +161,12 @@ final class VideoCardContentView: UIView, UIContentView {
     // MARK: - Content
 
     /// Runs before layout with valid traits. UIKit tracks the observable
-    /// download state read here and calls this again when it changes.
+    /// download state and the traits read here and calls this again when
+    /// they change, such as switching between light and dark.
     override func updateProperties() {
         super.updateProperties()
         let video = appliedConfiguration.video
+        updateBorderColor()
 
         titleLabel.text = video.title
         channelLabel.text = video.channelName

@@ -99,10 +99,6 @@ final class VideoDetailViewController: UIViewController, UICollectionViewDelegat
         collectionView.contentInset.bottom = 30
         collectionView.alwaysBounceVertical = true
         collectionView.delegate = self
-        // Fixed sizes follow the text size; recompute them when it changes.
-        registerForTraitChanges([UITraitPreferredContentSizeCategory.self]) { (self: Self, _) in
-            self.collectionView.collectionViewLayout.invalidateLayout()
-        }
         configureDataSource()
         applySnapshot(related: [], animated: false)
 

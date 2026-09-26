@@ -232,6 +232,10 @@ enum VideoCells {
     /// collection view measure cells while it scrolled, which stuttered and,
     /// on iOS 27, ran into a layout loop crash (`_updateVisibleCellsNow`
     /// recursing until an assertion failed).
+    ///
+    /// Pass the layout environment's traits from the section provider: UIKit
+    /// tracks the text size read here (automatic trait tracking) and asks for
+    /// the section again when it changes.
     static func shelfSection(
         cardWidth: CGFloat,
         headerTopSpacing: CGFloat,

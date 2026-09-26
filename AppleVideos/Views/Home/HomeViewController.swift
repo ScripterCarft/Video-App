@@ -70,10 +70,6 @@ final class HomeViewController: UIViewController, UICollectionViewDelegate {
         super.viewDidLoad()
         collectionView.backgroundColor = .systemBackground
         collectionView.delegate = self
-        // Shelf heights follow the text size; recompute them when it changes.
-        registerForTraitChanges([UITraitPreferredContentSizeCategory.self]) { (self: Self, _) in
-            self.collectionView.collectionViewLayout.invalidateLayout()
-        }
         configureDataSource()
 
         // The featured video has a Play button right on Home.

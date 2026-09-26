@@ -57,43 +57,6 @@ struct VideoArtwork: View {
     }
 }
 
-/// A taller presentation for the detail screen and Home's featured card: the
-/// complete 16:9 thumbnail, centered on a calm gray stage. One plain image on
-/// a solid color is cheap to draw, so the zoom transition, which redraws the
-/// live screen in every frame, stays smooth. (Blurred, masked copies of the
-/// image made opening and closing slow and unresponsive, measured on device.)
-struct VideoHeroArtwork: View {
-    let video: Video
-    var cornerRadius: CGFloat = 0
-    var stageAspectRatio: CGFloat = 4.0 / 5.0
-
-    @Environment(\.displayScale) private var displayScale
-
-    var body: some View {
-        FallbackThumbnailImage(
-            candidates: video.artworkCandidates(lowData: NetworkConditions.shared.isConstrained),
-            maxPixelWidth: ArtworkQuality.hero.displayWidth * displayScale,
-            requiresSixteenByNine: video.source == .youtube
-        ) { image in
-            image
-                .resizable()
-                .scaledToFit()
-        } placeholder: {
-            ArtworkPlaceholder()
-                .aspectRatio(16 / 9, contentMode: .fit)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .aspectRatio(stageAspectRatio, contentMode: .fit)
-        .background(Color(uiColor: .systemGray5))
-        .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                .strokeBorder(.primary.opacity(0.06), lineWidth: 0.5)
-        }
-        .contentShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-    }
-}
-
 private struct ArtworkPlaceholder: View {
     var body: some View {
         Rectangle()

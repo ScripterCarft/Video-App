@@ -1,89 +1,403 @@
-import SwiftUI
+import UIKit
 
-/// The featured video at the top of Home: artwork, title and a Play button.
-/// Tapping anywhere else opens its detail screen (the collection view's
-/// selection).
-struct HomeFeaturedCard: View {
-    let video: Video
-    let playback: PlaybackStarter
+// MARK: - Featured
 
-    @Environment(LibraryStore.self) private var library
+/// The featured video at the top of Home as a UIKit cell content
+/// configuration: the 16:9 artwork centered on a 2:3 gray stage with a
+/// gradient, "FEATURED", the title, the Play button and the duration.
+/// Tapping anywhere but Play opens its detail screen (the collection view's
+/// selection). Its height follows from its width; nothing is measured.
+struct FeaturedCardConfiguration: UIContentConfiguration {
+    var video: Video
+    var library: LibraryStore
+    var playback: PlaybackStarter
 
-    var body: some View {
-        ZStack(alignment: .bottomLeading) {
-            VideoHeroArtwork(video: video, cornerRadius: 22, stageAspectRatio: 2.0 / 3.0)
-                .overlay {
-                    LinearGradient(
-                        colors: [.clear, .black.opacity(0.15), .black.opacity(0.88)],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                }
+    func makeContentView() -> any UIView & UIContentView {
+        FeaturedCardContentView(configuration: self)
+    }
 
-            VStack(alignment: .leading, spacing: 10) {
-                Text("FEATURED")
-                    .font(.caption.weight(.bold))
-                    .tracking(1.1)
-                    .foregroundStyle(.white.opacity(0.72))
-                Text(video.title)
-                    .font(.title2.bold())
-                    .foregroundStyle(.white)
-                    .lineLimit(2)
-                HStack(alignment: .center) {
-                    Button {
-                        if playback.isPreparing {
-                            playback.cancel()
-                        } else {
-                            playback.start(video, description: video.descriptionText, library: library)
-                        }
-                    } label: {
-                        PlayButtonContent(
-                            progress: library.progress(for: video),
-                            isPreparing: playback.isPreparing
-                        )
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.black)
-                        .padding(.horizontal, 15)
-                        .padding(.vertical, 9)
-                        .background(.white, in: Capsule())
-                    }
-                    .buttonStyle(.plain)
+    func updated(for state: any UIConfigurationState) -> FeaturedCardConfiguration {
+        self
+    }
 
-                    Spacer()
+    static let cornerRadius: CGFloat = 22
+    static let padding: CGFloat = 22
 
-                    if let duration = video.duration {
-                        Text(duration)
-                            .font(.caption.weight(.semibold).monospacedDigit())
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 9)
-                            .padding(.vertical, 5)
-                            .background(.black.opacity(0.68), in: Capsule())
-                    }
-                }
-            }
-            .padding(22)
-        }
-        .padding(.horizontal, 16)
+    /// The 2:3 stage of `width`.
+    static func height(forWidth width: CGFloat) -> CGFloat {
+        ceil(width * 3 / 2)
     }
 }
 
-/// The Spotlight card at the bottom of Home.
-struct HomeSpotlightCard: View {
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Image(systemName: "sparkles.tv.fill")
-                .font(.system(size: 40))
-                .symbolRenderingMode(.hierarchical)
-            Text("A calmer way to watch")
-                .font(.title2.bold())
-            Text("No noisy counters or clutter. Just videos, collections, and your library.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+final class FeaturedCardContentView: UIView, UIContentView {
+    private var appliedConfiguration: FeaturedCardConfiguration
+
+    var configuration: any UIContentConfiguration {
+        get { appliedConfiguration }
+        set {
+            guard let configuration = newValue as? FeaturedCardConfiguration else { return }
+            appliedConfiguration = configuration
+            setNeedsUpdateProperties()
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(22)
-        // An opaque system color looks like the material here and costs nothing to draw.
-        .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-        .padding(.horizontal, 16)
+    }
+
+    private let stage = UIView()
+    private let imageView = UIImageView()
+    private let placeholderSymbol = UIImageView(image: UIImage(systemName: "play.rectangle.fill"))
+    private let gradient = GradientView()
+    private let eyebrowLabel = UILabel()
+    private let titleLabel = UILabel()
+    private let playButton = UIButton(type: .system)
+    private let durationLabel = CapsuleLabel()
+
+    private var loadedCandidates: [ArtworkCandidate]?
+    private var imageTask: Task<Void, Never>?
+
+    init(configuration: FeaturedCardConfiguration) {
+        appliedConfiguration = configuration
+        super.init(frame: .zero)
+        buildViews()
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is not used")
+    }
+
+    deinit {
+        imageTask?.cancel()
+    }
+
+    private func buildViews() {
+        stage.backgroundColor = .systemGray5
+        stage.layer.cornerRadius = FeaturedCardConfiguration.cornerRadius
+        stage.layer.cornerCurve = .continuous
+        stage.layer.borderWidth = 0.5
+        // Clips the image and the gradient to the rounded corners.
+        stage.clipsToBounds = true
+        stage.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(stage)
+
+        imageView.contentMode = .scaleAspectFit
+        placeholderSymbol.tintColor = .tertiaryLabel
+        placeholderSymbol.preferredSymbolConfiguration = UIImage.SymbolConfiguration(textStyle: .largeTitle)
+
+        eyebrowLabel.textColor = UIColor.white.withAlphaComponent(0.72)
+        titleLabel.textColor = .white
+        titleLabel.numberOfLines = 2
+        titleLabel.lineBreakMode = .byTruncatingTail
+
+        playButton.addAction(UIAction { [weak self] _ in
+            self?.playTapped()
+        }, for: .primaryActionTriggered)
+        playButton.setContentHuggingPriority(.required, for: .horizontal)
+        durationLabel.setContentHuggingPriority(.required, for: .horizontal)
+
+        let row = UIStackView(arrangedSubviews: [playButton, UIView(), durationLabel])
+        row.axis = .horizontal
+        row.alignment = .center
+
+        let text = UIStackView(arrangedSubviews: [eyebrowLabel, titleLabel, row])
+        text.axis = .vertical
+        text.alignment = .fill
+        text.spacing = 10
+
+        for view in [imageView, placeholderSymbol, gradient, text] {
+            view.translatesAutoresizingMaskIntoConstraints = false
+            stage.addSubview(view)
+        }
+
+        let padding = FeaturedCardConfiguration.padding
+        NSLayoutConstraint.activate([
+            stage.topAnchor.constraint(equalTo: topAnchor),
+            stage.leadingAnchor.constraint(equalTo: leadingAnchor),
+            stage.trailingAnchor.constraint(equalTo: trailingAnchor),
+            stage.bottomAnchor.constraint(equalTo: bottomAnchor),
+
+            imageView.topAnchor.constraint(equalTo: stage.topAnchor),
+            imageView.leadingAnchor.constraint(equalTo: stage.leadingAnchor),
+            imageView.trailingAnchor.constraint(equalTo: stage.trailingAnchor),
+            imageView.bottomAnchor.constraint(equalTo: stage.bottomAnchor),
+
+            gradient.topAnchor.constraint(equalTo: stage.topAnchor),
+            gradient.leadingAnchor.constraint(equalTo: stage.leadingAnchor),
+            gradient.trailingAnchor.constraint(equalTo: stage.trailingAnchor),
+            gradient.bottomAnchor.constraint(equalTo: stage.bottomAnchor),
+
+            placeholderSymbol.centerXAnchor.constraint(equalTo: stage.centerXAnchor),
+            placeholderSymbol.centerYAnchor.constraint(equalTo: stage.centerYAnchor),
+
+            text.leadingAnchor.constraint(equalTo: stage.leadingAnchor, constant: padding),
+            text.trailingAnchor.constraint(equalTo: stage.trailingAnchor, constant: -padding),
+            text.bottomAnchor.constraint(equalTo: stage.bottomAnchor, constant: -padding),
+            text.topAnchor.constraint(greaterThanOrEqualTo: stage.topAnchor, constant: padding)
+        ])
+    }
+
+    /// Runs before layout with valid traits. UIKit tracks what is read here,
+    /// the observable playback state and saved progress as well as the text
+    /// size and appearance, and calls this again when it changes.
+    override func updateProperties() {
+        super.updateProperties()
+        let configuration = appliedConfiguration
+        let video = configuration.video
+
+        stage.layer.borderColor = UIColor.label.withAlphaComponent(0.06).resolvedColor(with: traitCollection).cgColor
+
+        eyebrowLabel.attributedText = NSAttributedString(string: "FEATURED", attributes: [
+            .font: Self.font(.caption1, bold: true, traits: traitCollection),
+            .kern: 1.1
+        ])
+        titleLabel.font = Self.font(.title2, bold: true, traits: traitCollection)
+        titleLabel.text = video.title
+
+        durationLabel.text = video.duration
+        durationLabel.isHidden = video.duration == nil
+        durationLabel.font = UIFont.monospacedDigitSystemFont(
+            ofSize: UIFont.preferredFont(forTextStyle: .caption1, compatibleWith: traitCollection).pointSize,
+            weight: .semibold
+        )
+
+        let progress = configuration.library.progress(for: video)
+        let isPreparing = configuration.playback.isPreparing
+        playButton.configuration = .play(progress: progress, isPreparing: isPreparing, traits: traitCollection)
+        if isPreparing {
+            playButton.accessibilityLabel = "Cancel"
+            playButton.accessibilityValue = nil
+        } else if let progress {
+            playButton.accessibilityLabel = "Resume"
+            playButton.accessibilityValue = "\(progress.remainingLabel) remaining"
+        } else {
+            playButton.accessibilityLabel = "Play"
+            playButton.accessibilityValue = nil
+        }
+
+        loadArtwork(for: video)
+    }
+
+    private func playTapped() {
+        let configuration = appliedConfiguration
+        if configuration.playback.isPreparing {
+            configuration.playback.cancel()
+        } else {
+            configuration.playback.start(
+                configuration.video,
+                description: configuration.video.descriptionText,
+                library: configuration.library
+            )
+        }
+    }
+
+    /// Loads the artwork once per candidate list, from the shared loader and
+    /// its cache.
+    private func loadArtwork(for video: Video) {
+        let candidates = video.artworkCandidates(lowData: NetworkConditions.shared.isConstrained)
+        guard candidates != loadedCandidates else { return }
+        loadedCandidates = candidates
+        imageTask?.cancel()
+
+        let maxPixelWidth = ArtworkQuality.hero.displayWidth * max(traitCollection.displayScale, 1)
+        if let cached = ArtworkLoader.cachedImage(for: candidates, maxPixelWidth: maxPixelWidth) {
+            show(cached)
+            return
+        }
+        show(nil)
+        imageTask = Task { [weak self] in
+            let image = await ArtworkLoader.firstImage(
+                from: candidates,
+                requiresSixteenByNine: video.source == .youtube,
+                maxPixelWidth: maxPixelWidth
+            )
+            guard !Task.isCancelled, let self, self.loadedCandidates == candidates else { return }
+            self.show(image)
+        }
+    }
+
+    private func show(_ image: UIImage?) {
+        imageView.image = image
+        placeholderSymbol.isHidden = image != nil
+    }
+
+    /// A text style's font at the current text size, bold if asked.
+    nonisolated fileprivate static func font(_ style: UIFont.TextStyle, bold: Bool, traits: UITraitCollection) -> UIFont {
+        let descriptor = UIFontDescriptor.preferredFontDescriptor(withTextStyle: style, compatibleWith: traits)
+        let styled = bold ? descriptor.withSymbolicTraits(.traitBold) ?? descriptor : descriptor
+        return UIFont(descriptor: styled, size: 0)
+    }
+}
+
+/// The featured card's gradient for the text: clear at the top, darkening
+/// toward the bottom. One gradient layer, cheap to draw.
+private final class GradientView: UIView {
+    override class var layerClass: AnyClass {
+        CAGradientLayer.self
+    }
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        isUserInteractionEnabled = false
+        (layer as? CAGradientLayer)?.colors = [
+            UIColor.black.withAlphaComponent(0),
+            UIColor.black.withAlphaComponent(0.15),
+            UIColor.black.withAlphaComponent(0.88)
+        ].map(\.cgColor)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is not used")
+    }
+}
+
+/// White text on a dark capsule, for the featured card's duration.
+private final class CapsuleLabel: UIView {
+    private let label = UILabel()
+
+    var text: String? {
+        get { label.text }
+        set { label.text = newValue }
+    }
+
+    var font: UIFont {
+        get { label.font }
+        set { label.font = newValue }
+    }
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        backgroundColor = UIColor.black.withAlphaComponent(0.68)
+        layer.cornerCurve = .continuous
+        label.textColor = .white
+        label.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(label)
+        NSLayoutConstraint.activate([
+            label.topAnchor.constraint(equalTo: topAnchor, constant: 5),
+            label.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -5),
+            label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 9),
+            label.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -9)
+        ])
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is not used")
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        layer.cornerRadius = bounds.height / 2
+    }
+}
+
+// MARK: - Spotlight
+
+/// The Spotlight card at the bottom of Home as a UIKit cell content
+/// configuration: a symbol above a title and a short text, on a rounded
+/// background (`background`, Apple's `UIBackgroundConfiguration`). Its height
+/// is computed once per width and text size from the fixed texts.
+struct SpotlightCardConfiguration: UIContentConfiguration {
+    static let title = "A calmer way to watch"
+    static let text = "No noisy counters or clutter. Just videos, collections, and your library."
+    static let padding: CGFloat = 22
+    static let spacing: CGFloat = 8
+
+    func makeContentView() -> any UIView & UIContentView {
+        SpotlightCardContentView(configuration: self)
+    }
+
+    func updated(for state: any UIConfigurationState) -> SpotlightCardConfiguration {
+        self
+    }
+
+    /// The card's rounded surface; an opaque system color, cheap to draw.
+    @MainActor
+    static var background: UIBackgroundConfiguration {
+        var background = UIBackgroundConfiguration.clear()
+        background.backgroundColor = .secondarySystemBackground
+        background.cornerRadius = 24
+        return background
+    }
+
+    static var symbol: UIImage? {
+        UIImage(
+            systemName: "sparkles.tv.fill",
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 40)
+                .applying(UIImage.SymbolConfiguration(hierarchicalColor: .label))
+        )
+    }
+
+    static func titleFont(traits: UITraitCollection) -> UIFont {
+        FeaturedCardContentView.font(.title2, bold: true, traits: traits)
+    }
+
+    static func textFont(traits: UITraitCollection) -> UIFont {
+        UIFont.preferredFont(forTextStyle: .subheadline, compatibleWith: traits)
+    }
+
+    /// The card's height at `width` for the texts at the current text size.
+    static func height(forWidth width: CGFloat, traits: UITraitCollection) -> CGFloat {
+        let textWidth = width - 2 * padding
+        func height(of string: String, font: UIFont) -> CGFloat {
+            ceil((string as NSString).boundingRect(
+                with: CGSize(width: textWidth, height: .greatestFiniteMagnitude),
+                options: [.usesLineFragmentOrigin, .usesFontLeading],
+                attributes: [.font: font],
+                context: nil
+            ).height)
+        }
+        return padding
+            + ceil(symbol?.size.height ?? 0) + spacing
+            + height(of: title, font: titleFont(traits: traits)) + spacing
+            + height(of: text, font: textFont(traits: traits))
+            + padding
+    }
+}
+
+final class SpotlightCardContentView: UIView, UIContentView {
+    var configuration: any UIContentConfiguration
+
+    private let symbolView = UIImageView(image: SpotlightCardConfiguration.symbol)
+    private let titleLabel = UILabel()
+    private let textLabel = UILabel()
+
+    init(configuration: SpotlightCardConfiguration) {
+        self.configuration = configuration
+        super.init(frame: .zero)
+
+        symbolView.contentMode = .left
+        titleLabel.text = SpotlightCardConfiguration.title
+        titleLabel.textColor = .label
+        titleLabel.numberOfLines = 0
+        textLabel.text = SpotlightCardConfiguration.text
+        textLabel.textColor = .secondaryLabel
+        textLabel.numberOfLines = 0
+
+        let stack = UIStackView(arrangedSubviews: [symbolView, titleLabel, textLabel])
+        stack.axis = .vertical
+        stack.alignment = .fill
+        stack.spacing = SpotlightCardConfiguration.spacing
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(stack)
+
+        let padding = SpotlightCardConfiguration.padding
+        NSLayoutConstraint.activate([
+            // Top-aligned in the computed height.
+            stack.topAnchor.constraint(equalTo: topAnchor, constant: padding),
+            stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: padding),
+            stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -padding),
+            stack.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor, constant: -padding)
+        ])
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is not used")
+    }
+
+    /// The fonts follow the text size: UIKit tracks the traits read here.
+    override func updateProperties() {
+        super.updateProperties()
+        titleLabel.font = SpotlightCardConfiguration.titleFont(traits: traitCollection)
+        textLabel.font = SpotlightCardConfiguration.textFont(traits: traitCollection)
     }
 }

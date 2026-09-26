@@ -1,4 +1,3 @@
-import SwiftUI
 import UIKit
 
 /// Home as a UIKit screen: one collection view with a compositional layout,
@@ -116,9 +115,11 @@ final class HomeViewController: UIViewController, UICollectionViewDelegate {
         return UICollectionViewCompositionalLayout(
             sectionProvider: { [weak self] index, environment in
                 guard let section = self?.dataSource?.sectionIdentifier(for: index) else { return nil }
+                // Full-width cards sit between the screen margins.
+                let cardWidth = environment.container.effectiveContentSize.width - 2 * HomeViewController.sideMargin
                 switch section {
                 case .featured:
-                    return HomeViewController.fullWidthSection(withHeader: false)
+                    return HomeViewController.cardSection(height: FeaturedCardConfiguration.height(forWidth: cardWidth))
                 case .shelf:
                     return VideoCells.shelfSection(
                         cardWidth: HomeViewController.cardWidth,
@@ -126,27 +127,36 @@ final class HomeViewController: UIViewController, UICollectionViewDelegate {
                         traits: environment.traitCollection
                     )
                 case .spotlight:
-                    return HomeViewController.fullWidthSection(withHeader: true)
+                    let section = HomeViewController.cardSection(
+                        height: SpotlightCardConfiguration.height(forWidth: cardWidth, traits: environment.traitCollection)
+                    )
+                    // The title header, like the shelves' (see `shelfSection`).
+                    let titleHeight = ceil(UIFont.preferredFont(forTextStyle: .title2, compatibleWith: environment.traitCollection).lineHeight)
+                    section.boundarySupplementaryItems = [
+                        NSCollectionLayoutBoundarySupplementaryItem(
+                            layoutSize: NSCollectionLayoutSize(widthDimension: .fractionalWidth(1), heightDimension: .absolute(titleHeight)),
+                            elementKind: UICollectionView.elementKindSectionHeader,
+                            alignment: .top
+                        )
+                    ]
+                    section.supplementaryContentInsetsReference = .none
+                    section.contentInsets.top = 14
+                    return section
                 }
             },
             configuration: configuration
         )
     }
 
-    private static func fullWidthSection(withHeader: Bool) -> NSCollectionLayoutSection {
-        let size = NSCollectionLayoutSize(widthDimension: .fractionalWidth(1), heightDimension: .estimated(400))
+    private static let sideMargin: CGFloat = 16
+
+    /// One full-width card of fixed `height` between the screen margins.
+    /// Sizes are computed, never estimated (see `VideoCells.shelfSection`).
+    private static func cardSection(height: CGFloat) -> NSCollectionLayoutSection {
+        let size = NSCollectionLayoutSize(widthDimension: .fractionalWidth(1), heightDimension: .absolute(height))
         let group = NSCollectionLayoutGroup.vertical(layoutSize: size, subitems: [NSCollectionLayoutItem(layoutSize: size)])
         let section = NSCollectionLayoutSection(group: group)
-        if withHeader {
-            section.boundarySupplementaryItems = [
-                NSCollectionLayoutBoundarySupplementaryItem(
-                    layoutSize: NSCollectionLayoutSize(widthDimension: .fractionalWidth(1), heightDimension: .estimated(34)),
-                    elementKind: UICollectionView.elementKindSectionHeader,
-                    alignment: .top
-                )
-            ]
-            section.contentInsets.top = 14
-        }
+        section.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: sideMargin, bottom: 0, trailing: sideMargin)
         return section
     }
 
@@ -175,28 +185,18 @@ final class HomeViewController: UIViewController, UICollectionViewDelegate {
     }
 
     private func configure(_ cell: UICollectionViewCell, for item: Item) {
+        // Cells are reused across items, so each sets its own background.
+        cell.backgroundConfiguration = item == .spotlight ? SpotlightCardConfiguration.background : nil
         switch item {
         case .featured:
-            let featured = featured
-            let playback = playback
-            let library = library
-            let downloads = downloads
-            cell.contentConfiguration = UIHostingConfiguration {
-                HomeFeaturedCard(video: featured, playback: playback)
-                    .environment(library)
-                    .environment(downloads)
-            }
-            .margins(.all, 0)
+            cell.contentConfiguration = FeaturedCardConfiguration(video: featured, library: library, playback: playback)
 
         case let .video(shelf, id):
             guard let video = video(in: shelf, id: id) else { return }
             cell.contentConfiguration = VideoCardConfiguration(video: video)
 
         case .spotlight:
-            cell.contentConfiguration = UIHostingConfiguration {
-                HomeSpotlightCard()
-            }
-            .margins(.all, 0)
+            cell.contentConfiguration = SpotlightCardConfiguration()
         }
     }
 

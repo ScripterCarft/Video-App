@@ -22,7 +22,18 @@ accepted player-dismissal bug.
   polling about every 40 s; unauthenticated calls are limited to 60 per
   hour. On failure, the "Report compiler errors" step publishes errors as
   check-run annotations (`/check-runs/{job id}/annotations`). Never look for
-  or read stored credentials.
+  or read stored credentials. Job logs need admin rights; annotations are
+  the only readable output, so CI steps report what matters as annotations.
+- **SDK (checked 2026-09-26):** the runner (`macos-26`) has Xcode 26.0–26.6;
+  the newest, selected by CI, has the **iOS 26.5 SDK**. The deployment
+  target is iOS 27, so the app runs on iOS 27 but is linked against iOS 26:
+  no iOS 27 API (for example SwiftData's `ResultsObserver`, section
+  provider observation tracking, `prominentTabIdentifier`,
+  `barMinimizeBehavior`, `extendStateRestoration`) compiles until GitHub
+  installs Xcode 27; CI then picks it up by itself. Unit tests
+  (`AppleVideosTests`, Swift Testing, hosted in the app) run after the IPA
+  and are skipped with a notice until then, since no iOS 27 simulator
+  exists without that SDK.
 - **Testing** happens only on the user's iPhone with the CI IPA (English
   device language). Say plainly that a change is untested on device, and
   give a short test list after each build.

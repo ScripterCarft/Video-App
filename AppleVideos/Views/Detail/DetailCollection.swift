@@ -141,10 +141,12 @@ final class DetailCollectionController: UIViewController, UICollectionViewDelega
                     headerTopSpacing: 22,
                     traits: environment.traitCollection
                 )
-                // The black the page slides over the artwork with.
-                section.decorationItems = [
-                    NSCollectionLayoutDecorationItem.background(elementKind: DetailCollectionController.shelfBackgroundKind)
-                ]
+                // The black page, from the artwork's lower edge down. It
+                // reaches two screen heights past the shelf, so the page never
+                // ends on screen, even when pulled beyond its end.
+                let page = NSCollectionLayoutDecorationItem.background(elementKind: DetailCollectionController.shelfBackgroundKind)
+                page.contentInsets.bottom = -2 * environment.container.effectiveContentSize.height
+                section.decorationItems = [page]
                 return section
             case nil:
                 return nil
@@ -152,6 +154,12 @@ final class DetailCollectionController: UIViewController, UICollectionViewDelega
         }
         layout.register(DetailShelfBackground.self, forDecorationViewOfKind: Self.shelfBackgroundKind)
         return layout
+    }
+
+    /// The shelf title's font, title 2 bold like the other section headers.
+    private static func headerFont() -> UIFont {
+        let descriptor = UIFontDescriptor.preferredFontDescriptor(withTextStyle: .title2)
+        return UIFont(descriptor: descriptor.withSymbolicTraits(.traitBold) ?? descriptor, size: 0)
     }
 
     /// A clear spacer exactly over the artwork stage.
@@ -174,14 +182,19 @@ final class DetailCollectionController: UIViewController, UICollectionViewDelega
             elementKind: UICollectionView.elementKindSectionHeader
         ) { header, _, _ in
             MainActor.assumeIsolated {
-                // Opaque: the header slides over the artwork too.
-                header.backgroundColor = .black
-                header.contentConfiguration = UIHostingConfiguration {
-                    SectionHeader(title: "Up Next")
-                        .padding(.horizontal, 16)
-                        .frame(maxHeight: .infinity, alignment: .bottom)
-                }
-                .margins(.all, 0)
+                // Plain UIKit text: two words need no SwiftUI, and a label
+                // does not react to where on screen its cell is.
+                var configuration = UIListContentConfiguration.cell()
+                configuration.text = "Up Next"
+                configuration.textProperties.font = DetailCollectionController.headerFont()
+                configuration.textProperties.color = .label
+                configuration.textProperties.numberOfLines = 1
+                // The space above the title is part of the header's fixed
+                // height. Only these margins count, not the cell's, which
+                // follow the screen edges.
+                configuration.directionalLayoutMargins = NSDirectionalEdgeInsets(top: 22, leading: 16, bottom: 0, trailing: 16)
+                configuration.axesPreservingSuperviewLayoutMargins = []
+                header.contentConfiguration = configuration
             }
         }
 

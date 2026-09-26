@@ -168,6 +168,10 @@ enum VideoCells {
                 .frame(width: width, alignment: .top)
                 // In a cell of fixed height, the card starts at the top.
                 .frame(maxHeight: fixedHeight ? .infinity : nil, alignment: .top)
+                // Screen edges mean nothing inside a cell. Without this, the
+                // card gave way to the bars and the home indicator wherever
+                // its cell lay, and fixed cells squeezed it while scrolling.
+                .ignoresSafeArea(fixedHeight ? .all : [])
                 .matchedTransitionSource(id: route.transitionID, in: transition)
                 .environment(library)
                 .environment(downloads)

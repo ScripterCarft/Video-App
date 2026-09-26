@@ -4,63 +4,51 @@ import SwiftData
 
 /// Saved, History, the Watchlist and watch progress, stored in SwiftData with
 /// one `StoredVideo` per video and one `WatchProgress` per started video.
-/// The lists are values that `StoredVideoList`s keep current after every
-/// save, including the downloads' saves; screens read only these values and
-/// update through observation. Library screens query the store directly.
+/// The lists published here are read from the store after each change and
+/// after every save of the shared context; library screens query the store
+/// directly.
 ///
 /// Watch progress is written to the store during playback (it survives a
 /// crash) but `progress`, which the UI reads, changes only when a player has
 /// closed, so nothing re-renders while AVKit is on screen. Because progress is
-/// a separate model, saving a changed position leaves the lists alone.
+/// a separate model, queries over stored videos do not update for it.
 @MainActor
 @Observable
 final class LibraryStore {
     private(set) var savedVideos: [Video] = []
     /// History, shown as "Recently Watched" in menus.
     private(set) var recentlyWatched: [Video] = []
-    /// Videos added to the Watchlist by hand, newest first.
-    private var addedToWatchlist: [WatchlistEntry] = []
+    /// Videos added to the Watchlist by hand, with the date they were added.
+    private var manualWatchlist: [(video: Video, addedAt: Date)] = []
     /// Watch progress as last shown in the UI.
     private(set) var progress: [String: PlaybackProgress] = [:]
 
-    private struct WatchlistEntry: Equatable {
-        let video: Video
-        let addedAt: Date
-    }
-
-    @ObservationIgnored private var lists: [StoredVideoList] = []
     /// The freshest copy of every video refreshed since launch.
     @ObservationIgnored private var refreshedThisLaunch: [String: Video] = [:]
     @ObservationIgnored private var refreshingIDs: Set<String> = []
     /// Videos played to the end in the open player; applied on close.
     @ObservationIgnored private var finishedSincePublish: Set<String> = []
+    @ObservationIgnored private var saveObserver: NSObjectProtocol?
 
     private static let historyLimit = 50
     private static let maximumProgressEntries = 200
 
     init() {
+        reloadLists()
         progress = Self.storedProgress()
-        // Each list is reassigned only when it changed, so screens update
-        // only for real changes.
-        lists = [
-            StoredVideoList(#Predicate { $0.savedAt != nil }, sortedBy: SortDescriptor(\.savedAt, order: .reverse)) { [weak self] records in
-                let videos = records.map(\.video)
-                if self?.savedVideos != videos { self?.savedVideos = videos }
-            },
-            StoredVideoList(#Predicate { $0.watchedAt != nil }, sortedBy: SortDescriptor(\.watchedAt, order: .reverse)) { [weak self] records in
-                let videos = records.map(\.video)
-                if self?.recentlyWatched != videos { self?.recentlyWatched = videos }
-            },
-            StoredVideoList(
-                #Predicate { $0.watchlistAddedAt != nil },
-                sortedBy: SortDescriptor(\.watchlistAddedAt, order: .reverse)
-            ) { [weak self] records in
-                let entries = records.compactMap { record in
-                    record.watchlistAddedAt.map { WatchlistEntry(video: record.video, addedAt: $0) }
-                }
-                if self?.addedToWatchlist != entries { self?.addedToWatchlist = entries }
+
+        // Downloads share the store; reload when anything is saved. Unchanged
+        // lists are not reassigned, so progress saves during playback do not
+        // re-render anything.
+        saveObserver = NotificationCenter.default.addObserver(
+            forName: ModelContext.didSave,
+            object: LibraryDatabase.context,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.reloadLists()
             }
-        ]
+        }
     }
 
     /// The copy to store: a screen may hold older metadata than a details
@@ -116,6 +104,7 @@ final class LibraryStore {
             LibraryDatabase.deleteIfUnused(record)
         }
         LibraryDatabase.save()
+        reloadLists()
     }
 
     /// Keeps the most recent videos in History; older ones leave it.
@@ -135,7 +124,7 @@ final class LibraryStore {
     /// finished, most recent activity first. Finishing a video removes it.
     var watchlist: [Video] {
         var latest: [String: (video: Video, date: Date)] = [:]
-        for entry in addedToWatchlist {
+        for entry in manualWatchlist {
             latest[entry.video.id] = (entry.video, entry.addedAt)
         }
         for video in recentlyWatched {
@@ -147,7 +136,7 @@ final class LibraryStore {
     }
 
     func isInWatchlist(_ video: Video) -> Bool {
-        addedToWatchlist.contains { $0.video.id == video.id }
+        manualWatchlist.contains { $0.video.id == video.id }
             || (progress(for: video) != nil && isInRecentlyWatched(video))
     }
 
@@ -285,6 +274,7 @@ final class LibraryStore {
             LibraryDatabase.deleteIfUnused(record)
         }
         LibraryDatabase.save()
+        reloadLists()
     }
 
     /// Keeps the most recent saved positions.
@@ -304,11 +294,42 @@ final class LibraryStore {
 
     // MARK: - Storage
 
-    /// Saves a change to `record` and drops it when nothing needs it any
-    /// more. The lists follow the save by themselves.
+    /// Saves a change to `record`, drops it when nothing needs it any more and
+    /// updates the published lists.
     private func commit(_ record: StoredVideo) {
         LibraryDatabase.deleteIfUnused(record)
         LibraryDatabase.save()
+        reloadLists()
+    }
+
+    /// Reads the lists from the store. A list is only reassigned when it
+    /// changed, so observers re-render only for real changes.
+    private func reloadLists() {
+        let records = LibraryDatabase.allRecords()
+
+        let saved = records
+            .filter { $0.savedAt != nil }
+            .sorted { $0.savedAt! > $1.savedAt! }
+            .map(\.video)
+        if saved != savedVideos {
+            savedVideos = saved
+        }
+
+        let watched = records
+            .filter { $0.watchedAt != nil }
+            .sorted { $0.watchedAt! > $1.watchedAt! }
+            .map(\.video)
+        if watched != recentlyWatched {
+            recentlyWatched = watched
+        }
+
+        let manual = records
+            .compactMap { record in record.watchlistAddedAt.map { (video: record.video, addedAt: $0) } }
+            .sorted { $0.addedAt > $1.addedAt }
+        if manual.map(\.video) != manualWatchlist.map(\.video)
+            || manual.map(\.addedAt) != manualWatchlist.map(\.addedAt) {
+            manualWatchlist = manual
+        }
     }
 }
 

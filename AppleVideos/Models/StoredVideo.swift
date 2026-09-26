@@ -209,9 +209,7 @@ enum LibraryDatabase {
         (try? context.fetch(FetchDescriptor<StoredVideo>())) ?? []
     }
 
-    /// Deletes `record` when nothing needs it any more. Safe while lists are
-    /// observed: `StoredVideoList` reads records only after its observer has
-    /// updated, never a deleted one.
+    /// Deletes `record` when nothing needs it any more.
     static func deleteIfUnused(_ record: StoredVideo) {
         if record.isUnused {
             context.delete(record)

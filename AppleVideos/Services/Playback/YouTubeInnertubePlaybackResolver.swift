@@ -25,12 +25,13 @@ actor YouTubeInnertubePlaybackResolver: PlaybackResolving {
             throw PlaybackResolverError.invalidVideoID
         }
 
-        if let cached = cache[request],
+        try Task.checkCancellation()
+        if let cached = cache[request.cacheKey],
            cached.source.isFresh(),
            Date.now.timeIntervalSince(cached.source.resolvedAt) < Self.maximumCacheAge {
             return cached.source
         }
-        cache[request] = nil
+        cache[request.cacheKey] = nil
 
         if let existing = inFlight[request] {
             return try await existing.value
@@ -42,7 +43,7 @@ actor YouTubeInnertubePlaybackResolver: PlaybackResolving {
         do {
             let source = try await task.value
             inFlight[request] = nil
-            cache[request] = CacheEntry(source: source)
+            cache[request.cacheKey] = CacheEntry(source: source)
             return source
         } catch {
             inFlight[request] = nil
@@ -65,7 +66,7 @@ actor YouTubeInnertubePlaybackResolver: PlaybackResolving {
     }
 
     private func resolveUncached(_ request: PlaybackRequest) async throws -> ResolvedPlaybackSource {
-        let configuration = try await YouTubeWebConfiguration.shared.values()
+        let configuration = try await YouTubeWebConfiguration.shared.values(policy: request.networkPolicy)
         guard let endpoint = URL(
             string: "https://www.youtube.com/youtubei/v1/player?key=\(configuration.apiKey)&prettyPrint=false"
         ) else {
@@ -73,6 +74,7 @@ actor YouTubeInnertubePlaybackResolver: PlaybackResolving {
         }
 
         var urlRequest = URLRequest(url: endpoint)
+        request.networkPolicy.apply(to: &urlRequest)
         urlRequest.httpMethod = "POST"
         urlRequest.timeoutInterval = 20
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")

@@ -38,6 +38,7 @@ struct SearchResultsChecks {
     }
 
     static func main() async throws {
+        try await DetailLoadingChecks.run()
         let server = Server()
         let results = SearchResults(fetch: server.fetch)
         let a = Video.youtube(id: "search00001", title: "Old", channel: "Test")

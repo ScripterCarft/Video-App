@@ -4,14 +4,18 @@ on:
   push:
     paths:
       - 'AppleVideos/Persistence/**'
-      - 'AppleVideos/Services/LibraryStore.swift'
+      - 'AppleVideos/Services/Library/LibraryStore.swift'
+      - 'AppleVideos/Services/YouTube/**'
+      - 'AppleVideos/Services/Networking/NetworkRequestPolicy.swift'
       - 'AppleVideos/Models/**'
       - 'Tests/Persistence/**'
       - '.github/workflows/storage.yml'
   pull_request:
     paths:
       - 'AppleVideos/Persistence/**'
-      - 'AppleVideos/Services/LibraryStore.swift'
+      - 'AppleVideos/Services/Library/LibraryStore.swift'
+      - 'AppleVideos/Services/YouTube/**'
+      - 'AppleVideos/Services/Networking/NetworkRequestPolicy.swift'
       - 'AppleVideos/Models/**'
       - 'Tests/Persistence/**'
       - '.github/workflows/storage.yml'

@@ -9,7 +9,7 @@ final class ArtworkImageView: UIImageView {
 
     deinit { imageTask?.cancel() }
 
-    func load(_ video: Video, quality: ArtworkQuality) {
+    func load(_ video: Video, quality: ArtworkQuality, placeholder: UIImage? = nil) {
         let next = ArtworkRequest(
             video: video, quality: quality,
             displayScale: traitCollection.displayScale,
@@ -28,7 +28,7 @@ final class ArtworkImageView: UIImageView {
         }
         // Keep the existing image during an upgrade, but never show the
         // previous video's image in a reused card.
-        if !sameVideo { image = nil }
+        if !sameVideo { image = placeholder }
         imageTask = Task { [weak self] in
             let image = await ArtworkLoader.firstImage(for: next)
             guard !Task.isCancelled, let self, self.request == next else { return }

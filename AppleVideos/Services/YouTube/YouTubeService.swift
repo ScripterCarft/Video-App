@@ -83,15 +83,17 @@ actor YouTubeService {
         return results
     }
 
-    func details(for videoID: String) async throws -> VideoDetails {
+    func details(for videoID: String, policy: NetworkRequestPolicy = .interactive) async throws -> VideoDetails {
+        try Task.checkCancellation()
         if let cached = cachedDetails[videoID] { return cached }
 
-        let configuration = try await YouTubeWebConfiguration.shared.values()
+        let configuration = try await YouTubeWebConfiguration.shared.values(policy: policy)
         guard let endpoint = URL(string: "https://www.youtube.com/youtubei/v1/player?key=\(configuration.apiKey)&prettyPrint=false") else {
             throw SearchError.configurationUnavailable
         }
 
         var request = URLRequest(url: endpoint)
+        policy.apply(to: &request)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("https://www.youtube.com", forHTTPHeaderField: "Origin")
@@ -116,22 +118,27 @@ actor YouTubeService {
             throw SearchError.invalidResponse
         }
 
-        let videoDetails = root["videoDetails"] as? [String: Any]
+        try Task.checkCancellation()
+        // A successful HTTP response can still be an unavailable video. Do
+        // not cache a payload without metadata as a successful details load.
+        guard let videoDetails = root["videoDetails"] as? [String: Any] else {
+            throw SearchError.invalidResponse
+        }
         let microformat = root["microformat"] as? [String: Any]
         let playerMicroformat = microformat?["playerMicroformatRenderer"] as? [String: Any]
-        let description = (videoDetails?["shortDescription"] as? String)?.collapsedWhitespace
+        let description = (videoDetails["shortDescription"] as? String)?.collapsedWhitespace
         let details = VideoDetails(
-            title: videoDetails?["title"] as? String,
-            channelName: videoDetails?["author"] as? String,
-            duration: (videoDetails?["lengthSeconds"] as? String)
+            title: videoDetails["title"] as? String,
+            channelName: videoDetails["author"] as? String,
+            duration: (videoDetails["lengthSeconds"] as? String)
                 .flatMap(Self.durationText),
             publishedText: (playerMicroformat?["publishDate"] as? String)
                 .flatMap(Self.relativePublishedText),
             publishedAt: (playerMicroformat?["publishDate"] as? String)
                 .flatMap(Self.publishDate),
-            viewCountText: (videoDetails?["viewCount"] as? String)
+            viewCountText: (videoDetails["viewCount"] as? String)
                 .flatMap(Self.viewCountText),
-            thumbnailURL: Self.thumbnailURL(from: videoDetails?["thumbnail"]),
+            thumbnailURL: Self.thumbnailURL(from: videoDetails["thumbnail"]),
             description: description,
             badges: Self.playerBadges(from: root)
         )
@@ -143,6 +150,7 @@ actor YouTubeService {
     /// the WEB `next` request its watch page makes. Verified with real
     /// responses: the list arrives as `lockupViewModel` items.
     func relatedVideos(for videoID: String) async throws -> [Video] {
+        try Task.checkCancellation()
         if let cached = cachedRelated[videoID] { return cached }
 
         let configuration = try await YouTubeWebConfiguration.shared.values()
@@ -175,7 +183,11 @@ actor YouTubeService {
             throw SearchError.invalidResponse
         }
 
-        let watchNext = (root["contents"] as? [String: Any])?["twoColumnWatchNextResults"] as? [String: Any]
+        try Task.checkCancellation()
+        guard let contents = root["contents"] as? [String: Any] else {
+            throw SearchError.invalidResponse
+        }
+        let watchNext = contents["twoColumnWatchNextResults"] as? [String: Any]
         let secondary = (watchNext?["secondaryResults"] as? [String: Any])?["secondaryResults"] as? [String: Any]
         let results = secondary?["results"] as? [[String: Any]] ?? []
         var seen: Set<String> = [videoID]
@@ -237,10 +249,14 @@ actor YouTubeService {
         )
     }
 
-    func refreshedVideo(_ video: Video) async throws -> Video {
+    func refreshedVideo(_ video: Video, policy: NetworkRequestPolicy = .interactive) async throws -> Video {
         guard video.source == .youtube else { return video }
 
-        let details = try await details(for: video.id)
+        let details = try await details(for: video.id, policy: policy)
+        return Self.refresh(video, with: details)
+    }
+
+    nonisolated static func refresh(_ video: Video, with details: VideoDetails) -> Video {
         return .youtube(
             id: video.id,
             title: details.title ?? video.title,

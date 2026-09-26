@@ -13,7 +13,8 @@ extension UIButton.Configuration {
         configuration.cornerStyle = .capsule
         configuration.baseBackgroundColor = .white
         configuration.baseForegroundColor = .black
-        configuration.contentInsets = NSDirectionalEdgeInsets(top: 9, leading: 15, bottom: 9, trailing: 15)
+        configuration.contentInsets = NSDirectionalEdgeInsets(top: 12, leading: 24, bottom: 12, trailing: 24)
+        configuration.titleLineBreakMode = .byTruncatingTail
         configuration.imagePadding = 8
 
         let font = playFont(compatibleWith: traits)

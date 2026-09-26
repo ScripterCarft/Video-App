@@ -8,16 +8,11 @@ final class LibraryUnavailableViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .systemBackground
-        var configuration = UIContentUnavailableConfiguration.empty()
-        configuration.image = UIImage(systemName: "externaldrive.badge.exclamationmark")
-        configuration.text = "Library Unavailable"
-        configuration.secondaryText = "Your library couldn't be opened or updated. Your existing data has been kept. Check available storage and try again."
-        var button = UIButton.Configuration.borderedProminent()
-        button.title = "Try Again"
-        configuration.button = button
-        configuration.buttonProperties.primaryAction = UIAction { [weak self] _ in
-            self?.onRetry?()
-        }
-        contentUnavailableConfiguration = configuration
+        contentUnavailableConfiguration = UIContentUnavailableConfiguration.retry(
+            title: "Library Unavailable",
+            message: "Your library couldn't be opened or updated. Your existing data has been kept. Check available storage and try again.",
+            symbol: "externaldrive.badge.exclamationmark",
+            action: UIAction { [weak self] _ in self?.onRetry?() }
+        )
     }
 }

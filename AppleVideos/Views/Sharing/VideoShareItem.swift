@@ -1,4 +1,4 @@
-import LinkPresentation
+@preconcurrency import LinkPresentation
 import UIKit
 
 /// What the share sheet shares for a video: its YouTube link, with the
@@ -20,7 +20,6 @@ final class VideoShareItem: NSObject, UIActivityItemSource, @unchecked Sendable 
 
         let image = NSItemProvider()
         image.registerObject(ofClass: UIImage.self, visibility: .all) { completion in
-            nonisolated(unsafe) let completion = completion
             let fetcher = LPMetadataProvider()
             fetcher.startFetchingMetadata(for: url) { fetched, error in
                 _ = fetcher

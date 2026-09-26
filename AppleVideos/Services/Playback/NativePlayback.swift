@@ -67,8 +67,13 @@ final class NativePlayback: NSObject {
     /// prefetching is optional and Play resolves anyway.
     @discardableResult
     static func prefetch(_ video: Video) async -> ResolvedPlaybackSource? {
-        guard video.source == .youtube, !NetworkConditions.shared.isConstrained else { return nil }
-        return try? await YouTubeInnertubePlaybackResolver.shared.resolve(PlaybackRequest(videoID: video.id))
+        let settings = StreamingSettings.current()
+        guard video.source == .youtube, !NetworkConditions.shared.isConstrained,
+              !isMobileDataBlocked(settings) else { return nil }
+        return try? await YouTubeInnertubePlaybackResolver.shared.resolve(PlaybackRequest(
+            videoID: video.id,
+            networkPolicy: NetworkRequestPolicy(allowsCellular: settings.useMobileData, allowsConstrained: false)
+        ))
     }
 
     /// Resolves and presents native playback, starting at `startTime` when
@@ -104,7 +109,7 @@ final class NativePlayback: NSObject {
         case .youtube:
             do {
                 let source = try await YouTubeInnertubePlaybackResolver.shared.resolve(
-                    PlaybackRequest(videoID: video.id)
+                    PlaybackRequest(videoID: video.id, networkPolicy: NetworkRequestPolicy(allowsCellular: settings.useMobileData))
                 )
                 try Task.checkCancellation()
                 guard let variant = source.preferredVariant else {
@@ -166,20 +171,14 @@ final class NativePlayback: NSObject {
         // Low Data Mode asks apps to reduce streaming quality on any network.
         let isLowData = network.isConstrained
 
-        if isLowData || settings.wifiQuality == .dataSaver {
-            item.preferredMaximumResolution = hd
-        }
-        if isLowData || settings.mobileDataQuality == .automatic {
-            item.preferredMaximumResolutionForExpensiveNetworks = hd
-        }
+        item.preferredMaximumResolution = isLowData || settings.wifiQuality == .dataSaver ? hd : .zero
+        item.preferredMaximumResolutionForExpensiveNetworks = isLowData || settings.mobileDataQuality == .automatic ? hd : .zero
 
         // 60 s bounds what an early close throws away while AVPlayer still
         // loads in large bursts, so the radio can sleep in between. Wi-Fi at
         // High Quality keeps the automatic buffer: Wi-Fi data is not limited,
         // and long bursts are the cheapest for the radio.
-        if isLowData || network.isExpensive || settings.wifiQuality == .dataSaver {
-            item.preferredForwardBufferDuration = 60
-        }
+        item.preferredForwardBufferDuration = isLowData || network.isExpensive || settings.wifiQuality == .dataSaver ? 60 : 0
     }
 
     private init(
@@ -520,6 +519,12 @@ private extension NativePlayback {
 
         let center = NotificationCenter.default
         notificationTokens = [
+            center.addObserver(forName: NetworkConditions.didChange, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    Self.applyStreamingOptions(.current(), to: self.item)
+                }
+            },
             center.addObserver(
                 forName: AVPlayerItem.timeJumpedNotification,
                 object: item,

@@ -1,11 +1,11 @@
 import Observation
 
 /// The detail screen's state and loading, in one observable object that its
-/// collection view cells read directly.
+/// collection view cells read directly. This service contains no UIKit or
+/// player ownership; the controller owns its task and optional stream prefetch.
 ///
 /// Loading runs in order: the details first, shown in one step; then the
-/// related videos for the Up Next shelf; then, while the screen stays, the
-/// stream so Play starts without waiting. It survives AVKit removing and
+/// related videos for the Up Next shelf. It survives AVKit removing and
 /// re-adding the screen, so nothing reloads under the player.
 @MainActor
 @Observable
@@ -18,10 +18,21 @@ final class VideoDetailModel {
     private(set) var detailsLoadFinished = false
     private(set) var related: [Video] = []
     private(set) var relatedLoadFinished: Bool
-    @ObservationIgnored private var streamLoaded = false
+    private(set) var isLoading = false
+    private(set) var hasLoadFailure = false
+    @ObservationIgnored private var detailsLoaded = false
+    @ObservationIgnored private var relatedLoaded = false
+    @ObservationIgnored private let loadDetails: @Sendable (String) async throws -> YouTubeService.VideoDetails
+    @ObservationIgnored private let loadRelated: @Sendable (String) async throws -> [Video]
 
-    init(video: Video) {
+    init(
+        video: Video,
+        loadDetails: @escaping @Sendable (String) async throws -> YouTubeService.VideoDetails = { try await YouTubeService.shared.details(for: $0) },
+        loadRelated: @escaping @Sendable (String) async throws -> [Video] = { try await YouTubeService.shared.relatedVideos(for: $0) }
+    ) {
         self.video = video
+        self.loadDetails = loadDetails
+        self.loadRelated = loadRelated
         relatedLoadFinished = video.source != .youtube
     }
 
@@ -63,46 +74,48 @@ final class VideoDetailModel {
     /// Loads what is still missing. Called from the screen's load task, which
     /// the screen cancels when it leaves for good; a cancelled step is
     /// retried the next time.
-    func load(library: LibraryStore) async {
-        if !detailsLoadFinished {
-            if video.source == .youtube {
-                let details = try? await YouTubeService.shared.details(for: video.id)
+    func load() async {
+        guard !isLoading, !Task.isCancelled else { return }
+        guard video.source == .youtube else {
+            detailsLoadFinished = true
+            return
+        }
+        isLoading = true
+        hasLoadFailure = false
+        defer { isLoading = false }
+        if !detailsLoaded {
+            detailsLoadFinished = false
+            do {
+                let details = try await loadDetails(video.id)
                 guard !Task.isCancelled else { return }
-                // Current title, views and publish date, from the details above.
-                let refreshed = details == nil ? nil : try? await YouTubeService.shared.refreshedVideo(video)
+                loadedDescription = details.description
+                loadedBadges = details.badges.isEmpty ? nil : details.badges
+                refreshedVideo = YouTubeService.refresh(video, with: details)
+                detailsLoaded = true
+            } catch {
                 guard !Task.isCancelled else { return }
-
-                // Everything that loaded changes in one step, not piece by
-                // piece; the screen reads it in one update.
-                loadedDescription = details?.description
-                loadedBadges = details.flatMap { $0.badges.isEmpty ? nil : $0.badges }
-                refreshedVideo = refreshed
-                detailsLoadFinished = true
-                if let refreshed {
-                    // Stored when the screen leaves; see its viewDidDisappear.
-                    library.rememberFresh(refreshed)
-                }
-            } else {
-                detailsLoadFinished = true
+                hasLoadFailure = true
             }
+            detailsLoadFinished = true
         }
 
-        if !relatedLoadFinished, video.source == .youtube {
-            let videos = (try? await YouTubeService.shared.relatedVideos(for: video.id)) ?? []
-            guard !Task.isCancelled else { return }
-            related = videos
+        if !relatedLoaded {
+            relatedLoadFinished = false
+            do {
+                let videos = try await loadRelated(video.id)
+                guard !Task.isCancelled else { return }
+                related = videos
+                relatedLoaded = true
+            } catch {
+                guard !Task.isCancelled else { return }
+                hasLoadFailure = true
+            }
             relatedLoadFinished = true
         }
+    }
 
-        if !streamLoaded {
-            // While the screen stays, resolve the stream so Play starts without
-            // waiting; its formats and captions also give the badges.
-            let badges = await NativePlayback.prefetch(video)?.technicalBadges ?? []
-            guard !Task.isCancelled else { return }
-            streamLoaded = true
-            if badges != streamBadges {
-                streamBadges = badges
-            }
-        }
+    /// A skipped/failed optional prefetch must not count as loaded.
+    func setStreamBadges(_ badges: [String]) {
+        if badges != streamBadges { streamBadges = badges }
     }
 }

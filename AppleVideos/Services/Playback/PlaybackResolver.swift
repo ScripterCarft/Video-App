@@ -10,15 +10,23 @@ struct PlaybackRequest: Hashable, Sendable {
     let videoID: String
     let languageCode: String
     let regionCode: String
+    let networkPolicy: NetworkRequestPolicy
 
     init(
         videoID: String,
         languageCode: String = Locale.current.language.languageCode?.identifier ?? "en",
-        regionCode: String = Locale.current.region?.identifier ?? "US"
+        regionCode: String = Locale.current.region?.identifier ?? "US",
+        networkPolicy: NetworkRequestPolicy = .interactive
     ) {
         self.videoID = videoID
         self.languageCode = languageCode
         self.regionCode = regionCode
+        self.networkPolicy = networkPolicy
+    }
+
+    /// Content is independent of network permission; in-flight work is not.
+    var cacheKey: PlaybackRequest {
+        PlaybackRequest(videoID: videoID, languageCode: languageCode, regionCode: regionCode)
     }
 }
 

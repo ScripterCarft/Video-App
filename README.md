@@ -30,24 +30,30 @@ The YouTube and Innertube representations stay inside the service and resolver l
 ## Project structure
 
 - `App/`: the app delegate (entry point, launch-time setup, audio session, orientation), the scene delegate and the scene's state restoration (`SceneRestoration`)
-- `Views/AppTabBarController.swift`: the tab bar (`UITab`s) and the download failure alert
+- `Views/Navigation/AppTabBarController.swift`: the tab bar (`UITab`s) and the download failure alert
 - `Models/`: value models used by the app (`Video`, `PlaybackProgress`)
 - `Persistence/Models/`: SwiftData records (`StoredVideo`, `WatchProgress`), with their existing schema names and fields
 - `Persistence/`: opening the durable database, atomic writes and storage error state (`LibraryDatabase`, `LibraryStorageStatus`)
 - `Persistence/Migrations/`: importing legacy UserDefaults data and moving old watch positions
-- `Services/`: YouTube search and details, the video catalog and the on-device library
+- `Services/YouTube/`: YouTube metadata and shared web configuration
+- `Services/Networking/`: network-path information and request-level data permissions
+- `Services/Library/`: the on-device library and video catalog
+- `Services/Details/`: retryable detail loading, independent of UIKit and playback ownership
 - `Services/Artwork/`: shared image requests, caching, preparation and Now Playing JPEG generation
 - `Services/Playback/`: the provider-neutral resolver contract, the YouTube resolver and `NativePlayback`
 - `Services/Downloads/`: offline downloads
 - `Services/Search/`: observable search state and request ownership; its UIKit list presentation stays in `Views/Collection/SearchResults+ListState.swift`
-- `Tests/Search/`: controlled out-of-order search/refresh checks (`bash Tests/Search/run.sh` on a Mac)
+- `Tests/Search/`: controlled search ordering and detail retry/cancellation checks (`bash Tests/Search/run.sh` on a Mac)
 - `Tests/Downloads/`: deterministic cancellation/restart checks against the production preparation coordinator (`bash Tests/Downloads/run.sh` on a Mac)
 - `Views/Home/`: the UIKit Home screen (`HomeViewController`) and its Featured and Spotlight cards
-- `Views/Detail/`: the UIKit video detail screen and its loading model
+- `Views/Detail/`: the UIKit video detail screen, artwork, loading and retry cells
 - `Views/Artwork/`: shared card image loading, reuse protection and transitions
-- `Views/Collection/`: the shared card (`VideoCardConfiguration`), shelf and list layouts (`VideoCells`), the video list screen (`VideoListViewController`), search results, the Play button configuration, context menus and share item
+- `Views/Collection/`: shared video cards, shelf/list layouts, prefetching and context menus
+- `Views/Components/`: shared system Play-button and unavailable-state configurations
+- `Views/Downloads/`: the download bar-button presentation
+- `Views/Sharing/`: the native share-sheet item
 - `Views/Navigation/`: routes (`VideoRoute`, `AppRoute`) and `VideoNavigator`, which pushes screens and opens videos with UIKit's zoom transition
-- `Views/Screens/`: the Explore, Search and Library tabs
+- `Views/Screens/`: Explore, Search, Library and the reusable video-list screen
 - `Views/Player/`: the embedded YouTube fallback (SwiftUI)
 - `Views/Storage/`: native startup recovery when the library cannot be opened or migrated
 - `Support/`: small Foundation extensions
@@ -113,13 +119,42 @@ simulator; the app build remains Debug simulator + Release device.
 - Native playback commits History and the saved position in one SwiftData transaction once playback qualifies (ten seconds of playback, continuing a saved position, or reaching the end). AVFoundation's `timeJumpedNotification` resets watch-time sampling on seeks. Closing the player publishes the committed state to the visible lists; a restart reads it directly without needing that callback. History is deduplicated and keeps the 50 most recent videos. The embedded fallback records History after ten seconds but does not store resume positions; native streams without a finite duration record History on close.
 - The Watchlist holds videos added by hand plus History videos with resumable progress, most recent activity first. Reaching 95% removes the saved position and manual Watchlist membership in that same transaction. The change becomes visible on player close or app restart. Mark as Watched and Remove from Watchlist also clear progress. Remove from Recently Watched takes a video out of History and clears its progress.
 - Playlists were removed. On first launch their stored data is migrated once: Watch Later into the Watchlist, other playlists into Saved.
-- At launch, from `AppleVideosApp.init`, only the first eight Watchlist videos are refreshed. Saved and History refresh when opened. Each video is requested at most once per launch, four at a time, through `YouTubeService.refreshedVideo`; stored data stays on screen until fresh data replaces it.
+- At launch, from `AppDelegate`, only the first eight Watchlist videos are refreshed. Saved and History refresh when opened. Each video is successfully refreshed at most once per launch, four at a time, through `YouTubeService.refreshedVideo`; failures remain retryable and stored data stays on screen until fresh data replaces it.
 - Title, channel, duration, description, views, thumbnail, badges, and publication information are refreshed when YouTube supplies them.
 - Videos store their publish date (`publishedAt`). Relative labels such as “8 days ago” are formatted at display time, so they never go stale. Search results carry an approximate date derived from YouTube's relative text; opening a video's detail screen stores the exact date and current metadata in every library list that contains it.
 - Refresh preserves the original order. If one request fails or omits a field, the stored value for that video is retained.
 - The normalized, refreshed list is written back to local storage.
 
 ## Playback
+
+### Network use and recovery
+
+Streaming's Use Mobile Data controls native stream resolution and AVURLAsset
+media access; browsing, search and visible thumbnails remain available. Cached
+offline packages bypass the streaming restriction. Download Options separately
+control background media transfers (their small preparation/metadata requests
+still use the current connection).
+
+Optional configuration warmup, launch metadata refresh, stream/artwork prefetch
+and cached-artwork revalidation refuse Low Data Mode at the URLRequest level.
+Visible artwork may use smaller candidates. Cached data is reused immediately.
+Resolver/configuration in-flight work is separated by network permission so an
+explicit request cannot inherit an optional request's refusal, or vice versa;
+successful cached content remains reusable. AVPlayer quality/buffer preferences
+are updated when the network path changes.
+
+The web fallback closes when a forbidden cellular path is observed and pauses
+all media when dismantled. This is reactive: WebKit does not give the app the
+same AVURLAsset-level control over the embedded player's media requests. Do not
+claim that route detection guarantees zero cellular bytes for the fallback.
+
+Detail loading preserves successful steps, including an empty Up Next result.
+Failures show Try Again using UIKit, including when restoring an unknown video.
+Retry loads only missing steps; cancellation never publishes a late response.
+The Featured Play button uses its content size with larger horizontal padding,
+a single-line title and a vertical button/duration arrangement at accessibility
+text sizes. List updates respect Reduce Motion; VoiceOver reads remaining time
+in full units and announces downloaded cards.
 
 Playback follows Apple's AVKit guidance:
 

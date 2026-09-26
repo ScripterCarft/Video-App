@@ -166,6 +166,7 @@ final class VideoCardContentView: UIView, UIContentView {
         accessibilityLabel = [video.title, video.channelName, video.metadataLine]
             .filter { !$0.isEmpty }
             .joined(separator: ", ")
+        accessibilityValue = isDownloaded ? "Downloaded" : nil
 
         imageView.load(video, quality: appliedConfiguration.quality)
     }
@@ -183,7 +184,7 @@ private final class DurationBadge: UIView {
         layer.cornerCurve = .continuous
 
         let font = UIFont.monospacedDigitSystemFont(
-            ofSize: UIFont.preferredFont(forTextStyle: .caption2).pointSize,
+            ofSize: UIFont.preferredFont(forTextStyle: .caption2, compatibleWith: UITraitCollection(preferredContentSizeCategory: .large)).pointSize,
             weight: .semibold
         )
         label.font = UIFontMetrics(forTextStyle: .caption2).scaledFont(for: font)
@@ -191,7 +192,8 @@ private final class DurationBadge: UIView {
         label.textColor = .white
 
         symbol.tintColor = .white
-        symbol.preferredSymbolConfiguration = UIImage.SymbolConfiguration(font: label.font)
+        symbol.preferredSymbolConfiguration = UIImage.SymbolConfiguration(textStyle: .caption2)
+        symbol.adjustsImageSizeForAccessibilityContentSizeCategory = true
         symbol.accessibilityLabel = "Downloaded"
 
         let stack = UIStackView(arrangedSubviews: [symbol, label])

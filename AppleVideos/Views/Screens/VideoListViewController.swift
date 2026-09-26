@@ -174,7 +174,7 @@ final class VideoListViewController: VideoCollectionViewController, RoutedScreen
             snapshot.reconfigureItems(reconfigure)
         }
         cancelPendingArtworkPrefetches()
-        dataSource.apply(snapshot, animatingDifferences: animated)
+        dataSource.apply(snapshot, animatingDifferences: animated && !UIAccessibility.isReduceMotionEnabled)
     }
 
     // MARK: - Opening videos

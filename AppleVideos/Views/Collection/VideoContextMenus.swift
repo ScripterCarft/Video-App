@@ -27,8 +27,8 @@ final class VideoContextMenus {
     ///
     /// The preview is the thumbnail alone in a padded bubble, a preview
     /// controller of its own: unlike a preview lifted in place, UIKit moves
-    /// it to leave room for the menu below it. It shows the image the card
-    /// already has, so nothing loads.
+    /// it to leave room for the menu below it. The card image appears first;
+    /// the shared artwork loader then supplies the larger preview if available.
     func configuration(
         for video: Video,
         in cell: UICollectionViewCell?,
@@ -36,7 +36,7 @@ final class VideoContextMenus {
     ) -> UIContextMenuConfiguration {
         let image = (cell?.contentView as? VideoCardContentView)?.artworkImage
         return UIContextMenuConfiguration(identifier: nil) {
-            ThumbnailPreviewController(image: image)
+            ThumbnailPreviewController(video: video, image: image)
         } actionProvider: { [weak self] _ in
             self?.menu(for: video, sourceView: sourceView)
         }
@@ -164,8 +164,10 @@ private final class ThumbnailPreviewController: UIViewController {
     private static let width: CGFloat = 320
     private static let padding: CGFloat = 16
     private let image: UIImage?
+    private let video: Video
 
-    init(image: UIImage?) {
+    init(video: Video, image: UIImage?) {
+        self.video = video
         self.image = image
         super.init(nibName: nil, bundle: nil)
         preferredContentSize = CGSize(
@@ -182,7 +184,7 @@ private final class ThumbnailPreviewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .systemBackground
-        let imageView = UIImageView(image: image)
+        let imageView = ArtworkImageView()
         imageView.backgroundColor = .quaternarySystemFill
         imageView.contentMode = .scaleAspectFill
         imageView.clipsToBounds = true
@@ -190,6 +192,7 @@ private final class ThumbnailPreviewController: UIViewController {
         imageView.layer.cornerCurve = .continuous
         imageView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(imageView)
+        imageView.load(video, quality: .search, placeholder: image)
         NSLayoutConstraint.activate([
             imageView.topAnchor.constraint(equalTo: view.topAnchor, constant: Self.padding),
             imageView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: Self.padding),

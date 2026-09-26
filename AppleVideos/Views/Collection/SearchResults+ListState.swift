@@ -14,17 +14,8 @@ extension SearchResults {
             return .loading("Searching YouTube…")
         }
         if let errorMessage {
-            var unavailable = UIContentUnavailableConfiguration.empty()
-            unavailable.image = UIImage(systemName: "wifi.exclamationmark")
-            unavailable.text = "Search Unavailable"
-            unavailable.secondaryText = errorMessage
-            var button = UIButton.Configuration.borderedProminent()
-            button.title = "Try Again"
-            unavailable.button = button
-            unavailable.buttonProperties.primaryAction = UIAction { [weak self] _ in
-                Task { await self?.reload() }
-            }
-            return .unavailable(unavailable)
+            return .unavailable(.retry(title: "Search Unavailable", message: errorMessage,
+                action: UIAction { [weak self] _ in Task { await self?.reload() } }))
         }
         var noResults = UIContentUnavailableConfiguration.search()
         noResults.text = "No Results for “\(query)”"

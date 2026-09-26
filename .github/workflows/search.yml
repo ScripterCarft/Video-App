@@ -1,19 +1,23 @@
-name: Search Ordering Checks
+name: Search and Detail Loading Checks
 
 on:
   push:
     paths:
       - 'AppleVideos/Services/Search/**'
-      - 'AppleVideos/Services/YouTubeService.swift'
-      - 'AppleVideos/Services/YouTubeWebConfiguration.swift'
+      - 'AppleVideos/Services/Details/**'
+      - 'AppleVideos/Services/Networking/NetworkRequestPolicy.swift'
+      - 'AppleVideos/Services/YouTube/YouTubeService.swift'
+      - 'AppleVideos/Services/YouTube/YouTubeWebConfiguration.swift'
       - 'AppleVideos/Models/Video.swift'
       - 'Tests/Search/**'
       - '.github/workflows/search.yml'
   pull_request:
     paths:
       - 'AppleVideos/Services/Search/**'
-      - 'AppleVideos/Services/YouTubeService.swift'
-      - 'AppleVideos/Services/YouTubeWebConfiguration.swift'
+      - 'AppleVideos/Services/Details/**'
+      - 'AppleVideos/Services/Networking/NetworkRequestPolicy.swift'
+      - 'AppleVideos/Services/YouTube/YouTubeService.swift'
+      - 'AppleVideos/Services/YouTube/YouTubeWebConfiguration.swift'
       - 'AppleVideos/Models/Video.swift'
       - 'Tests/Search/**'
       - '.github/workflows/search.yml'

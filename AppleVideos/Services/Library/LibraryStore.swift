@@ -178,7 +178,7 @@ final class LibraryStore {
 
     /// Refreshes the Watchlist cards visible on Home. Called once at launch.
     func refreshWatchlist() async {
-        await refreshMetadata(of: Array(watchlist.prefix(Self.launchRefreshLimit)))
+        await refreshMetadata(of: Array(watchlist.prefix(Self.launchRefreshLimit)), policy: .optional)
     }
 
     private static let launchRefreshLimit = 8
@@ -187,7 +187,7 @@ final class LibraryStore {
     /// is opened. Each video is requested at most once per launch; the stored
     /// data stays visible and is replaced as each answer arrives, only where
     /// it differs. A failed or cancelled request is retried the next time.
-    func refreshMetadata(of videos: [Video]) async {
+    func refreshMetadata(of videos: [Video], policy: NetworkRequestPolicy = .interactive) async {
         let pending = videos.filter {
             $0.source == .youtube && refreshedThisLaunch[$0.id] == nil && !refreshingIDs.contains($0.id)
         }
@@ -203,7 +203,7 @@ final class LibraryStore {
                     updateMetadata(of: refreshed)
                 }
                 group.addTask {
-                    try? await YouTubeService.shared.refreshedVideo(video)
+                    try? await YouTubeService.shared.refreshedVideo(video, policy: policy)
                 }
             }
             for await result in group {

@@ -48,6 +48,8 @@ final class FeaturedCardContentView: UIView, UIContentView {
     private let titleLabel = UILabel()
     private let playButton = UIButton(type: .system)
     private let durationLabel = CapsuleLabel()
+    private let buttonRow = UIStackView()
+    private let buttonSpacer = UIView()
 
     init(configuration: FeaturedCardConfiguration) {
         appliedConfiguration = configuration
@@ -76,18 +78,21 @@ final class FeaturedCardContentView: UIView, UIContentView {
         titleLabel.textColor = .white
         titleLabel.numberOfLines = 2
         titleLabel.lineBreakMode = .byTruncatingTail
+        titleLabel.accessibilityTraits.insert(.header)
 
         playButton.addAction(UIAction { [weak self] _ in
             self?.playTapped()
         }, for: .primaryActionTriggered)
         playButton.setContentHuggingPriority(.required, for: .horizontal)
+        playButton.setContentCompressionResistancePriority(.init(751), for: .horizontal)
         durationLabel.setContentHuggingPriority(.required, for: .horizontal)
 
-        let row = UIStackView(arrangedSubviews: [playButton, UIView(), durationLabel])
-        row.axis = .horizontal
-        row.alignment = .center
+        [playButton, buttonSpacer, durationLabel].forEach(buttonRow.addArrangedSubview)
+        buttonRow.axis = .horizontal
+        buttonRow.alignment = .center
+        buttonRow.spacing = 12
 
-        let text = UIStackView(arrangedSubviews: [eyebrowLabel, titleLabel, row])
+        let text = UIStackView(arrangedSubviews: [eyebrowLabel, titleLabel, buttonRow])
         text.axis = .vertical
         text.alignment = .fill
         text.spacing = 10
@@ -147,13 +152,17 @@ final class FeaturedCardContentView: UIView, UIContentView {
 
         let progress = configuration.library.progress(for: video)
         let isPreparing = configuration.playback.isPreparing
+        let largeText = traitCollection.preferredContentSizeCategory.isAccessibilityCategory
+        buttonRow.axis = largeText ? .vertical : .horizontal
+        buttonRow.alignment = largeText ? .leading : .center
+        buttonSpacer.isHidden = largeText
         playButton.configuration = .play(progress: progress, isPreparing: isPreparing, traits: traitCollection)
         if isPreparing {
             playButton.accessibilityLabel = "Cancel"
             playButton.accessibilityValue = nil
         } else if let progress {
             playButton.accessibilityLabel = "Resume"
-            playButton.accessibilityValue = "\(progress.remainingLabel) remaining"
+            playButton.accessibilityValue = "\(Duration.seconds(max(0, progress.remaining)).formatted(.units(allowed: [.hours, .minutes], width: .wide))) remaining"
         } else {
             playButton.accessibilityLabel = "Play"
             playButton.accessibilityValue = nil
@@ -243,40 +252,5 @@ private final class CapsuleLabel: UIView {
     override func layoutSubviews() {
         super.layoutSubviews()
         layer.cornerRadius = bounds.height / 2
-    }
-}
-
-// MARK: - Spotlight
-
-/// The Spotlight card at the bottom of Home: Apple's list content (symbol,
-/// title and text) on a rounded gray surface. Its height is Apple's content
-/// view measured once per width and text size (`VideoCells.fittingHeight`).
-enum SpotlightCard {
-    @MainActor
-    static func configuration() -> UIListContentConfiguration {
-        var configuration = UIListContentConfiguration.subtitleCell()
-        configuration.image = UIImage(systemName: "sparkles.tv.fill")
-        configuration.imageProperties.preferredSymbolConfiguration = UIImage.SymbolConfiguration(textStyle: .title1)
-        configuration.text = "A calmer way to watch"
-        configuration.textProperties.font = .preferredFont(forTextStyle: .headline)
-        configuration.secondaryText = "No noisy counters or clutter. Just videos, collections, and your library."
-        configuration.directionalLayoutMargins = NSDirectionalEdgeInsets(top: 18, leading: 18, bottom: 18, trailing: 18)
-        return configuration
-    }
-
-    /// The card's rounded surface; an opaque system color, cheap to draw.
-    @MainActor
-    static var background: UIBackgroundConfiguration {
-        var background = UIBackgroundConfiguration.clear()
-        background.backgroundColor = .secondarySystemBackground
-        background.cornerRadius = 24
-        return background
-    }
-
-    @MainActor
-    static func height(forWidth width: CGFloat, traits: UITraitCollection) -> CGFloat {
-        VideoCells.fittingHeight(key: "spotlight", width: width, traits: traits) {
-            configuration()
-        }
     }
 }

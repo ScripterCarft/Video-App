@@ -51,7 +51,15 @@ enum ArtworkLoader {
             // Once a view needs it, keep the shared download even if UIKit
             // cancels its earlier speculative request.
             running.keepAlive = true
-            return await running.task.value
+            if let image = await running.task.value { return image }
+            guard !Task.isCancelled else { return nil }
+            if let replacement = inFlight[request], replacement.id != running.id {
+                replacement.keepAlive = true
+                return await replacement.task.value
+            }
+            // An optional prefetch can be refused after Low Data Mode turns
+            // on. A now-visible image may retry with its smaller candidates.
+            return await start(request, keepAlive: true).task.value
         }
         return await start(request, keepAlive: true).task.value
     }
@@ -81,7 +89,8 @@ enum ArtworkLoader {
             let image = await download(
                 request.candidates,
                 requiresSixteenByNine: request.requiresSixteenByNine,
-                maxPixelWidth: request.maxPixelWidth
+                maxPixelWidth: request.maxPixelWidth,
+                isPrefetch: !keepAlive
             )
             guard !Task.isCancelled else { return nil }
             if let image {
@@ -101,7 +110,8 @@ enum ArtworkLoader {
     nonisolated private static func download(
         _ candidates: [ArtworkCandidate],
         requiresSixteenByNine: Bool,
-        maxPixelWidth: CGFloat
+        maxPixelWidth: CGFloat,
+        isPrefetch: Bool
     ) async -> UIImage? {
         for candidate in candidates {
             guard !Task.isCancelled else { return nil }
@@ -109,7 +119,7 @@ enum ArtworkLoader {
             request.setValue("image/avif,image/webp,image/*,*/*;q=0.8", forHTTPHeaderField: "Accept")
             // Large variants are optional. In Low Data Mode the system refuses
             // them and the next, smaller candidate is used instead.
-            request.allowsConstrainedNetworkAccess = !candidate.isLarge
+            request.allowsConstrainedNetworkAccess = !isPrefetch && !candidate.isLarge
 
             guard let data = await imageData(for: request), !Task.isCancelled,
                   let downloaded = UIImage(data: data) else { continue }
@@ -143,7 +153,9 @@ enum ArtworkLoader {
            let response = cached.response as? HTTPURLResponse,
            200..<300 ~= response.statusCode {
             Task.detached(priority: .background) {
-                _ = try? await URLSession.shared.data(for: request)
+                var revalidation = request
+                revalidation.allowsConstrainedNetworkAccess = false
+                _ = try? await URLSession.shared.data(for: revalidation)
             }
             return cached.data
         }

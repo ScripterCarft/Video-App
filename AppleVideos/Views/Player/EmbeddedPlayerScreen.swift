@@ -28,6 +28,12 @@ struct EmbeddedPlayerScreen: View {
                 .padding()
         }
         .statusBarHidden()
+        .onReceive(NotificationCenter.default.publisher(for: NetworkConditions.didChange)) { _ in
+            if NativePlayback.isMobileDataBlocked() { onClose() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+            if NativePlayback.isMobileDataBlocked() { onClose() }
+        }
         #if DEBUG
         .alert("Native Playback Debug", isPresented: $showsDiagnostic) {
             Button("OK", role: .cancel) {}

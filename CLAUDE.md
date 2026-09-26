@@ -434,6 +434,31 @@ what is intentional, what was measured, and what is still open.
 
 ## Open work
 
+**Reliability and organization follow-up (2026-09-26):**
+- See README's folder map. Network policy is under `Services/Networking`,
+  YouTube access under `Services/YouTube`, library/catalog under
+  `Services/Library`, and UIKit-free detail loading under `Services/Details`.
+  Shared UI configurations are in `Views/Components`; download and sharing
+  presentation have their own folders. Featured and Spotlight are separate.
+- Detail failure is different from successful empty data. Try Again retries
+  only failed/cancelled steps; successful content survives. Unknown restored
+  videos use the same system retry configuration as search/storage failures.
+  `Tests/Search` covers partial failure, successful empty results, retry,
+  cancellation and overlapping loads as well as search ordering.
+- Optional requests set `allowsConstrainedNetworkAccess = false`, including
+  configuration warmup, launch refresh and artwork revalidation. Stream
+  resolution carries Streaming Options' cellular permission into configuration
+  and Innertube requests. In-flight tasks are keyed by permission; successful
+  cache entries can be reused across permissions. Downloads keep their separate
+  transfer policy; metadata preparation is not a whole-app cellular block.
+- The web fallback pauses media on teardown and closes on a detected forbidden
+  cellular route. This is reactive, not AVURLAsset's request-level guarantee.
+- Featured Play uses content sizing, extra padding, single-line titles and a
+  vertical row at accessibility sizes. Duration badges no longer scale fonts
+  twice. List animations honor Reduce Motion; context previews upgrade to
+  `.search` artwork while retaining the card image. Device verification remains
+  required for layout, VoiceOver and network-route transitions.
+
 Search ordering is protected in `Services/Search/SearchResults.swift`: search
 and pull-to-refresh share one owned task and an immutable query/request UUID.
 Only the current request can publish results, errors or loading-state cleanup.
@@ -519,15 +544,9 @@ Keep as is (already Apple's way): `AVPlayerViewController` full screen,
   it with the cards, or removes the section. Reduce Motion skips insertion
   animation. `VideoCells` now has its own file under `Views/Collection/` and
   `DetailArtworkView` its own under `Views/Detail/`.
-- The context menu's bubble shows the card's 272-point image at 320 points,
-  slightly soft; request the larger (`.search`) artwork from the shared
-  cache for it.
 - `AVPlayer.isObservationEnabled` (iOS 26) could replace the KVO on
   `AVPlayerItem.status` in `NativePlayback`; it is a global switch set
   before the first player, and it touches the resume logic.
-- The Xcode 27 SDK warns about `Sendable` in `VideoShareItem.swift`
-  (LinkPresentation: add `@preconcurrency`; `nonisolated(unsafe)` is
-  unnecessary there).
 
 **Other open topics:**
 

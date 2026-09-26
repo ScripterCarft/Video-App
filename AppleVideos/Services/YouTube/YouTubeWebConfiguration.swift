@@ -21,21 +21,22 @@ actor YouTubeWebConfiguration {
     }
 
     private var cached: Values?
-    private var loading: Task<Values, Error>?
+    private var loading: [NetworkRequestPolicy: Task<Values, Error>] = [:]
 
-    func values() async throws -> Values {
+    func values(policy: NetworkRequestPolicy = .interactive) async throws -> Values {
+        try Task.checkCancellation()
         if let cached { return cached }
-        if let loading { return try await loading.value }
+        if let loading = loading[policy] { return try await loading.value }
 
-        let task = Task { try await Self.fetch() }
-        loading = task
+        let task = Task { try await Self.fetch(policy: policy) }
+        loading[policy] = task
         do {
             let values = try await task.value
             cached = values
-            loading = nil
+            loading[policy] = nil
             return values
         } catch {
-            loading = nil
+            loading[policy] = nil
             throw error
         }
     }
@@ -43,7 +44,7 @@ actor YouTubeWebConfiguration {
     /// Loads the configuration ahead of the first request. Failures are
     /// ignored; the next request tries again.
     func prewarm() async {
-        _ = try? await values()
+        _ = try? await values(policy: .optional)
     }
 
     /// Drops the configuration after a failed request, since the key or visitor
@@ -52,8 +53,9 @@ actor YouTubeWebConfiguration {
         cached = nil
     }
 
-    private static func fetch() async throws -> Values {
+    private static func fetch(policy: NetworkRequestPolicy) async throws -> Values {
         var request = URLRequest(url: URL(string: "https://www.youtube.com")!)
+        policy.apply(to: &request)
         request.timeoutInterval = 15
         // Requests identify as the WEB client, so load the page with a desktop
         // user agent. An iPhone user agent can return the MWEB configuration.

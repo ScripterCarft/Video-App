@@ -49,9 +49,17 @@ struct YouTubePlayerView: UIViewRepresentable {
         guard let url = components.url else { return }
 
         var request = URLRequest(url: url)
+        request.allowsCellularAccess = StreamingSettings.current().useMobileData
         request.setValue(referrer, forHTTPHeaderField: "Referer")
         request.setValue("https://github.com", forHTTPHeaderField: "Origin")
         webView.load(request)
+    }
+
+    static func dismantleUIView(_ webView: WKWebView, coordinator: Coordinator) {
+        webView.stopLoading()
+        webView.pauseAllMediaPlayback(completionHandler: nil)
+        webView.configuration.userContentController.removeScriptMessageHandler(forName: "watchThreshold")
+        webView.navigationDelegate = nil
     }
 
     private static let watchScript = """

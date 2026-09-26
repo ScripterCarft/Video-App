@@ -12,8 +12,9 @@ final class NetworkConditions: @unchecked Sendable {
     // @unchecked: the only mutable state is guarded by the lock; the monitor
     // is configured once in init and never touched afterwards.
     static let shared = NetworkConditions()
+    static let didChange = Notification.Name("NetworkConditions.didChange")
 
-    private struct State {
+    private struct State: Equatable {
         var isConstrained = false
         var isExpensive = false
         var usesCellular = false
@@ -24,12 +25,20 @@ final class NetworkConditions: @unchecked Sendable {
 
     private init() {
         monitor.pathUpdateHandler = { [state] path in
-            state.withLock {
-                $0 = State(
+            let changed = state.withLock {
+                let next = State(
                     isConstrained: path.isConstrained,
                     isExpensive: path.isExpensive,
                     usesCellular: path.usesInterfaceType(.cellular)
                 )
+                let changed = $0 != next
+                $0 = next
+                return changed
+            }
+            if changed {
+                DispatchQueue.main.async {
+                    NotificationCenter.default.post(name: Self.didChange, object: nil)
+                }
             }
         }
         monitor.start(queue: DispatchQueue(label: "NetworkConditions", qos: .utility))

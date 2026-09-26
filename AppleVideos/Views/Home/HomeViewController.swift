@@ -107,7 +107,7 @@ final class HomeViewController: VideoCollectionViewController {
                 changed.append(.video(shelf: shelf.id, id: video.id))
             }
         }
-        let animated = !shelves.isEmpty && view.window != nil
+        let animated = !shelves.isEmpty && view.window != nil && !UIAccessibility.isReduceMotionEnabled
         shelves = newShelves
         applySnapshot(reconfiguring: changed, animated: animated)
     }

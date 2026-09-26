@@ -158,6 +158,37 @@ struct ResultsObserverTests {
         #expect(observer.results.isEmpty)
     }
 
+    /// Apple's pattern (WWDC26 "What's new in SwiftData", the map camera
+    /// controller): derive values once the observer has changed, with
+    /// `withContinuousObservation(options: [.didSet])`, so nothing reads the
+    /// models at other times. The app's sequence when a video leaves its last
+    /// list: clear the list's date, delete the record, save.
+    @Test func continuousObservationNeverReadsADeletedRecord() async throws {
+        let leaving = record("m")
+        leaving.savedAt = .now
+        let staying = record("n")
+        staying.savedAt = .now.addingTimeInterval(-60)
+        context.insert(leaving)
+        context.insert(staying)
+        try context.save()
+        let titles = ContinuousTitles(observer: try savedObserver())
+        try await Task.sleep(for: .milliseconds(100))
+        probe("continuous observation, initial snapshots: \(titles.snapshots)")
+
+        leaving.savedAt = nil
+        context.delete(leaving)
+        try context.save()
+        try await Task.sleep(for: .milliseconds(300))
+        probe("continuous observation after clearing, deleting and saving: \(titles.snapshots)")
+        #expect(titles.snapshots.last == ["Title n"])
+
+        context.delete(staying)
+        try context.save()
+        try await Task.sleep(for: .milliseconds(300))
+        probe("continuous observation after deleting only: \(titles.snapshots)")
+        #expect(titles.snapshots.last == [])
+    }
+
     /// Unused records are deleted at launch, before any observer exists.
     @Test func launchDeletesOnlyUnusedRecords() throws {
         let unused = record("j")
@@ -259,6 +290,26 @@ struct ResultsObserverTests {
 
     private func probe(_ message: String) {
         print("PROBE ResultsObserver: \(message)")
+    }
+}
+
+/// Keeps value snapshots of the observer's titles, taken after each change
+/// (`withContinuousObservation`, `.didSet`, iOS 27).
+@MainActor
+private final class ContinuousTitles {
+    let observer: ResultsObserver<StoredVideo, Never>
+    private(set) var snapshots: [[String]] = []
+    private var token: ObservationTracking.Token?
+
+    init(observer: ResultsObserver<StoredVideo, Never>) {
+        self.observer = observer
+        token = withContinuousObservation(options: [.didSet]) { @MainActor [weak self] _ in
+            self?.takeSnapshot()
+        }
+    }
+
+    private func takeSnapshot() {
+        snapshots.append(observer.results.map(\.title))
     }
 }
 

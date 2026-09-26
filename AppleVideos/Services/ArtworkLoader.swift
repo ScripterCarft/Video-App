@@ -57,36 +57,21 @@ enum ArtworkLoader {
         return await task.value
     }
 
-    private static func download(
+    /// Loads, decodes and crops off the main actor, so none of it blocks the
+    /// interface.
+    nonisolated private static func download(
         _ candidates: [ArtworkCandidate],
         requiresSixteenByNine: Bool,
         maxPixelWidth: CGFloat
     ) async -> UIImage? {
         for candidate in candidates {
-            // The default cache policy follows YouTube's Cache-Control (fresh for
-            // two hours) and then revalidates with the ETag, so a changed
-            // thumbnail appears while an unchanged one costs only a 304.
             var request = URLRequest(url: candidate.url, timeoutInterval: 20)
             request.setValue("image/avif,image/webp,image/*,*/*;q=0.8", forHTTPHeaderField: "Accept")
             // Large variants are optional. In Low Data Mode the system refuses
             // them and the next, smaller candidate is used instead.
             request.allowsConstrainedNetworkAccess = !candidate.isLarge
 
-            let data: Data
-            let response: URLResponse
-            do {
-                (data, response) = try await URLSession.shared.data(for: request)
-            } catch let error as URLError where error.networkUnavailableReason == .constrained {
-                // Low Data Mode refused a large variant: fall back quietly.
-                continue
-            } catch {
-                continue
-            }
-
-            guard let http = response as? HTTPURLResponse,
-                  200..<300 ~= http.statusCode,
-                  let downloaded = UIImage(data: data)
-            else { continue }
+            guard let data = await imageData(for: request), let downloaded = UIImage(data: data) else { continue }
 
             let image: UIImage
             if !requiresSixteenByNine || isSixteenByNine(downloaded.size) {
@@ -104,7 +89,29 @@ enum ArtworkLoader {
         return nil
     }
 
-    private static func prepared(_ image: UIImage, maxPixelWidth: CGFloat) async -> UIImage? {
+    /// The image data for `request`. A stored copy is used right away, also
+    /// after YouTube's two hours (`max-age=7200`), while a normal request
+    /// revalidates it in the background with its ETag: an unchanged
+    /// thumbnail costs a 304, a changed one is stored and shows next time.
+    /// Without a stored copy, the network; failures (including Low Data Mode
+    /// refusing a large variant) return nil, and the next candidate is tried.
+    nonisolated private static func imageData(for request: URLRequest) async -> Data? {
+        if let cached = URLCache.shared.cachedResponse(for: request),
+           let response = cached.response as? HTTPURLResponse,
+           200..<300 ~= response.statusCode {
+            Task.detached(priority: .background) {
+                _ = try? await URLSession.shared.data(for: request)
+            }
+            return cached.data
+        }
+        guard let (data, response) = try? await URLSession.shared.data(for: request),
+              let http = response as? HTTPURLResponse,
+              200..<300 ~= http.statusCode
+        else { return nil }
+        return data
+    }
+
+    nonisolated private static func prepared(_ image: UIImage, maxPixelWidth: CGFloat) async -> UIImage? {
         let width = image.size.width * image.scale
         guard maxPixelWidth > 0, width > maxPixelWidth else {
             return await image.byPreparingForDisplay()
@@ -121,7 +128,7 @@ enum ArtworkLoader {
     /// The 16:9 band of a 4:3 thumbnail. YouTube's `hqdefault` is 4:3 with
     /// black bars above and below a 16:9 video; its middle band is the frame.
     /// Related videos list only this size.
-    private static func sixteenByNineCenter(of image: UIImage) -> UIImage? {
+    nonisolated private static func sixteenByNineCenter(of image: UIImage) -> UIImage? {
         guard image.size.width > 0,
               abs((image.size.width / image.size.height) - (4.0 / 3.0)) < 0.04,
               let cgImage = image.cgImage
@@ -132,7 +139,7 @@ enum ArtworkLoader {
         return cgImage.cropping(to: rect).map { UIImage(cgImage: $0, scale: image.scale, orientation: image.imageOrientation) }
     }
 
-    private static func isSixteenByNine(_ size: CGSize) -> Bool {
+    nonisolated private static func isSixteenByNine(_ size: CGSize) -> Bool {
         guard size.width > 0, size.height > 0 else { return false }
         return abs((size.width / size.height) - (16.0 / 9.0)) < 0.04
     }

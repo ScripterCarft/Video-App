@@ -157,6 +157,18 @@ what is intentional, what was measured, and what is still open.
 
 ### Playback
 
+- Early native-player failures wait for the presentation or interactive exit
+  to finish. `NativePlayback` stores the diagnostic, pauses, and reports failure
+  only from UIKit's dismissal completion (or an already completed AVKit exit).
+  The programmatic failure dismissal cannot be reported as a normal close by
+  the AVKit delegate. Cancelling a swipe resumes the pending failure dismissal;
+  a normal cancelled swipe still leaves playback alone. The active playback
+  reference is released before notifying the screen. `PlaybackStarter` uses
+  a request UUID so an old resolution/player failure cannot open a fallback
+  for a newer start. No timers or custom transition animation are involved.
+  Device verification is still required for early stream failure during
+  presentation/swipe cancellation and subsequent fallback dismissal.
+
 - `NativePlayback` presents `AVPlayerViewController` modally from the
   window's top view controller. No SwiftUI host view, no custom gestures,
   no private AVKit subviews. `PlaybackStarter` + `playbackPresentation(_:)`

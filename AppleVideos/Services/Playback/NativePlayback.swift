@@ -57,6 +57,9 @@ final class NativePlayback: NSObject {
     private var metadataTask: Task<Void, Never>?
     private var isPictureInPictureActive = false
     private var isFinished = false
+    private var pendingFailure: String?
+    private var isEndingFullScreen = false
+    private var isDismissingFailedPlayer = false
 
     /// Resolves a video's stream ahead of time, for example when its detail
     /// screen opens, so Play can present the player without waiting. The
@@ -221,8 +224,12 @@ final class NativePlayback: NSObject {
 
         Self.current = self
         presenter.present(playerController, animated: true) { [weak self] in
-            guard let self else { return }
+            guard let self, !isFinished else { return }
             isPresented = true
+            if pendingFailure != nil {
+                dismissFailedPlayerIfPossible()
+                return
+            }
             startWatchTracking()
             startPlaybackIfReady()
         }
@@ -236,7 +243,7 @@ final class NativePlayback: NSObject {
     /// seek to the saved position has finished, so the first frame shown is
     /// the saved position rather than the beginning.
     private func startPlaybackIfReady() {
-        guard isPresented, !isAwaitingResumeSeek, !isFinished else { return }
+        guard isPresented, !isAwaitingResumeSeek, !isFinished, pendingFailure == nil else { return }
         player.play()
     }
 
@@ -270,9 +277,23 @@ final class NativePlayback: NSObject {
             let nsError = error as NSError
             return "\(error.localizedDescription)\nCode: \(nsError.domain)/\(nsError.code)"
         } ?? "AVPLAYER_FAILED · The stream could not be played."
-        finish(.failed(diagnostic: diagnostic))
-        if playerController.presentingViewController != nil {
-            playerController.dismiss(animated: true)
+        pendingFailure = diagnostic
+        player.pause()
+        dismissFailedPlayerIfPossible()
+    }
+
+    /// Presentation and interactive dismissal must finish before another
+    /// transition starts. UIKit's completion, not a timer, releases the fallback.
+    private func dismissFailedPlayerIfPossible() {
+        guard let diagnostic = pendingFailure, isPresented, !isFinished,
+              !isEndingFullScreen, !isDismissingFailedPlayer else { return }
+        guard playerController.presentingViewController != nil else {
+            if !isPictureInPictureActive { finish(.failed(diagnostic: diagnostic)) }
+            return
+        }
+        isDismissingFailedPlayer = true
+        playerController.dismiss(animated: true) { [self] in
+            finish(.failed(diagnostic: diagnostic))
         }
     }
 
@@ -295,10 +316,10 @@ final class NativePlayback: NSObject {
             Task { await YouTubeInnertubePlaybackResolver.shared.invalidate(videoID: videoID) }
         }
         player.pause()
-        onFinish(ending)
         if Self.current === self {
             Self.current = nil
         }
+        onFinish(ending)
     }
 
     /// The key window's topmost presented view controller.
@@ -411,9 +432,22 @@ extension NativePlayback: @preconcurrency AVPlayerViewControllerDelegate {
         _ playerViewController: AVPlayerViewController,
         willEndFullScreenPresentationWithAnimationCoordinator coordinator: UIViewControllerTransitionCoordinator
     ) {
+        isEndingFullScreen = true
         coordinator.animate(alongsideTransition: nil) { [weak self] context in
-            guard let self, !context.isCancelled, !isPictureInPictureActive else { return }
-            finish(.closed(reachedWatchThreshold: reachedWatchThreshold))
+            guard let self else { return }
+            isEndingFullScreen = false
+            // A programmatic failure dismissal finishes through dismiss's
+            // completion; do not turn it into a normal close here.
+            guard !isDismissingFailedPlayer else { return }
+            if context.isCancelled {
+                dismissFailedPlayerIfPossible()
+            } else if !isPictureInPictureActive {
+                if let pendingFailure {
+                    finish(.failed(diagnostic: pendingFailure))
+                } else {
+                    finish(.closed(reachedWatchThreshold: reachedWatchThreshold))
+                }
+            }
         }
     }
 
@@ -429,7 +463,11 @@ extension NativePlayback: @preconcurrency AVPlayerViewControllerDelegate {
         isPictureInPictureActive = false
         // Closing PiP without restoring the full-screen player ends playback.
         if playerViewController.presentingViewController == nil {
-            finish(.closed(reachedWatchThreshold: reachedWatchThreshold))
+            if let pendingFailure {
+                finish(.failed(diagnostic: pendingFailure))
+            } else {
+                finish(.closed(reachedWatchThreshold: reachedWatchThreshold))
+            }
         }
     }
 

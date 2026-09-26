@@ -1,3 +1,4 @@
+import Foundation
 import Observation
 
 /// Starts playback for a screen: resolves the source, hands the player to
@@ -17,11 +18,16 @@ final class PlaybackStarter {
     /// Shown when Use Mobile Data is off and the device is on mobile data.
     var isShowingMobileDataAlert = false
     @ObservationIgnored private var task: Task<Void, Never>?
+    @ObservationIgnored private var requestID: UUID?
 
     func start(_ video: Video, description: String?, library: LibraryStore) {
         guard !isPreparing else { return }
+        let id = UUID()
+        requestID = id
+        fallback = nil
+        isShowingMobileDataAlert = false
         isPreparing = true
-        task = Task {
+        task = Task { [weak self] in
             let outcome = await NativePlayback.play(
                 video,
                 description: description,
@@ -38,13 +44,15 @@ final class PlaybackStarter {
                             library.markWatched(video)
                         }
                     case let .failed(diagnostic):
-                        self?.fallBack(to: video, diagnostic: diagnostic)
+                        if self?.requestID == id {
+                            self?.fallBack(to: video, diagnostic: diagnostic)
+                        }
                     }
                 }
             )
-            guard !Task.isCancelled else { return }
-            isPreparing = false
-            task = nil
+            guard !Task.isCancelled, let self, requestID == id else { return }
+            self.isPreparing = false
+            self.task = nil
             switch outcome {
             case let .fallback(diagnostic):
                 fallBack(to: video, diagnostic: diagnostic)
@@ -67,6 +75,7 @@ final class PlaybackStarter {
     }
 
     func cancel() {
+        requestID = nil
         task?.cancel()
         task = nil
         isPreparing = false

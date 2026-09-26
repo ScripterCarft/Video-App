@@ -42,7 +42,11 @@ what is intentional, what was measured, and what is still open.
   broke Swift key paths (`\.status`) and string interpolation (`\(x)`), and
   squashed multi-line inserts into one line. Use the Edit tool for anything
   with backslashes or several lines, and re-check the result. Write
-  temporary files to the scratchpad, never into the repository.
+  temporary files to the scratchpad, never into the repository. Files git
+  has checked out with CRLF: a `perl`/`sed` edit that removes a newline can
+  leave a lone `\r`, and git then treats the file as binary and commits it
+  with CRLF (seen 2026-09-26). Check `git ls-files --eol` (every source
+  file should show `i/lf`) after shell edits.
 
 ## How the user wants to work
 
@@ -216,7 +220,7 @@ what is intentional, what was measured, and what is still open.
   `VideoListViewController` (full-width cards with `.search` artwork:
   search and topic results via `SearchResults`, Saved, Downloaded, History;
   `UIContentUnavailableConfiguration` for loading, empty and error states;
-  Remove All as a system menu; swipe to remove in Saved and History) and
+  Remove All as a system menu) and
   `VideoDetailViewController`. Videos open through `VideoNavigator` with
   UIKit's zoom (`preferredTransition = .zoom`) from the card's artwork.
   Home owns the `PlaybackStarter` for the featured
@@ -226,12 +230,12 @@ what is intentional, what was measured, and what is still open.
   still resolving, the player covering Home does not. Each screen's
   collection view is its view: compositional layout, diffable data source,
   observable data read in `updateProperties()` (UIKit tracks it, iOS 26+).
-  Home's title is inline-large (`largeTitleDisplayMode = .inline`,
-  compared on device).
+  Every tab's title is inline-large (`largeTitleDisplayMode = .inline`,
+  compared on device, user's decision for all tabs).
 - Shelves (Continue Watching, Made for Tonight, Up Next) are one component:
   `VideoCells.shelfSection` (fixed sizes), `VideoCardConfiguration` (the
   UIKit card, a `UIContentConfiguration`), `VideoCells.headerConfiguration`
-  (Apple's `extraProminentInsetGroupedHeader`; title only on Home, section
+  (Apple's `prominentInsetGroupedHeader`; title only on Home, section
   subtitles removed there at the user's request; Explore keeps its
   subtitles) and
   `VideoContextMenus` (removals applied in `willEndContextMenuInteraction`;
@@ -255,9 +259,11 @@ what is intentional, what was measured, and what is still open.
   content, width and text size (`systemLayoutSizeFitting`, text size
   applied through trait overrides) and the section uses that fixed height.
   Exceptions that size themselves, by design of Apple's list layout: the
-  Library's entry list, the search suggestions, and Saved and History,
-  whose swipe actions need `UICollectionLayoutListConfiguration` (commit
-  0894edd, revertible alone if the self-sizing rows misbehave). Cells are
+  Library's entry list and the search suggestions (simple list rows).
+  Swipe actions in Saved and History (0894edd) needed that layout for the
+  video cards; opening those lists with videos then closed the app on
+  device, so it was reverted (a7c7e47). Cause unconfirmed (suspected: the
+  self-sizing loop); do not retry without the crash report. Cells are
   reused across items, so each sets its own background configuration.
 - **Detail loading** (user's design): one task loads the details first;
   the description and info line are placeholders until then and everything
@@ -376,10 +382,14 @@ before building):
    prefer per-screen bar appearance over the detail screen changing the
    shared bar's tint in `viewWillAppear` (Home resets it today).
 3. **Search, Library and Explore in UIKit** (done: d3874d0, 83639e1,
-   abd6a71, leftovers removed in 72dd286; untested on device). Same look
-   and behavior as the SwiftUI versions. Possible later, each only when the
-   user asks: recent searches, swipe actions in the Library's lists, the
-   embedded web player as a UIKit controller.
+   abd6a71, leftovers removed in 72dd286), then given UIKit's own look
+   (bef2512 to f84fdb8). Wanted later (user, 2026-09-26): like the Apple TV
+   app, a chevron beside a shelf's title (Continue Watching and others)
+   that opens all of its videos as a list with separators; natively a
+   `UICollectionViewListCell` header with a `.disclosureIndicator()`
+   accessory opening a `VideoListViewController`. Possible later, only when
+   the user asks: recent searches, the embedded web player as a UIKit
+   controller.
 4. **The detail hero** (build it only when the user says so). Until then
    the UIKit detail screen has no Play button, title or description; only
    Home's featured video can be played from a Play button. Reference is

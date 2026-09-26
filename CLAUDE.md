@@ -214,7 +214,9 @@ what is intentional, what was measured, and what is still open.
   and Trending Now), `SearchViewController` (a `UISearchController`; while
   the field is active and empty its results controller,
   `SearchSuggestionsViewController`, shows suggestions as a plain list with
-  the magnifying glass in the app's tint), `LibraryViewController` (Apple's
+  Apple's default rows, unchanged; a compact variant with a smaller font
+  and symbol looked wrong because the row keeps its standard image width),
+  `LibraryViewController` (Apple's
   plain list like Music's library: symbol in the app's tint, the count as a
   gray `.label` accessory, disclosure indicator), the shared
   `VideoListViewController` (full-width cards with `.search` artwork:
@@ -259,12 +261,20 @@ what is intentional, what was measured, and what is still open.
   content, width and text size (`systemLayoutSizeFitting`, text size
   applied through trait overrides) and the section uses that fixed height.
   Exceptions that size themselves, by design of Apple's list layout: the
-  Library's entry list and the search suggestions (simple list rows).
-  Swipe actions in Saved and History (0894edd) needed that layout for the
-  video cards; opening those lists with videos then closed the app on
-  device, so it was reverted (a7c7e47). Cause unconfirmed (suspected: the
-  self-sizing loop); do not retry without the crash report. Cells are
-  reused across items, so each sets its own background configuration.
+  Library's entry list and the search suggestions (simple list rows,
+  `VideoCells.plainListLayout`, which hides the separator above the first
+  row with `itemSeparatorHandler`). Swipe actions in Saved and History
+  (0894edd) needed that layout for the video cards; opening those lists
+  with videos then closed the app on device, and reverting it (a7c7e47)
+  fixed that (confirmed on device): self-sizing rows with video cards are
+  not an option; swipe actions would need another way. Cells are reused
+  across items, so each sets its own background configuration.
+- Screens with video cards subclass `VideoCollectionViewController`, which
+  holds the library, the download manager and the shared context menu
+  (the five delegate methods); a screen only returns the video at an index
+  path. `VideoNavigationController` sets the bar's tint for each screen
+  (white on the detail screen) and restores it when a swipe back is
+  cancelled. Routes are the video's ID alone (`VideoRoute`).
 - **Detail loading** (user's design): one task loads the details first;
   the description and info line are placeholders until then and everything
   appears in one animation; then Up Next, then the stream is prefetched
@@ -378,9 +388,7 @@ before building):
    (`tabBarMinimizeBehavior`, iOS 26), the bottom accessory for a mini
    player (iOS 26), `prominentTabIdentifier` and `barMinimizeBehavior`
    (iOS 27) where they fit. `UIScene.extendStateRestoration` is not needed:
-   a restored detail screen loads an unknown video itself. Still open:
-   prefer per-screen bar appearance over the detail screen changing the
-   shared bar's tint in `viewWillAppear` (Home resets it today).
+   a restored detail screen loads an unknown video itself.
 3. **Search, Library and Explore in UIKit** (done: d3874d0, 83639e1,
    abd6a71, leftovers removed in 72dd286), then given UIKit's own look
    (bef2512 to f84fdb8). Wanted later (user, 2026-09-26): like the Apple TV

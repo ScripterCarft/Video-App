@@ -9,8 +9,17 @@ final class VideoCatalog {
 
     private var known: [String: Video] = [:]
 
+    /// Remembers `video`, keeping a 1280 thumbnail already known for it: Up
+    /// Next lists only a small one for videos Home or the library show large.
     func remember(_ video: Video) {
-        known[video.id] = video
+        guard !Video.isLargeThumbnail(video.thumbnailURL),
+              let knownURL = (known[video.id] ?? LibraryDatabase.record(id: video.id)?.video)?.thumbnailURL,
+              Video.isLargeThumbnail(knownURL)
+        else {
+            known[video.id] = video
+            return
+        }
+        known[video.id] = video.withThumbnail(knownURL)
     }
 
     func video(id: String) -> Video? {

@@ -60,6 +60,36 @@ struct Video: Identifiable, Hashable, Codable, Sendable {
         return largeThumbnailNames.contains(url.deletingPathExtension().lastPathComponent)
     }
 
+    /// Keeps a known thumbnail URL, whose image stays current through HTTP
+    /// revalidation, unless the new one is a 1280 thumbnail and the known one
+    /// is smaller. So a small listing (such as Up Next's `hqdefault`) never
+    /// replaces a known 1280 image, and a 1280 image always replaces a small one.
+    static func preferredThumbnail(known: URL?, new: URL?) -> URL? {
+        guard let known else { return new }
+        if !isLargeThumbnail(known), isLargeThumbnail(new) {
+            return new
+        }
+        return known
+    }
+
+    /// This video with `thumbnailURL` replaced.
+    func withThumbnail(_ url: URL?) -> Video {
+        Video(
+            id: id,
+            title: title,
+            channelName: channelName,
+            thumbnailURL: url,
+            duration: duration,
+            publishedText: publishedText,
+            publishedAt: publishedAt,
+            viewCountText: viewCountText,
+            descriptionText: descriptionText,
+            badges: badges,
+            source: source,
+            playbackURL: playbackURL
+        )
+    }
+
     /// Artwork URLs to try in order, sharpest available first.
     ///
     /// YouTube's 16:9 sizes are 320×180 (`mqdefault`, always there), a listed

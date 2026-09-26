@@ -46,7 +46,7 @@ The YouTube and Innertube representations stay inside the service and resolver l
 - `Tests/Search/`: controlled search ordering and detail retry/cancellation checks (`bash Tests/Search/run.sh` on a Mac)
 - `Tests/Downloads/`: deterministic cancellation/restart checks against the production preparation coordinator (`bash Tests/Downloads/run.sh` on a Mac)
 - `Views/Home/`: the UIKit Home screen (`HomeViewController`) and its Featured and Spotlight cards
-- `Views/Detail/`: the UIKit video detail screen, artwork, measured hero, description sheet, loading and retry cells
+- `Views/Detail/`: the UIKit video detail screen, artwork, measured hero, loading and retry cells
 - `Views/Artwork/`: shared card image loading, reuse protection and transitions
 - `Views/Collection/`: shared video cards, shelf/list layouts, prefetching and context menus
 - `Views/Components/`: shared system Play-button and unavailable-state configurations

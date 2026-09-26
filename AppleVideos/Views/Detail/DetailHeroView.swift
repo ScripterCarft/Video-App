@@ -4,7 +4,6 @@ struct DetailHeroConfiguration: UIContentConfiguration {
     let model: VideoDetailModel
     let library: LibraryStore
     let playback: PlaybackStarter
-    var showDescription: @MainActor () -> Void = {}
 
     func makeContentView() -> any UIView & UIContentView {
         DetailHeroView(configuration: self)
@@ -40,7 +39,8 @@ private final class DetailHeroView: UIView, UIContentView {
     private let save = UIButton(type: .system)
     private let buttons = UIStackView()
     private let descriptionLabel = UILabel()
-    private let more = UIButton(type: .system)
+    private let badges = UIStackView()
+    private var shownBadges: [String] = []
     private let metadata = UILabel()
     private let placeholders = DetailPlaceholderLines()
     private let details = UIStackView()
@@ -88,23 +88,17 @@ private final class DetailHeroView: UIView, UIContentView {
             guard let self else { return }
             value.library.toggleSaved(value.model.shown)
         }, for: .primaryActionTriggered)
-        more.addAction(UIAction { [weak self] _ in self?.value.showDescription() }, for: .primaryActionTriggered)
-        var moreStyle = UIButton.Configuration.plain()
-        moreStyle.title = "MORE"
-        moreStyle.baseForegroundColor = .secondaryLabel
-        moreStyle.contentInsets = .zero
-        more.configuration = moreStyle
-        more.contentHorizontalAlignment = .leading
-        more.accessibilityLabel = "Full description"
-        more.heightAnchor.constraint(greaterThanOrEqualToConstant: 44).isActive = true
         save.widthAnchor.constraint(equalTo: save.heightAnchor).isActive = true
         save.heightAnchor.constraint(greaterThanOrEqualToConstant: 50).isActive = true
         play.heightAnchor.constraint(greaterThanOrEqualToConstant: 50).isActive = true
 
         details.axis = .vertical
         details.alignment = .fill
-        details.spacing = 2
-        [descriptionLabel, more, metadata].forEach(details.addArrangedSubview)
+        details.spacing = 8
+        badges.axis = .horizontal
+        badges.spacing = 5
+        badges.alignment = .center
+        [descriptionLabel, metadata, badges].forEach(details.addArrangedSubview)
         let content = UIStackView(arrangedSubviews: [titleLabel, channelLabel, buttons, placeholders, details])
         content.axis = .vertical
         content.alignment = .fill
@@ -125,7 +119,7 @@ private final class DetailHeroView: UIView, UIContentView {
             content.topAnchor.constraint(equalTo: topAnchor, constant: DetailHeroBackdrop.fadeHeight + 12),
             content.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 20),
             content.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -20),
-            content.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -40),
+            content.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -18),
             buttons.topAnchor.constraint(equalTo: row.topAnchor),
             buttons.bottomAnchor.constraint(equalTo: row.bottomAnchor),
             buttons.centerXAnchor.constraint(equalTo: row.centerXAnchor),
@@ -144,6 +138,23 @@ private final class DetailHeroView: UIView, UIContentView {
         }
     }
 
+    private func updateBadges(_ values: [String]) {
+        if shownBadges != values {
+            shownBadges = values
+            badges.arrangedSubviews.forEach { $0.removeFromSuperview() }
+            for text in values {
+                let label = DetailMetadataBadge()
+                label.text = text
+                badges.addArrangedSubview(label)
+            }
+            badges.addArrangedSubview(UIView())
+        }
+        for case let label as DetailMetadataBadge in badges.arrangedSubviews {
+            label.font = .preferredFont(forTextStyle: .caption2, compatibleWith: traitCollection)
+        }
+        badges.isHidden = values.isEmpty
+    }
+
     private func updateContent() {
         let model = value.model
         titleLabel.text = model.shown.title
@@ -155,8 +166,8 @@ private final class DetailHeroView: UIView, UIContentView {
         metadata.font = .preferredFont(forTextStyle: .caption1, compatibleWith: traitCollection)
         descriptionLabel.text = model.visibleDescription
         descriptionLabel.isHidden = model.visibleDescription == nil
-        more.isHidden = descriptionLabel.isHidden
-        metadata.text = (model.textMetadata + model.visibleBadges).joined(separator: " · ")
+        metadata.text = model.textMetadata.joined(separator: " · ")
+        updateBadges(model.visibleBadges)
         metadata.isHidden = metadata.text?.isEmpty != false
         placeholders.isHidden = model.detailsLoadFinished
         details.isHidden = !model.detailsLoadFinished
@@ -179,7 +190,7 @@ private final class DetailHeroView: UIView, UIContentView {
 }
 
 /// Opaque gray behind every control. Only the first 32 pt blend over the
-/// artwork; the final 24 pt meet the black page. No blur or shadow layers.
+/// artwork. The bottom stays opaque gray, with a hard edge to the black shelf.
 final class DetailHeroBackdrop: UIView {
     static let color = UIColor(white: 0.12, alpha: 1)
     static let fadeHeight: CGFloat = 32
@@ -190,7 +201,7 @@ final class DetailHeroBackdrop: UIView {
         isUserInteractionEnabled = false
         let gradient = layer as! CAGradientLayer
         gradient.colors = [Self.color.withAlphaComponent(0).cgColor, Self.color.cgColor,
-                           Self.color.cgColor, UIColor.black.cgColor]
+                           Self.color.cgColor]
     }
 
     @available(*, unavailable)
@@ -198,11 +209,11 @@ final class DetailHeroBackdrop: UIView {
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        guard bounds.height > Self.fadeHeight + 24 else { return }
+        guard bounds.height > Self.fadeHeight else { return }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         (layer as! CAGradientLayer).locations = [0, NSNumber(value: Double(Self.fadeHeight / bounds.height)),
-                                                NSNumber(value: Double(1 - 24 / bounds.height)), 1]
+                                                1]
         CATransaction.commit()
     }
 }
@@ -232,4 +243,29 @@ private final class DetailPlaceholderLines: UIView {
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+}
+
+/// Text badges aren't buttons. Insets and a subtle border keep HD/CC legible.
+private final class DetailMetadataBadge: UILabel {
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        textColor = .lightGray
+        textAlignment = .center
+        adjustsFontForContentSizeCategory = true
+        backgroundColor = UIColor.white.withAlphaComponent(0.06)
+        layer.borderColor = UIColor.white.withAlphaComponent(0.3).cgColor
+        layer.borderWidth = 0.5
+        layer.cornerRadius = 3
+        setContentHuggingPriority(.required, for: .horizontal)
+        setContentCompressionResistancePriority(.required, for: .horizontal)
+    }
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+    override var intrinsicContentSize: CGSize {
+        let size = super.intrinsicContentSize
+        return CGSize(width: size.width + 8, height: size.height + 4)
+    }
+    override func drawText(in rect: CGRect) {
+        super.drawText(in: rect.insetBy(dx: 4, dy: 2))
+    }
 }

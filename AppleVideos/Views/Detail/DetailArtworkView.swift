@@ -10,7 +10,8 @@ final class DetailArtworkView: UIView {
     override init(frame: CGRect) {
         super.init(frame: frame)
         backgroundColor = .black
-        stage.backgroundColor = DetailHeroBackdrop.color
+        // Intentional diagnostic stage: keep the original extent visible.
+        stage.backgroundColor = UIColor(red: 0.72, green: 0.84, blue: 1, alpha: 1)
         stage.clipsToBounds = true
         imageView.contentMode = .scaleAspectFit
         stage.addSubview(imageView)

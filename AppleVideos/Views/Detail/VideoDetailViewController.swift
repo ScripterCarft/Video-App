@@ -252,13 +252,7 @@ final class VideoDetailViewController: VideoCollectionViewController, RoutedScre
 
     private func heroConfiguration() -> DetailHeroConfiguration? {
         guard let model else { return nil }
-        return DetailHeroConfiguration(model: model, library: library, playback: playback) { [weak self, model] in
-            guard let self, let description = model.loadedDescription ?? model.visibleDescription else { return }
-            let sheet = UINavigationController(rootViewController: VideoDescriptionViewController(video: model.shown, description: description))
-            sheet.sheetPresentationController?.detents = [.medium(), .large()]
-            sheet.sheetPresentationController?.prefersGrabberVisible = true
-            self.present(sheet, animated: true)
-        }
+        return DetailHeroConfiguration(model: model, library: library, playback: playback)
     }
 
     // MARK: - Layout
@@ -267,23 +261,24 @@ final class VideoDetailViewController: VideoCollectionViewController, RoutedScre
         let layout = UICollectionViewCompositionalLayout { [weak self] index, environment in
             switch self?.dataSource?.sectionIdentifier(for: index) {
             case .stage:
-                // End just before the thumbnail bottom: the hero's short fade
-                // overlaps its edge, while all text sits on opaque gray.
+                // The hero occupies the bottom of the ORIGINAL stage; it does
+                // not add another block below the thumbnail or move Up Next.
                 let stage = DetailStage.height(
                     forWidth: environment.container.effectiveContentSize.width,
                     scale: environment.traitCollection.displayScale
                 )
                 let topInset = self?.collectionView.adjustedContentInset.top ?? 0
-                let imageBottom = (stage + environment.container.effectiveContentSize.width * 9 / 16) / 2
-                return VideoDetailViewController.stageSection(height: max(1, imageBottom - 24 - topInset))
+                let heroHeight = self?.heroHeight(in: environment) ?? 0
+                return VideoDetailViewController.stageSection(height: max(1, stage - topInset - heroHeight))
             case .hero:
-                guard let configuration = self?.heroConfiguration() else { return nil }
-                let height = VideoCells.fittingHeight(
-                    key: "detail-hero|" + configuration.sizingKey,
-                    width: environment.container.effectiveContentSize.width,
-                    traits: environment.traitCollection
-                ) { configuration }
-                return VideoDetailViewController.stageSection(height: height)
+                let height = self?.heroHeight(in: environment) ?? 1
+                let section = VideoDetailViewController.stageSection(height: height)
+                // Black starts at the exact lower edge, even without Up Next.
+                let page = NSCollectionLayoutDecorationItem.background(elementKind: VideoDetailViewController.shelfBackgroundKind)
+                page.contentInsets.top = height
+                page.contentInsets.bottom = -2 * environment.container.effectiveContentSize.height
+                section.decorationItems = [page]
+                return section
             case .upNext:
                 let section: NSCollectionLayoutSection
                 if self?.shownRelatedLoading == true {
@@ -317,6 +312,15 @@ final class VideoDetailViewController: VideoCollectionViewController, RoutedScre
         }
         layout.register(DetailShelfBackground.self, forDecorationViewOfKind: Self.shelfBackgroundKind)
         return layout
+    }
+
+    private func heroHeight(in environment: NSCollectionLayoutEnvironment) -> CGFloat {
+        guard let configuration = heroConfiguration() else { return 0 }
+        return VideoCells.fittingHeight(
+            key: "detail-hero|" + configuration.sizingKey,
+            width: environment.container.effectiveContentSize.width,
+            traits: environment.traitCollection
+        ) { configuration }
     }
 
     /// A clear spacer over the artwork stage, below the bars.

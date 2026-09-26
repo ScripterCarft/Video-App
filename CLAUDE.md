@@ -619,3 +619,20 @@ Device test: cancel dismissal repeatedly; dismiss while playing/paused/loading;
 expand repeatedly at the same position; change tabs; start another video; close
 the mini player; PiP close/restore; test mobile-data off and downloaded videos.
 CI compiles Debug simulator and Release device; it does not execute these UI tests.
+
+## Device feedback correction (2026-09-26)
+
+The user rejected the extra vertical hero block. The hero now occupies the bottom
+of the original 1.5-width stage: spacer + measured hero = original stage minus
+top inset, retaining the original Up Next position at standard text sizes. At
+accessibility sizes where the content alone exceeds the stage, it can grow to
+avoid clipping controls. The light-blue TEST stage is intentionally restored.
+The gray reading surface only fades at its upper edge; its lower edge meets
+black abruptly. MORE and its unused description-sheet controller were removed
+at the user's request. Metadata badges use compact bordered labels.
+The mini accessory now requests 64 pt intrinsic height, a larger thumbnail and
+title/channel. UIKit still determines its outer width and material. Controls
+explicitly use neutral tintColor as well as configuration colors, including the
+spinner; the red accent is no longer inherited. Button configurations are only
+changed when content/transport changes. Size and red-highlight fixes need device
+verification; the reported flash has not been reproduced on this Windows host.

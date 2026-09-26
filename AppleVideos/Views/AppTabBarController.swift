@@ -1,10 +1,8 @@
-import SwiftUI
 import UIKit
 
-/// The app's tab bar: Home, Explore, Library and Search as `UITab`s, each
-/// UIKit tab a `VideoNavigationController` with its own `VideoNavigator`.
-/// Tabs not yet rebuilt in UIKit are SwiftUI in hosting controllers. Search
-/// is a normal tab in the bar, like before.
+/// The app's tab bar: Home, Explore, Library and Search as `UITab`s, each a
+/// `VideoNavigationController` with its own `VideoNavigator`, whose stack is
+/// restored after a relaunch. Search is a normal tab in the bar, like before.
 ///
 /// Also reports a download that could not be completed, wherever the app is.
 final class AppTabBarController: UITabBarController {
@@ -31,14 +29,6 @@ final class AppTabBarController: UITabBarController {
         self.library = library
         super.init(nibName: nil, bundle: nil)
 
-        func hosted(_ view: some View) -> UIViewController {
-            UIHostingController(rootView: view
-                .environment(library)
-                .environment(DownloadManager.shared)
-                .environment(\.sceneRestoration, restoration)
-                .modelContainer(LibraryDatabase.container))
-        }
-
         let home = navigation(for: Identifier.home, restoring: restoration) { navigator in
             HomeViewController(library: library, downloads: DownloadManager.shared, navigator: navigator)
         }
@@ -47,6 +37,9 @@ final class AppTabBarController: UITabBarController {
         }
         let search = navigation(for: Identifier.search, restoring: restoration) { navigator in
             SearchViewController(library: library, navigator: navigator)
+        }
+        let libraryTab = navigation(for: Identifier.library, restoring: restoration) { navigator in
+            LibraryViewController(library: library, navigator: navigator)
         }
 
         tabs = [
@@ -57,7 +50,7 @@ final class AppTabBarController: UITabBarController {
                 explore
             },
             UITab(title: "Library", image: UIImage(systemName: "rectangle.stack"), identifier: Identifier.library) { _ in
-                hosted(LibraryView())
+                libraryTab
             },
             UITab(title: "Search", image: UIImage(systemName: "magnifyingglass"), identifier: Identifier.search) { _ in
                 search
@@ -118,9 +111,83 @@ final class AppTabBarController: UITabBarController {
             }
             controller.navigationItem.largeTitleDisplayMode = .always
             return controller
-        case .library:
-            return nil
+        case let .library(list):
+            return libraryScreen(list, route: route, navigator: navigator)
         }
+    }
+
+    /// Saved, Downloaded or History: the stored videos, refreshed when the
+    /// list opens, with Remove All as a system menu for Downloaded and
+    /// History.
+    private func libraryScreen(_ list: LibraryList, route: AppRoute, navigator: VideoNavigator) -> UIViewController {
+        let library = library
+        let downloads = downloads
+        let videos: @MainActor () -> [Video]
+        let title: String
+        var empty = UIContentUnavailableConfiguration.empty()
+        empty.image = UIImage(systemName: "rectangle.stack.badge.plus")
+        var removeAll: UIMenu?
+
+        switch list {
+        case .saved:
+            title = "Saved"
+            videos = { library.savedVideos }
+            empty.text = "No Saved Videos"
+            empty.secondaryText = "Use the bookmark button or a video's context menu to save it."
+        case .downloaded:
+            title = "Downloaded"
+            videos = { downloads.videos }
+            empty.text = "No Downloads"
+            empty.secondaryText = "Use the download button or a video's context menu to watch it offline."
+            removeAll = Self.removeAllMenu(
+                header: "All downloaded videos will be removed from your iPhone.",
+                action: "Remove All Downloads"
+            ) {
+                downloads.removeAll()
+            }
+        case .history:
+            title = "History"
+            videos = { library.recentlyWatched }
+            empty.text = "No Watch History"
+            empty.secondaryText = "Videos you play will appear here."
+            removeAll = Self.removeAllMenu(
+                header: "Your watch history and the saved positions of these videos will be removed. Downloaded videos stay.",
+                action: "Remove All from History"
+            ) {
+                library.removeAllFromRecentlyWatched { downloads.isDownloaded($0) }
+            }
+        }
+
+        let controller = VideoListViewController(
+            title: title,
+            section: list.rawValue,
+            route: route,
+            library: library,
+            navigator: navigator,
+            emptyState: empty
+        ) {
+            .videos(videos())
+        }
+        // Stored data shows right away; cards update as fresh data arrives.
+        controller.onAppear = {
+            await library.refreshMetadata(of: videos())
+        }
+        if let removeAll {
+            controller.trailingItem = UIBarButtonItem(title: "Remove All", menu: removeAll)
+        }
+        return controller
+    }
+
+    /// Remove All as a system menu: an explanation as the section header
+    /// above the destructive action.
+    private static func removeAllMenu(header: String, action: String, perform: @escaping @MainActor () -> Void) -> UIMenu {
+        UIMenu(children: [
+            UIMenu(title: header, options: .displayInline, children: [
+                UIAction(title: action, image: UIImage(systemName: "trash"), attributes: .destructive) { _ in
+                    perform()
+                }
+            ])
+        ])
     }
 
     /// The selected tab's screen decides the status bar style, so the dark

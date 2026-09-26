@@ -106,8 +106,9 @@ final class DetailCollectionController: UIViewController, UICollectionViewDelega
     override func viewSafeAreaInsetsDidChange() {
         super.viewSafeAreaInsetsDidChange()
         collectionView.contentInset.bottom = view.safeAreaInsets.bottom + 30
-        collectionView.verticalScrollIndicatorInsets.top = view.safeAreaInsets.top
-        collectionView.verticalScrollIndicatorInsets.bottom = view.safeAreaInsets.bottom
+        // The scroll indicator keeps clear of the bars by itself
+        // (automaticallyAdjustsScrollIndicatorInsets); setting the safe area
+        // here as well doubled it and started the indicator mid-screen.
     }
 
     override func viewWillAppear(_ animated: Bool) {

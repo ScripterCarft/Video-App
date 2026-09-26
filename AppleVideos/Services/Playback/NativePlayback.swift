@@ -612,13 +612,18 @@ extension NativePlayback: @preconcurrency AVPlayerViewControllerDelegate {
         willEndFullScreenPresentationWithAnimationCoordinator coordinator: UIViewControllerTransitionCoordinator
     ) {
         recordDiagnostic("dismiss begin")
+        // AVKit pauses a modal player when full-screen dismissal completes.
+        // This app keeps that session alive in the tab accessory. Capture the
+        // actual rate (including a pending Play), not wantsPlayback, which
+        // does not track pauses made with AVKit's own controls.
+        let rateBeforeDismissal = player.rate
         isEndingFullScreen = true
         coordinator.animate(alongsideTransition: nil) { [weak self] context in
             guard let self else { return }
             isEndingFullScreen = false
             // A programmatic failure dismissal finishes through dismiss's
             // completion; do not turn it into a normal close here.
-            guard !isDismissingFailedPlayer else { return }
+            guard !isDismissingFailedPlayer, !isFinished, Self.current === self else { return }
             recordDiagnostic("dismiss cancelled=\(context.isCancelled)")
             if context.isCancelled {
                 dismissFailedPlayerIfPossible()
@@ -626,6 +631,16 @@ extension NativePlayback: @preconcurrency AVPlayerViewControllerDelegate {
                 if let pendingFailure {
                     finish(.failed(diagnostic: pendingFailure))
                 } else {
+                    let duration = item.duration.seconds
+                    let reachedEnd = duration.isFinite && player.currentTime().seconds >= duration
+                    if rateBeforeDismissal > 0, player.rate == 0,
+                       item.status != .failed, !reachedEnd,
+                       DownloadManager.shared.localURL(for: video) != nil || !Self.isMobileDataBlocked() {
+                        // Restore only the pause introduced by a completed
+                        // dismissal. Cancellation, PiP, user-paused playback
+                        // and failed/finished sessions must not start playing.
+                        player.rate = rateBeforeDismissal
+                    }
                     minimize()
                 }
             }

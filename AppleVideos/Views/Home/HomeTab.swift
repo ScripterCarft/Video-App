@@ -36,7 +36,7 @@ private struct HomeNavigation: UIViewControllerRepresentable {
         Coordinator()
     }
 
-    func makeUIViewController(context: Context) -> UINavigationController {
+    func makeUIViewController(context: Context) -> VideoNavigationController {
         let navigator = VideoNavigator(library: library)
         let home = HomeViewController(
             library: library,
@@ -44,7 +44,7 @@ private struct HomeNavigation: UIViewControllerRepresentable {
             playback: playback,
             navigator: navigator
         )
-        let navigationController = UINavigationController(rootViewController: home)
+        let navigationController = VideoNavigationController(rootViewController: home)
         navigationController.navigationBar.prefersLargeTitles = true
         navigator.navigationController = navigationController
 
@@ -57,7 +57,7 @@ private struct HomeNavigation: UIViewControllerRepresentable {
         return navigationController
     }
 
-    func updateUIViewController(_ navigationController: UINavigationController, context: Context) {
+    func updateUIViewController(_ navigationController: VideoNavigationController, context: Context) {
         context.coordinator.onRoutesChange = onRoutesChange
     }
 

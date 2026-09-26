@@ -76,6 +76,11 @@ final class VideoDetailViewController: UIViewController, UICollectionViewDelegat
         loadTask?.cancel()
     }
 
+    /// Light status bar text on the always dark screen.
+    override var preferredStatusBarStyle: UIStatusBarStyle {
+        .lightContent
+    }
+
     override func loadView() {
         // The collection view is the screen, so the navigation bar follows it
         // for its scroll edge effect by itself.

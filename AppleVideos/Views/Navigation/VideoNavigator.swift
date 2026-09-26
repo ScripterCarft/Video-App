@@ -1,5 +1,13 @@
 import UIKit
 
+/// A tab's navigation controller. The screen on top decides the status bar
+/// style, so the dark detail screen gets light status bar text.
+final class VideoNavigationController: UINavigationController {
+    override var childForStatusBarStyle: UIViewController? {
+        topViewController
+    }
+}
+
 /// Opens videos on a UIKit navigation controller with Apple's zoom
 /// transition (`preferredTransition = .zoom`): the detail screen grows out
 /// of the tapped card's artwork and shrinks back into it, and swiping it

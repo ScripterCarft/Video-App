@@ -64,6 +64,8 @@ final class VideoListViewController: UIViewController, UICollectionViewDelegate,
         self.state = state
         super.init(nibName: nil, bundle: nil)
         self.title = title
+        // The large title sits in the bar at the leading edge, like every tab.
+        navigationItem.largeTitleDisplayMode = .inline
     }
 
     @available(*, unavailable)

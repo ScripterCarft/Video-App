@@ -42,6 +42,8 @@ final class SearchViewController: UIViewController, UISearchBarDelegate, UISearc
         }
         super.init(nibName: nil, bundle: nil)
         title = "Search"
+        // The large title sits in the bar at the leading edge, like Home.
+        navigationItem.largeTitleDisplayMode = .inline
         list.onRefresh = {
             await results.reload()
         }

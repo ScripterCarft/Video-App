@@ -109,7 +109,6 @@ final class AppTabBarController: UITabBarController {
             controller.onRefresh = {
                 await results.reload()
             }
-            controller.navigationItem.largeTitleDisplayMode = .always
             return controller
         case let .library(list):
             return libraryScreen(list, route: route, navigator: navigator)

@@ -43,6 +43,8 @@ final class ExploreViewController: UIViewController, UICollectionViewDelegate {
         self.navigator = navigator
         super.init(nibName: nil, bundle: nil)
         title = "Explore"
+        // The large title sits in the bar at the leading edge, like Home.
+        navigationItem.largeTitleDisplayMode = .inline
     }
 
     @available(*, unavailable)

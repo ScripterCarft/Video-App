@@ -71,6 +71,12 @@ final class VideoListViewController: UIViewController, UICollectionViewDelegate,
         fatalError("init(coder:) is not used")
     }
 
+    /// The list's scroll view, for a container screen whose navigation bar
+    /// should follow it.
+    var scrollView: UIScrollView {
+        collectionView
+    }
+
     override func loadView() {
         // The collection view is the screen, so the navigation bar follows it
         // for its large title and scroll edge effect by itself.

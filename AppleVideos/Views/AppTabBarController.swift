@@ -45,6 +45,9 @@ final class AppTabBarController: UITabBarController {
         let explore = navigation(for: Identifier.explore, restoring: restoration) { navigator in
             ExploreViewController(library: library, navigator: navigator)
         }
+        let search = navigation(for: Identifier.search, restoring: restoration) { navigator in
+            SearchViewController(library: library, navigator: navigator)
+        }
 
         tabs = [
             UITab(title: "Home", image: UIImage(systemName: "house"), identifier: Identifier.home) { _ in
@@ -57,7 +60,7 @@ final class AppTabBarController: UITabBarController {
                 hosted(LibraryView())
             },
             UITab(title: "Search", image: UIImage(systemName: "magnifyingglass"), identifier: Identifier.search) { _ in
-                hosted(SearchView())
+                search
             }
         ]
         if let identifier = restoration.selectedTab, let tab = tab(forIdentifier: identifier) {

@@ -23,10 +23,19 @@ final class StoredVideoList {
         onChange: @escaping @MainActor @Sendable ([StoredVideo]) -> Void
     ) {
         observer = try? ResultsObserver(filterBy: filter, sortBy: [sort], modelContext: context)
-        onChange(observer.map { Array($0.results) } ?? [])
+        onChange(currentRecords)
         token = withContinuousObservation(options: [.didSet]) { @MainActor [weak self] _ in
-            guard let results = self?.observer?.results else { return }
-            onChange(Array(results))
+            guard let self else { return }
+            onChange(self.currentRecords)
         }
+    }
+
+    /// The observer's records without deleted ones. A record deleted and
+    /// saved stays in the results until the observer refetches, a moment
+    /// later, and reading its attributes then crashes (measured on iOS 27);
+    /// SwiftData marks such a record without reading them.
+    private var currentRecords: [StoredVideo] {
+        guard let observer else { return [] }
+        return observer.results.filter { !$0.isDeleted && $0.modelContext != nil }
     }
 }

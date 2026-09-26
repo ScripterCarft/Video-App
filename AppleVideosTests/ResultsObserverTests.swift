@@ -138,6 +138,24 @@ struct ResultsObserverTests {
         #expect(observer.results.isEmpty)
     }
 
+    /// Which of SwiftData's markers identify a deleted record that an observer
+    /// still lists; reading them does not touch its attributes.
+    @Test func deletedRecordMarkers() async throws {
+        let video = record("p")
+        video.savedAt = .now
+        context.insert(video)
+        try context.save()
+        let observer = try savedObserver()
+        let stale = try #require(observer.results.first)
+
+        context.delete(video)
+        probe("deleted, before save: isDeleted \(stale.isDeleted), has context \(stale.modelContext != nil)")
+        try context.save()
+        probe("deleted, after save: isDeleted \(stale.isDeleted), has context \(stale.modelContext != nil), listed \(observer.results.count)")
+        try await Task.sleep(for: .milliseconds(300))
+        probe("deleted, after the update: listed \(observer.results.count)")
+    }
+
     /// Measured on iOS 27: reading a record that was deleted and saved while
     /// a `ResultsObserver` still lists it (until its update, milliseconds
     /// later) crashes with "Could not cast value of type 'Optional<Any>' to

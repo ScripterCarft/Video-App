@@ -34,10 +34,16 @@ final class SearchSuggestionsViewController: UIViewController, UICollectionViewD
         super.viewDidLoad()
         collectionView.delegate = self
         collectionView.keyboardDismissMode = .onDrag
+        // Compact rows: subheadline text, a matching small symbol and less
+        // vertical margin than a standard row.
         let registration = UICollectionView.CellRegistration<UICollectionViewListCell, String> { cell, _, suggestion in
             var content = cell.defaultContentConfiguration()
             content.image = UIImage(systemName: "magnifyingglass")
+            content.imageProperties.preferredSymbolConfiguration = UIImage.SymbolConfiguration(textStyle: .subheadline)
             content.text = suggestion
+            content.textProperties.font = .preferredFont(forTextStyle: .subheadline)
+            content.directionalLayoutMargins.top = 8
+            content.directionalLayoutMargins.bottom = 8
             cell.contentConfiguration = content
         }
         dataSource = UICollectionViewDiffableDataSource<Int, String>(collectionView: collectionView) { collectionView, indexPath, suggestion in

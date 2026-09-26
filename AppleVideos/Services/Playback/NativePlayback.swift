@@ -460,6 +460,7 @@ final class NativePlayback: NSObject {
     static func playbackDiagnostics() -> String {
         guard let current else { return "No native playback session." }
         let error = current.item.error as NSError?
+        let playerError = current.player.error as NSError?
         let logError = current.item.errorLog()?.events.last
         let access = current.item.accessLog()?.events.last
         let ranges = current.item.loadedTimeRanges.map { value in
@@ -478,6 +479,7 @@ final class NativePlayback: NSObject {
         PiP: \(current.isPictureInPictureActive); AirPlay: \(current.player.isExternalPlaybackActive)
         Buffer empty: \(current.item.isPlaybackBufferEmpty); likely keep up: \(current.item.isPlaybackLikelyToKeepUp)
         Buffered seconds: \(ranges)
+        Player error: \(playerError?.domain ?? "none") / \(playerError?.code ?? 0)
         Item error: \(error?.domain ?? "none") / \(error?.code ?? 0)
         Stream error: \(logError?.errorDomain ?? "none") / \(logError?.errorStatusCode ?? 0)
         Bytes transferred: \(access?.numberOfBytesTransferred ?? 0)
@@ -490,7 +492,7 @@ final class NativePlayback: NSObject {
     }
 
     private var diagnosticState: String {
-        "item=\(item.status.rawValue) transport=\(player.timeControlStatus.rawValue) rate=\(player.rate) time=\(player.currentTime().seconds) wait=\(player.reasonForWaitingToPlay?.rawValue ?? "none")"
+        "player=\(player.status.rawValue) item=\(item.status.rawValue) transport=\(player.timeControlStatus.rawValue) rate=\(player.rate) time=\(player.currentTime().seconds) wait=\(player.reasonForWaitingToPlay?.rawValue ?? "none")"
     }
 
     private func recordDiagnostic(_ event: String) {

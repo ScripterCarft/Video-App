@@ -12,21 +12,22 @@ concurrency:
 jobs:
   build:
     name: Build Apple Videos
-    runs-on: macos-26
+    # GitHub's Xcode 27 image (public preview, macOS 27, arm64): the
+    # deployment target is iOS 27, and only this image has its SDK and
+    # simulators (macos-26 stops at Xcode 26.6 with the iOS 26.5 SDK).
+    runs-on: xcode-27
     timeout-minutes: 60
 
     steps:
       - name: Check out source
         uses: actions/checkout@v4
 
-      # The image's default Xcode may be older than the newest one installed;
-      # the app targets the newest iOS, so build with the newest Xcode.
-      - name: Select newest Xcode
+      # The image's default Xcode is its released version; betas installed
+      # beside it are not used. Reported so each run shows what it built with.
+      - name: Report Xcode
         run: |
           INSTALLED=$(ls -d /Applications/Xcode*.app | tr '\n' ' ')
-          NEWEST=$(ls -d /Applications/Xcode_*.app | sed -E 's/.*Xcode_([0-9.]+).*/\1 &/' | sort -t. -k1,1n -k2,2n -k3,3n | tail -1 | cut -d' ' -f2)
-          sudo xcode-select -s "$NEWEST"
-          echo "::notice::Installed: $INSTALLED%0ASelected: $NEWEST%0A$(xcodebuild -version | tr '\n' ' ')%0AiOS SDK $(xcrun --sdk iphoneos --show-sdk-version)"
+          echo "::notice::Installed: $INSTALLED%0ASelected: $(xcode-select -p)%0A$(xcodebuild -version | tr '\n' ' ')%0AiOS SDK $(xcrun --sdk iphoneos --show-sdk-version)"
 
       - name: Show Apple toolchain
         run: |

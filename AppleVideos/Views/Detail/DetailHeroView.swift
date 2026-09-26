@@ -13,7 +13,7 @@ struct DetailHeroConfiguration: UIContentConfiguration {
     func updated(for state: any UIConfigurationState) -> Self { self }
 
     /// Only content that affects height. Playback and Saved don't change it.
-    var sizingKey: String {
+    @MainActor var sizingKey: String {
         [model.shown.title, model.shown.channelName, String(model.detailsLoadFinished),
          model.visibleDescription ?? "", model.textMetadata.joined(separator: " · "),
          model.visibleBadges.joined(separator: " · ")].joined(separator: "\n")

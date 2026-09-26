@@ -67,6 +67,8 @@ enum VideoCells {
         traits.performAsCurrent {
             let view = configuration().makeContentView()
             view.traitOverrides.preferredContentSizeCategory = traits.preferredContentSizeCategory
+            view.setNeedsUpdateProperties()
+            view.updatePropertiesIfNeeded()
             height = ceil(view.systemLayoutSizeFitting(
                 CGSize(width: width, height: UIView.layoutFittingCompressedSize.height),
                 withHorizontalFittingPriority: .required,

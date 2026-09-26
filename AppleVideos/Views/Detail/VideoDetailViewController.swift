@@ -445,11 +445,14 @@ private final class DownloadBarButton {
         }
     }
 
-    /// A 22-point ring filled to `progress` around a small stop symbol, as a
-    /// template image the bar tints like its other symbols; the unfilled track
-    /// is drawn at 35 % opacity.
+    /// A ring the size of a bar symbol, filled to `progress` around a stop
+    /// symbol in its middle, as a template image the bar tints like its other
+    /// symbols; the unfilled track is drawn at 35 % opacity.
     private static func ring(progress: Double) -> UIImage {
-        let size = CGSize(width: 22, height: 22)
+        // As large as a circle symbol in the bar, like the other buttons.
+        let circle = UIImage(systemName: "circle", withConfiguration: UIImage.SymbolConfiguration(textStyle: .body, scale: .large))
+        let diameter = ceil(circle.map { min($0.size.width, $0.size.height) } ?? 26)
+        let size = CGSize(width: diameter, height: diameter)
         let lineWidth: CGFloat = 2.5
         let center = CGPoint(x: size.width / 2, y: size.height / 2)
         let radius = size.width / 2 - lineWidth / 2
@@ -474,7 +477,7 @@ private final class DownloadBarButton {
                 fill.stroke()
             }
 
-            let stop = UIImage(systemName: "stop.fill", withConfiguration: UIImage.SymbolConfiguration(pointSize: 8, weight: .bold))
+            let stop = UIImage(systemName: "stop.fill", withConfiguration: UIImage.SymbolConfiguration(pointSize: diameter * 0.38, weight: .bold))
             if let stop {
                 stop.withTintColor(.black).draw(at: CGPoint(x: center.x - stop.size.width / 2, y: center.y - stop.size.height / 2))
             }

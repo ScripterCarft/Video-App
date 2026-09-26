@@ -148,30 +148,10 @@ final class VideoContextMenus {
     }
 }
 
-/// The video cell every collection of videos uses: the SwiftUI card in a
-/// plain cell, registered as its zoom source.
+/// The shared building blocks of every collection of videos: the shelf
+/// section and the section title. Cells show `VideoCardConfiguration`.
 @MainActor
 enum VideoCells {
-    static func configure(
-        _ cell: UICollectionViewCell,
-        video: Video,
-        compact: Bool,
-        width: CGFloat?,
-        route: VideoRoute,
-        transition: Namespace.ID,
-        library: LibraryStore,
-        downloads: DownloadManager
-    ) {
-        cell.contentConfiguration = UIHostingConfiguration {
-            VideoCard(video: video, compact: compact, providesContextMenu: false)
-                .frame(width: width, alignment: .top)
-                .matchedTransitionSource(id: route.transitionID, in: transition)
-                .environment(library)
-                .environment(downloads)
-        }
-        .margins(.all, 0)
-    }
-
     /// A section title in plain UIKit text, title 2 bold, with only its own
     /// margins (not the cell's, which follow the screen edges). `topSpacing`
     /// is part of the header's fixed height (see `shelfSection`).

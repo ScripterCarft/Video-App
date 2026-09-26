@@ -437,11 +437,14 @@ what is intentional, what was measured, and what is still open.
 **Active device investigation: cellular playback (2026-09-26).** User reports
   native Apple playback over plain 5G, no VPN or offline download, with Streaming
   Use Mobile Data off, also after reopening the app. Cause is not yet proven.
-  A temporary `Views/Player/PlaybackDiagnostics` system alert on the first Play
-  reports the resolved toggle, persisted toggle in the current bundle domain,
-  path flags and offline-package presence. Play waits for NWPathMonitor's first
-  real path instead of treating initial false flags as Wi-Fi. Request the device
-  screenshot; remove the diagnostic before merging/releasing the final fix.
+  Device diagnostic aed1872 reported toggle OFF, persisted 0, cellular true,
+  expensive true, constrained false, initial path already ready, no download,
+  and would-block true. User confirmed the next Play was blocked. This proves
+  the gate works in that build, not what caused the original report; initial
+  path readiness does not explain this particular attempt. The diagnostic is
+  now removed. Verify that the first Play after a cold launch blocks without
+  the extra dialog/second tap. Streaming waits for NWPathMonitor's first real
+  path (no timer); offline packages do not wait for network monitoring.
   Also found: an already-created native AVURLAsset retains its initial cellular
   permission; foreground/settings changes are not yet enforced on that asset.
   That alone does not explain a genuinely fresh launch and must not be reported

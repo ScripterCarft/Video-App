@@ -64,8 +64,6 @@ final class NetworkConditions: @unchecked Sendable {
         }
     }
 
-    var isReady: Bool { state.withLock { $0.path != nil } }
-
     /// True while Low Data Mode applies to the current network.
     var isConstrained: Bool {
         state.withLock { $0.path?.isConstrained ?? false }

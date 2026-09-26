@@ -52,6 +52,11 @@ Each of these was tested on device, one change at a time, without effect:
   only `AVPlayer(url:)`, `AVPlayerViewController`, `present(_:animated:)` and
   `play()` shows the same behavior in this app.
 
+All of these ran with the app linked against the iOS 26.5 SDK (CI had no
+newer Xcode), running on iOS 27 in compatibility mode. Since 2026-09-26 the
+app is built with the iOS 27 SDK, which can change AVKit's behavior; the
+issue has not been rechecked since.
+
 ### Conclusion so far
 
 The broken state lives inside AVKit's chrome and is reset by audio-route and

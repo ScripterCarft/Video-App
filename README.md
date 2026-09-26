@@ -1,6 +1,8 @@
 # Apple Videos
 
-A native personal video app for iOS 27, built with SwiftUI.
+A native personal video app for iOS 27. It is being rebuilt screen by screen
+in modern UIKit: Home and the video detail screen are UIKit; Search, Library,
+Explore and the tab bar are still SwiftUI.
 
 ## Naming
 
@@ -26,19 +28,26 @@ The YouTube and Innertube representations stay inside the service and resolver l
 ## Project structure
 
 - `App/`: app entry point, app delegate (audio session, orientation) and launch-time setup
-- `Models/`: provider-neutral app models
-- `Services/`: YouTube search and details, the on-device library and artwork loading
+- `Models/`: provider-neutral app models and the SwiftData store (`StoredVideo`, `WatchProgress`, `LibraryDatabase`)
+- `Services/`: YouTube search and details, the video catalog, the on-device library and artwork loading
 - `Services/Playback/`: the provider-neutral resolver contract, the YouTube resolver and `NativePlayback`
-- `Views/Screens/`: one file per tab plus the video detail screen
+- `Services/Downloads/`: offline downloads
+- `Views/Home/`: the UIKit Home screen (`HomeViewController`) and its SwiftUI tab wrapper and cards
+- `Views/Detail/`: the UIKit video detail screen and its loading model
+- `Views/Collection/`: the shared UIKit card (`VideoCardConfiguration`), shelf layout (`VideoCells`), context menus and share item
+- `Views/Navigation/`: `VideoNavigator`, which opens detail screens with UIKit's zoom transition
+- `Views/Screens/`: the SwiftUI Search, Library and Explore tabs and the SwiftUI shell around the detail screen
+- `Views/Components/`: SwiftUI views used by those tabs, including `VideoLink`
 - `Views/Player/`: the embedded YouTube fallback
-- `Views/Components/`: shared views, including `VideoLink`
 - `Support/`: small Foundation extensions
 
-Every tab owns one `NavigationStack` and registers the video detail destination once with `videoDestination(transition:)` on its root. Links use `VideoLink`, which scopes the zoom-transition ID to the section a video was tapped in. Do not add further `navigationDestination(for:)` declarations for videos inside pushed screens.
+Navigation carries only a video's ID (`VideoRoute`); the destination reads the video from `VideoCatalog`. The Home tab is a UIKit navigation controller: `VideoNavigator` pushes `VideoDetailViewController` with `preferredTransition = .zoom` from the tapped card's artwork. The SwiftUI tabs each own one `NavigationStack` and register the video detail destination once with `videoDestination(transition:)` on its root; links use `VideoLink`, which scopes the zoom-transition ID to the section a video was tapped in. Do not add further `navigationDestination(for:)` declarations for videos inside pushed screens.
+
+Artwork comes from `ArtworkLoader`: shared downloads, HTTP caching, downsampling to the drawn size and an in-memory cache. A video keeps the best 16:9 thumbnail YouTube lists; a 1280 image, once known, is never replaced by a smaller one (Up Next lists only small ones), and the detail screen loads the 1280 image as soon as the video's details list it.
 
 ## Saved, History, and Watchlist
 
-`LibraryStore` owns Saved, History and the Watchlist, stored in SwiftData with one `StoredVideo` per video (`Models/StoredVideo.swift`). Home shows the Watchlist under the title Continue Watching.
+`LibraryStore` owns Saved, History and the Watchlist, stored in SwiftData with one `StoredVideo` per video and one `WatchProgress` per started video (`Models/StoredVideo.swift`). After every save of the shared context it reloads its lists synchronously and publishes them as plain values; a record is deleted once no list, progress or download needs it. Home shows the Watchlist under the title Continue Watching.
 
 - A video is added to History when its player closes after at least ten seconds of actual playback; seeking does not count. The same rule decides when its position is first saved, so every video with a saved position is in History. History is deduplicated and keeps the 50 most recent videos.
 - The Watchlist holds videos added by hand plus History videos with resumable progress, most recent activity first. A video leaves it when played to the end (applied when the player closes), on Mark as Watched, or on Remove from Watchlist; the last two also clear its progress. Remove from Recently Watched takes a video out of History and clears its progress.
@@ -60,7 +69,7 @@ Playback follows Apple's AVKit guidance:
 - The app supplies Now Playing metadata through `externalMetadata`.
 - Streaming Options live in the Settings app (Settings > Apps > Videos, `Settings.bundle`, read by `StreamingSettings`): Use Mobile Data, Mobile Data (High Quality / Automatic) and Wi-Fi (High Quality / Data Saver). Automatic and Data Saver cap HLS at 720p (`preferredMaximumResolutionForExpensiveNetworks` / `preferredMaximumResolution`); High Quality leaves the choice to AVPlayer's adaptive bitrate selection, which plays H.264 up to 1080p. Mobile data, Data Saver and Low Data Mode limit the forward buffer to 60 s. With Use Mobile Data off, Play shows an alert on mobile data and the asset disallows cellular access.
 - Watch time is counted with `addPeriodicTimeObserver`; only advancing playback counts, seeks and stalls do not.
-- Watch progress is saved per video on device (`LibraryStore`, in SwiftData, up to 200 videos): every five seconds while playing, and immediately on pause, at the end, when the player closes and when the app enters the background. After a crash at most the last few seconds are lost. Positions under ten seconds or past 95 % are not kept. Play resumes at the saved position: the seek is issued as soon as the item is ready and playback starts only after it finishes, so the first frame shown is the saved position, and Play buttons (detail screen and the Home hero) show the play symbol, a progress gauge and the remaining time instead of the word Play. During playback progress is only written to storage; the UI picks it up when the player closes.
+- Watch progress is saved per video on device (`LibraryStore`, in SwiftData, up to 200 videos): every five seconds while playing, and immediately on pause, at the end, when the player closes and when the app enters the background. After a crash at most the last few seconds are lost. Positions under ten seconds or past 95 % are not kept. Play resumes at the saved position: the seek is issued as soon as the item is ready and playback starts only after it finishes, so the first frame shown is the saved position, and Play buttons show the play symbol, a progress gauge and the remaining time instead of the word Play. Today that is the Play button of Home's featured video; the UIKit detail screen gets its Play button with its hero (title, Play, description), which is not built yet. During playback progress is only written to storage; the UI picks it up when the player closes.
 - Dismissal is reported by `playerViewController(_:willEndFullScreenPresentationWithAnimationCoordinator:)`. The detail screen hears back exactly once, after the player or Picture in Picture has closed. Restoring from Picture in Picture presents the same controller again.
 - The app is portrait only; only `AVPlayerViewController` may rotate (`AppDelegate.application(_:supportedInterfaceOrientationsFor:)`).
 - When the resolver has no compatible source, the embedded YouTube player is shown as a separate full-screen SwiftUI overlay.
@@ -94,7 +103,7 @@ xcodebuild \
   build
 ```
 
-GitHub Actions builds the Debug configuration for the simulator and the Release configuration for devices on every push and pull request. The Debug build ensures `#if DEBUG` code keeps compiling.
+Building needs Xcode 27 (the deployment target is iOS 27). GitHub Actions builds on the `xcode-27` runner image the Debug configuration for the simulator and the Release configuration for devices on every push and pull request, and uploads an unsigned IPA. The Debug build ensures `#if DEBUG` code keeps compiling.
 
 ## Device installation
 

@@ -5,6 +5,24 @@ structure; this file holds the workflow, the principles behind decisions,
 what is intentional, what was measured, and what is still open.
 `KNOWN_ISSUES.md` records the player-dismissal bug, resolved by the iOS 27 SDK.
 
+## Active device investigation: mini-player waiting (2026-09-26)
+
+The user confirms the mini sometimes waits indefinitely after full-screen
+swipe dismissal; expanding to full screen does NOT recover it. Changing the
+iPhone Liquid Glass Appearance setting fixed only the perceived transparency,
+not playback. The accessory uses UITabAccessory; no custom glass/blur/alpha is
+present. Keep that native appearance and the now-approved layout unchanged.
+The precise playback cause is NOT proven. Do not apply delayed Play, buffer
+policy changes or attach/detach hacks based on the symptom alone.
+A TEST diagnostic captures the last 24 AVPlayer status/wait-reason/transition
+events and an on-demand snapshot (item identity, buffer ranges, error domain/code,
+network policy). Long-press mini Play/Pause -> Copy Playback Diagnostics.
+It does not change transport behavior and does not collect stream URLs, credentials
+or send anything. Remove via git revert after diagnosis; do not merge to main.
+Verified code gap: post-start item failures are left to AVKit, which has no visible
+error UI when minimized. Establish whether the reported stall is this failure
+path or an actual waiting state from device evidence before choosing the fix.
+
 ## Current UI decision (2026-09-26, supersedes hero notes below)
 
 The user rejected the hero and asked to rebuild it step by step later.

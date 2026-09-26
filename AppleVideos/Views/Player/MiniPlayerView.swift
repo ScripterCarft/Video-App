@@ -30,6 +30,12 @@ final class MiniPlayerView: UIView {
         open.addAction(UIAction { _ in NativePlayback.restoreFromMiniPlayer() }, for: .primaryActionTriggered)
         transport.addAction(UIAction { _ in NativePlayback.toggleMiniPlayerPlayback() }, for: .primaryActionTriggered)
         close.addAction(UIAction { _ in NativePlayback.closeMiniPlayer() }, for: .primaryActionTriggered)
+        // TEST: a long press copies evidence without changing playback.
+        transport.menu = UIMenu(children: [
+            UIAction(title: "Copy Playback Diagnostics", image: UIImage(systemName: "doc.on.doc")) { _ in
+                UIPasteboard.general.string = NativePlayback.playbackDiagnostics()
+            }
+        ])
         close.accessibilityLabel = "Close player"
         var closeStyle = UIButton.Configuration.plain()
         closeStyle.image = UIImage(systemName: "xmark.circle")

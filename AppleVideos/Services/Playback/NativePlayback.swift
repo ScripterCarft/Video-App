@@ -43,6 +43,9 @@ final class NativePlayback: NSObject {
     private var onFinish: @MainActor (Ending) -> Void
     private let onMinimize: @MainActor () -> Void
     private var transportObservation: NSKeyValueObservation?
+    private var waitingObservation: NSKeyValueObservation?
+    private var diagnosticEvents: [String] = []
+    private let diagnosticStart = Date()
     private var isRestoringFullScreen = false
     private var statusObservation: NSKeyValueObservation?
     private var timeObserver: Any?
@@ -222,7 +225,13 @@ final class NativePlayback: NSObject {
         playerController.player = player
         playerController.delegate = self
         transportObservation = player.observe(\.timeControlStatus, options: [.initial, .new]) { [weak self] _, _ in
-            Task { @MainActor [weak self] in self?.publishTransport() }
+            Task { @MainActor [weak self] in
+                self?.recordDiagnostic("transport")
+                self?.publishTransport()
+            }
+        }
+        waitingObservation = player.observe(\.reasonForWaitingToPlay, options: [.new]) { [weak self] _, _ in
+            Task { @MainActor [weak self] in self?.recordDiagnostic("waiting reason") }
         }
         pendingStartTime = startTime
         isAwaitingResumeSeek = startTime != nil
@@ -251,6 +260,7 @@ final class NativePlayback: NSObject {
         presenter.present(playerController, animated: true) { [weak self] in
             guard let self, !isFinished else { return }
             isPresented = true
+            recordDiagnostic("presented")
             if pendingFailure != nil {
                 dismissFailedPlayerIfPossible()
                 return
@@ -278,18 +288,21 @@ final class NativePlayback: NSObject {
     /// shows its own error state.
     private func itemStatusDidChange() {
         guard !isFinished else { return }
+        recordDiagnostic("item status")
 
         if item.status == .readyToPlay, let pendingStartTime {
             self.pendingStartTime = nil
             // Land on the keyframe up to five seconds before the saved position:
             // faster than an exact seek, and never past where the viewer stopped.
+            recordDiagnostic("resume seek begin")
             player.seek(
                 to: CMTime(seconds: pendingStartTime, preferredTimescale: 600),
                 toleranceBefore: CMTime(seconds: 5, preferredTimescale: 600),
                 toleranceAfter: .zero
-            ) { [weak self] _ in
+            ) { [weak self] completed in
                 Task { @MainActor [weak self] in
                     guard let self else { return }
+                    recordDiagnostic("resume seek finished=\(completed)")
                     isAwaitingResumeSeek = false
                     startPlaybackIfReady()
                     publishTransport()
@@ -328,6 +341,8 @@ final class NativePlayback: NSObject {
         guard !isFinished else { return }
         isFinished = true
 
+        waitingObservation?.invalidate()
+        waitingObservation = nil
         transportObservation?.invalidate()
         transportObservation = nil
         statusObservation?.invalidate()
@@ -370,6 +385,7 @@ final class NativePlayback: NSObject {
 
     static func toggleMiniPlayerPlayback() {
         guard displayState.isMinimized, let current, !current.isFinished else { return }
+        current.recordDiagnostic("mini transport tap")
         if displayState.isPlaying {
             current.wantsPlayback = false
             current.player.pause()
@@ -394,10 +410,12 @@ final class NativePlayback: NSObject {
               playerController.presentingViewController == nil,
               let presenter = Self.topViewController(),
               !presenter.isBeingPresented, !presenter.isBeingDismissed else { return false }
+        recordDiagnostic("expand begin")
         isRestoringFullScreen = true
         presenter.present(playerController, animated: true) { [weak self] in
             guard let self, !isFinished else { return }
             isRestoringFullScreen = false
+            recordDiagnostic("expand completed")
             Self.displayState.isMinimized = false
             dismissFailedPlayerIfPossible()
         }
@@ -406,6 +424,7 @@ final class NativePlayback: NSObject {
 
     private func minimize() {
         guard !isFinished else { return }
+        recordDiagnostic("minimize")
         saveProgress()
         Self.displayState.isMinimized = true
         publishTransport()
@@ -434,6 +453,50 @@ final class NativePlayback: NSObject {
             player.seek(to: .zero)
         }
         player.play()
+    }
+
+    // TEST: bounded, on-device evidence for the reported post-dismissal stall.
+    // Read-only: never pauses, seeks, changes buffering policy or retries playback.
+    static func playbackDiagnostics() -> String {
+        guard let current else { return "No native playback session." }
+        let error = current.item.error as NSError?
+        let logError = current.item.errorLog()?.events.last
+        let access = current.item.accessLog()?.events.last
+        let ranges = current.item.loadedTimeRanges.map { value in
+            let range = value.timeRangeValue
+            return "\(range.start.seconds)...\(CMTimeRangeGetEnd(range).seconds)"
+        }.joined(separator: ", ")
+        return """
+        Mini playback diagnostic 1
+        Video: \(current.video.id)
+        Now: \(current.diagnosticState)
+        Mini: \(displayState.isMinimized); seek pending: \(current.isAwaitingResumeSeek)
+        Wants play: \(current.wantsPlayback); started: \(current.hasStartedPlaying)
+        Expected item: \(current.player.currentItem === current.item)
+        Controller attached: \(current.playerController.player === current.player)
+        Controller presented: \(current.playerController.presentingViewController != nil)
+        PiP: \(current.isPictureInPictureActive); AirPlay: \(current.player.isExternalPlaybackActive)
+        Buffer empty: \(current.item.isPlaybackBufferEmpty); likely keep up: \(current.item.isPlaybackLikelyToKeepUp)
+        Buffered seconds: \(ranges)
+        Item error: \(error?.domain ?? "none") / \(error?.code ?? 0)
+        Stream error: \(logError?.errorDomain ?? "none") / \(logError?.errorStatusCode ?? 0)
+        Bytes transferred: \(access?.numberOfBytesTransferred ?? 0)
+        Observed bitrate: \(access?.observedBitrate ?? 0)
+        Cellular: \(NetworkConditions.shared.usesCellular); allowed: \(StreamingSettings.current().useMobileData)
+        Low data: \(NetworkConditions.shared.isConstrained)
+        Events:
+        \(current.diagnosticEvents.joined(separator: "\n"))
+        """
+    }
+
+    private var diagnosticState: String {
+        "item=\(item.status.rawValue) transport=\(player.timeControlStatus.rawValue) rate=\(player.rate) time=\(player.currentTime().seconds) wait=\(player.reasonForWaitingToPlay?.rawValue ?? "none")"
+    }
+
+    private func recordDiagnostic(_ event: String) {
+        let elapsed = String(format: "%.2f", Date().timeIntervalSince(diagnosticStart))
+        diagnosticEvents.append("\(elapsed)s \(event): \(diagnosticState)")
+        if diagnosticEvents.count > 24 { diagnosticEvents.removeFirst(diagnosticEvents.count - 24) }
     }
 
     /// The key window's topmost presented view controller.
@@ -546,6 +609,7 @@ extension NativePlayback: @preconcurrency AVPlayerViewControllerDelegate {
         _ playerViewController: AVPlayerViewController,
         willEndFullScreenPresentationWithAnimationCoordinator coordinator: UIViewControllerTransitionCoordinator
     ) {
+        recordDiagnostic("dismiss begin")
         isEndingFullScreen = true
         coordinator.animate(alongsideTransition: nil) { [weak self] context in
             guard let self else { return }
@@ -553,6 +617,7 @@ extension NativePlayback: @preconcurrency AVPlayerViewControllerDelegate {
             // A programmatic failure dismissal finishes through dismiss's
             // completion; do not turn it into a normal close here.
             guard !isDismissingFailedPlayer else { return }
+            recordDiagnostic("dismiss cancelled=\(context.isCancelled)")
             if context.isCancelled {
                 dismissFailedPlayerIfPossible()
             } else if !isPictureInPictureActive {

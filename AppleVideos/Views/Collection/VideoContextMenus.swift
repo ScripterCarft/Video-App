@@ -160,18 +160,11 @@ enum VideoCells {
         route: VideoRoute,
         transition: Namespace.ID,
         library: LibraryStore,
-        downloads: DownloadManager,
-        fixedHeight: Bool = false
+        downloads: DownloadManager
     ) {
         cell.contentConfiguration = UIHostingConfiguration {
             VideoCard(video: video, compact: compact, providesContextMenu: false)
                 .frame(width: width, alignment: .top)
-                // In a cell of fixed height, the card starts at the top.
-                .frame(maxHeight: fixedHeight ? .infinity : nil, alignment: .top)
-                // Screen edges mean nothing inside a cell. Without this, the
-                // card gave way to the bars and the home indicator wherever
-                // its cell lay, and fixed cells squeezed it while scrolling.
-                .ignoresSafeArea(fixedHeight ? .all : [])
                 .matchedTransitionSource(id: route.transitionID, in: transition)
                 .environment(library)
                 .environment(downloads)
@@ -179,31 +172,17 @@ enum VideoCells {
         .margins(.all, 0)
     }
 
-    /// The height of the tallest compact card: artwork, a two-line title,
-    /// the channel and the info line, from the text styles' line heights for
-    /// the current Dynamic Type size. Shelves use it as a fixed height, so
-    /// nothing is measured while scrolling; shorter cards leave space below.
-    static func compactCardHeight(traits: UITraitCollection) -> CGFloat {
-        func line(_ style: UIFont.TextStyle) -> CGFloat {
-            ceil(UIFont.preferredFont(forTextStyle: style, compatibleWith: traits).lineHeight)
-        }
-        // Mirrors VideoCard's compact layout: spacing 10 below the artwork, 4 between lines.
-        return VideoCard.compactArtworkHeight + 10
-            + 2 * line(.headline) + 4
-            + line(.subheadline) + 4
-            + line(.caption1)
-    }
-
-    /// A horizontal shelf of compact cards with a title header, all of fixed
-    /// size. Estimated sizes make the collection view measure cells while it
-    /// scrolls, which stuttered and, on iOS 27, ran into a layout loop crash
-    /// (`_updateVisibleCellsNow` recursing until an assertion failed).
+    /// A horizontal shelf of UIKit video cards (`VideoCardConfiguration`)
+    /// with a title header, all of fixed size. Estimated sizes made the
+    /// collection view measure cells while it scrolled, which stuttered and,
+    /// on iOS 27, ran into a layout loop crash (`_updateVisibleCellsNow`
+    /// recursing until an assertion failed).
     static func shelfSection(
         cardWidth: CGFloat,
         headerTopSpacing: CGFloat,
         traits: UITraitCollection
     ) -> NSCollectionLayoutSection {
-        let cardHeight = compactCardHeight(traits: traits)
+        let cardHeight = VideoCardConfiguration.height(forWidth: cardWidth, traits: traits)
         let itemSize = NSCollectionLayoutSize(widthDimension: .fractionalWidth(1), heightDimension: .absolute(cardHeight))
         let groupSize = NSCollectionLayoutSize(widthDimension: .absolute(cardWidth), heightDimension: .absolute(cardHeight))
         let group = NSCollectionLayoutGroup.horizontal(layoutSize: groupSize, subitems: [NSCollectionLayoutItem(layoutSize: itemSize)])

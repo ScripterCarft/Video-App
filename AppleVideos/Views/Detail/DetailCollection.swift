@@ -220,17 +220,9 @@ final class DetailCollectionController: UIViewController, UICollectionViewDelega
         guard case let .video(id) = item,
               let video = shownRelated.first(where: { $0.id == id })
         else { return }
-        VideoCells.configure(
-            cell,
-            video: video,
-            compact: true,
-            width: Self.cardWidth,
-            route: VideoRoute(video: video, section: Self.shelfID),
-            transition: content.transition,
-            library: content.library,
-            downloads: content.downloads,
-            fixedHeight: true
-        )
+        // The UIKit card. It opens the video without the zoom for now: the
+        // zoom needs a SwiftUI source, until navigation moves to UIKit.
+        cell.contentConfiguration = VideoCardConfiguration(video: video)
     }
 
     private func applySnapshot(animated: Bool) {

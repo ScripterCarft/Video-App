@@ -211,14 +211,15 @@ final class VideoDetailViewController: UIViewController, UICollectionViewDelegat
     // MARK: - Bar buttons
 
     private func configureBarButtons(for video: Video) {
-        guard let url = video.youtubeURL else { return }
+        guard video.youtubeURL != nil else { return }
         let share = UIBarButtonItem(
             title: "Share",
             image: UIImage(systemName: "square.and.arrow.up"),
             primaryAction: UIAction { [weak self] _ in
-                // The standard share sheet from the bottom.
-                let controller = UIActivityViewController(activityItems: [url], applicationActivities: nil)
-                self?.present(controller, animated: true)
+                // The standard share sheet from the bottom, with the title and
+                // the artwork on screen as its header.
+                guard let self, let controller = VideoShareItem.shareSheet(for: video, image: self.artwork.image) else { return }
+                self.present(controller, animated: true)
             }
         )
         downloadButton.onDownload = { [downloads] in downloads.download(video) }
@@ -522,6 +523,9 @@ private final class DetailCollectionView: UICollectionView {
 private final class DetailArtworkView: UIView {
     private let stage = UIView()
     private let imageView = UIImageView()
+
+    /// The artwork as shown, for the share sheet's header.
+    var image: UIImage? { imageView.image }
 
     override init(frame: CGRect) {
         super.init(frame: frame)

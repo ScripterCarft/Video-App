@@ -38,7 +38,7 @@ final class VideoContextMenus {
         return UIContextMenuConfiguration(identifier: nil) {
             ThumbnailPreviewController(image: image)
         } actionProvider: { [weak self] _ in
-            self?.menu(for: video, sourceView: sourceView)
+            self?.menu(for: video, image: image, sourceView: sourceView)
         }
     }
 
@@ -84,7 +84,7 @@ final class VideoContextMenus {
         }
     }
 
-    private func menu(for video: Video, sourceView: @escaping () -> UIView?) -> UIMenu {
+    private func menu(for video: Video, image: UIImage?, sourceView: @escaping () -> UIView?) -> UIMenu {
         let library = library
         let downloads = downloads
 
@@ -110,9 +110,9 @@ final class VideoContextMenus {
         ) { [weak self] _ in
             self?.afterMenuCloses { library.toggleSaved(video) }
         })
-        if let url = video.youtubeURL {
+        if video.youtubeURL != nil {
             top.append(UIAction(title: "Share", image: UIImage(systemName: "square.and.arrow.up")) { [weak self] _ in
-                self?.share(url, from: sourceView())
+                self?.share(video, image: image, from: sourceView())
             })
         }
 
@@ -151,8 +151,8 @@ final class VideoContextMenus {
         return UIMenu(children: children)
     }
 
-    private func share(_ url: URL, from sourceView: UIView?) {
-        let controller = UIActivityViewController(activityItems: [url], applicationActivities: nil)
+    private func share(_ video: Video, image: UIImage?, from sourceView: UIView?) {
+        guard let controller = VideoShareItem.shareSheet(for: video, image: image) else { return }
         controller.popoverPresentationController?.sourceView = sourceView
         presenter?.present(controller, animated: true)
     }

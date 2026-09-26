@@ -34,12 +34,16 @@ final class MiniPlayerView: UIView {
         var closeStyle = UIButton.Configuration.plain()
         closeStyle.image = UIImage(systemName: "xmark.circle")
         closeStyle.baseForegroundColor = .label
-        closeStyle.buttonSize = .small
-        closeStyle.preferredSymbolConfigurationForImage = UIImage.SymbolConfiguration(textStyle: .body, scale: .small)
+        closeStyle.buttonSize = .medium
+        closeStyle.preferredSymbolConfigurationForImage = UIImage.SymbolConfiguration(textStyle: .title3, scale: .medium)
         close.configuration = closeStyle
         let row = UIStackView(arrangedSubviews: [artwork, open, transport, close])
         row.alignment = .center
         row.spacing = 8
+        row.setCustomSpacing(0, after: transport)
+        [transport, close].forEach {
+            $0.setContentHuggingPriority(.defaultHigh, for: .horizontal)
+        }
         row.translatesAutoresizingMaskIntoConstraints = false
         addSubview(row)
         NSLayoutConstraint.activate([
@@ -73,12 +77,14 @@ final class MiniPlayerView: UIView {
             title.title = video.title
             title.subtitle = video.channelName
             title.titleAlignment = .leading
+            title.titlePadding = 0
             title.subtitleLineBreakMode = .byTruncatingTail
             title.contentInsets = NSDirectionalEdgeInsets(top: 8, leading: 0, bottom: 8, trailing: 0)
             title.subtitleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { attributes in
                 var result = attributes
                 result.font = .preferredFont(forTextStyle: .caption1)
-                result.foregroundColor = .secondaryLabel
+                // Full-contrast white in dark mode, adapting to light mode.
+                result.foregroundColor = .label
                 return result
             }
             title.titleLineBreakMode = .byTruncatingTail
@@ -86,7 +92,7 @@ final class MiniPlayerView: UIView {
             title.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { attributes in
                 var result = attributes
                 let size = UIFont.preferredFont(forTextStyle: .footnote).pointSize
-                result.font = .systemFont(ofSize: size, weight: .semibold)
+                result.font = .systemFont(ofSize: size, weight: .bold)
                 return result
             }
             open.configuration = title
@@ -98,8 +104,8 @@ final class MiniPlayerView: UIView {
             shownWaiting = state.isWaiting
             var control = transport.configuration ?? UIButton.Configuration.plain()
             control.baseForegroundColor = .label
-            control.buttonSize = .small
-            control.preferredSymbolConfigurationForImage = UIImage.SymbolConfiguration(textStyle: .body, scale: .small)
+            control.buttonSize = .medium
+            control.preferredSymbolConfigurationForImage = UIImage.SymbolConfiguration(textStyle: .title3, scale: .medium)
             control.indicatorColorTransformer = UIConfigurationColorTransformer { _ in .label }
             control.image = UIImage(systemName: state.isPlaying ? "pause.fill" : "play.fill")
             control.showsActivityIndicator = state.isWaiting

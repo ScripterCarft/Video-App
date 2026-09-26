@@ -270,6 +270,46 @@ accepted player-dismissal bug.
    early) is a starting point. The light blue test stage goes back to the
    dark stage with it.
 
+   **Found in the review of 2026-09-26, for the next sessions** (explain to
+   the user before building; the order is the user's call):
+   - Home's Featured and Spotlight cards are still SwiftUI in cells with
+     estimated sizes, the pattern that squeezed and crashed elsewhere.
+     Rebuild both in UIKit: Featured as its own content configuration (with
+     the Play button, `UIButton.Configuration`), Spotlight as a
+     `UIListContentConfiguration` (symbol, title, text) on a rounded
+     `UIBackgroundConfiguration`; sizes computed, not estimated.
+   - The app shell is still the SwiftUI `TabView` around the Home tab's
+     `VideoNavigationController`. Moving to `UITabBarController` with
+     `UITab`/`UISearchTab` (iOS 18) makes the whole shell UIKit and brings
+     Phase 4's features the UIKit way: tab bar minimize on scroll and the
+     bottom accessory for the mini player (iOS 26), iOS 27's
+     `prominentTabIdentifier` and `UINavigationItem.barMinimizeBehavior`
+     where they fit. It also makes the light status bar on the detail
+     screen reliable (the navigation controller's `childForStatusBarStyle`
+     is only honoured if every parent passes it on; untested inside
+     SwiftUI). Restoration would move from `@SceneStorage` to the scene's
+     `stateRestorationActivity` (iOS 27: `UIScene.extendStateRestoration`).
+   - Phase 3 in UIKit: Search, Library and Explore as collection views with
+     the same card and menu; Library lists with
+     `UICollectionLayoutListConfiguration` and its swipe actions. Afterwards
+     remove the SwiftUI leftovers: `VideoCard`, `VideoArtwork`,
+     `VideoHeroArtwork`, `SectionHeader`, `VideoLink`,
+     `RestorableNavigationStack`, the `VideoDetailView` shell,
+     `DownloadToolbarButton`, `DownloadProgressRing`, `PlayButtonContent`.
+   - iOS 27 lets the compositional layout's section provider track
+     observable reads and invalidate itself; Home could read the library
+     there instead of rebuilding sections in `updateProperties()`.
+   - The context menu's bubble shows the card's 272-point image at 320
+     points, slightly soft; request the larger (`.search`) artwork from the
+     shared cache for it.
+   - The detail screen sets the navigation bar's tint to white in
+     `viewWillAppear` and Home resets it; with a UIKit shell, prefer
+     per-screen appearance over changing the shared bar.
+   - Downloads sometimes fail (the known HTTP 401 route, see Download
+     investigation); the user parked it.
+   - Commit a51e717 alone does not compile (it uses `VideoCells.zoomSource`
+     from c214758); relevant only if the merge keeps single commits.
+
    Earlier phases, for reference:
    1. Foundation (done): shared cell + menu (`VideoCells`,
       `VideoContextMenus`); slim `VideoRoute` (ID + section) with

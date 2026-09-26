@@ -16,13 +16,14 @@ enum DetailStage {
 
 /// A video's detail screen as a UIKit screen, in two layers. Behind: the
 /// artwork stage as the collection view's background view, which UIKit
-/// keeps in place. In front: a clear spacer, the measured hero and Up Next
-/// on black. Fixed sizes avoid collection-view self-sizing during scrolling.
+/// keeps in place. In front: a clear spacer over the stage, then the Up
+/// Next shelf on a black page that starts at the stage's lower edge and
+/// slides over it. Every size is fixed; nothing is measured while scrolling.
 ///
 /// The bar has Download (with its progress ring) and Share. The screen reads
 /// the observable model and download state in `updateProperties()`, which
 /// UIKit tracks, so the shelf and the Download button update by themselves.
-/// The hero uses fixed, content-measured heights and scrolls with the page.
+/// The hero (title, Play, description) comes later.
 final class VideoDetailViewController: VideoCollectionViewController, RoutedScreen {
     /// Opens a video from Up Next; the view to zoom from is looked up when
     /// the zoom needs it.
@@ -30,14 +31,12 @@ final class VideoDetailViewController: VideoCollectionViewController, RoutedScre
 
     enum Section: Hashable {
         case stage
-        case hero
         case loadError
         case upNext
     }
 
     enum Item: Hashable {
         case stage
-        case hero
         case loadError
         case loadingRelated
         case video(String)
@@ -50,8 +49,6 @@ final class VideoDetailViewController: VideoCollectionViewController, RoutedScre
     var appRoute: AppRoute? { .video(route) }
     private let onOpen: OpenAction
 
-    private let playback = PlaybackStarter.shared
-    private var heroSizingKey: String?
     private var model: VideoDetailModel?
     private var loadTask: Task<Void, Never>?
     private var shownRelated: [Video] = []
@@ -120,7 +117,6 @@ final class VideoDetailViewController: VideoCollectionViewController, RoutedScre
     private func start(with video: Video) {
         let model = VideoDetailModel(video: video)
         self.model = model
-        applySnapshot(related: [], isLoading: !model.relatedLoadFinished, animated: false)
         artwork.load(video)
         configureBarButtons(for: video)
         setNeedsUpdateProperties()
@@ -179,7 +175,6 @@ final class VideoDetailViewController: VideoCollectionViewController, RoutedScre
         // Leaving for good stops what is still loading.
         if isMovingFromParent || navigationController == nil {
             loadTask?.cancel()
-            if playback.isPreparing { playback.cancel() }
         }
     }
 
@@ -188,11 +183,6 @@ final class VideoDetailViewController: VideoCollectionViewController, RoutedScre
     override func updateProperties() {
         super.updateProperties()
         guard let model else { return }
-        let sizingKey = heroConfiguration()?.sizingKey
-        if heroSizingKey != sizingKey {
-            heroSizingKey = sizingKey
-            collectionView.collectionViewLayout.invalidateLayout()
-        }
         if let refreshed = model.refreshedVideo {
             artwork.upgrade(to: refreshed)
         }
@@ -250,35 +240,20 @@ final class VideoDetailViewController: VideoCollectionViewController, RoutedScre
         navigationItem.rightBarButtonItems = [share, downloadButton.item]
     }
 
-    private func heroConfiguration() -> DetailHeroConfiguration? {
-        guard let model else { return nil }
-        return DetailHeroConfiguration(model: model, library: library, playback: playback)
-    }
-
     // MARK: - Layout
 
     private func makeLayout() -> UICollectionViewCompositionalLayout {
         let layout = UICollectionViewCompositionalLayout { [weak self] index, environment in
             switch self?.dataSource?.sectionIdentifier(for: index) {
             case .stage:
-                // The hero occupies the bottom of the ORIGINAL stage; it does
-                // not add another block below the thumbnail or move Up Next.
+                // The content starts below the bars; the spacer ends where the
+                // artwork does, so the black page begins at its lower edge.
                 let stage = DetailStage.height(
                     forWidth: environment.container.effectiveContentSize.width,
                     scale: environment.traitCollection.displayScale
                 )
                 let topInset = self?.collectionView.adjustedContentInset.top ?? 0
-                let heroHeight = self?.heroHeight(in: environment) ?? 0
-                return VideoDetailViewController.stageSection(height: max(1, stage - topInset - heroHeight))
-            case .hero:
-                let height = self?.heroHeight(in: environment) ?? 1
-                let section = VideoDetailViewController.stageSection(height: height)
-                // Black starts at the exact lower edge, even without Up Next.
-                let page = NSCollectionLayoutDecorationItem.background(elementKind: VideoDetailViewController.shelfBackgroundKind)
-                page.contentInsets.top = height
-                page.contentInsets.bottom = -2 * environment.container.effectiveContentSize.height
-                section.decorationItems = [page]
-                return section
+                return VideoDetailViewController.stageSection(height: max(1, stage - topInset))
             case .upNext:
                 let section: NSCollectionLayoutSection
                 if self?.shownRelatedLoading == true {
@@ -314,15 +289,6 @@ final class VideoDetailViewController: VideoCollectionViewController, RoutedScre
         return layout
     }
 
-    private func heroHeight(in environment: NSCollectionLayoutEnvironment) -> CGFloat {
-        guard let configuration = heroConfiguration() else { return 0 }
-        return VideoCells.fittingHeight(
-            key: "detail-hero|" + configuration.sizingKey,
-            width: environment.container.effectiveContentSize.width,
-            traits: environment.traitCollection
-        ) { configuration }
-    }
-
     /// A clear spacer over the artwork stage, below the bars.
     private static func stageSection(height: CGFloat) -> NSCollectionLayoutSection {
         let size = NSCollectionLayoutSize(widthDimension: .fractionalWidth(1), heightDimension: .absolute(height))
@@ -333,9 +299,6 @@ final class VideoDetailViewController: VideoCollectionViewController, RoutedScre
     // MARK: - Cells
 
     private func configureDataSource() {
-        let heroRegistration = UICollectionView.CellRegistration<UICollectionViewCell, Item> { [weak self] cell, _, _ in
-            cell.contentConfiguration = self?.heroConfiguration()
-        }
         let stageRegistration = UICollectionView.CellRegistration<UICollectionViewCell, Item> { _, _, _ in }
         let errorRegistration = UICollectionView.CellRegistration<DetailRetryCell, Item> { [weak self] cell, _, _ in
             cell.configure { [weak self] in self?.loadMissingDetails() }
@@ -360,9 +323,6 @@ final class VideoDetailViewController: VideoCollectionViewController, RoutedScre
         }
 
         dataSource = UICollectionViewDiffableDataSource<Section, Item>(collectionView: collectionView) { collectionView, indexPath, item in
-            if item == .hero {
-                return collectionView.dequeueConfiguredReusableCell(using: heroRegistration, for: indexPath, item: item)
-            }
             if item == .stage {
                 return collectionView.dequeueConfiguredReusableCell(using: stageRegistration, for: indexPath, item: item)
             }
@@ -386,10 +346,6 @@ final class VideoDetailViewController: VideoCollectionViewController, RoutedScre
         var snapshot = NSDiffableDataSourceSnapshot<Section, Item>()
         snapshot.appendSections([.stage])
         snapshot.appendItems([.stage], toSection: .stage)
-        if model != nil {
-            snapshot.appendSections([.hero])
-            snapshot.appendItems([.hero], toSection: .hero)
-        }
         if hasLoadFailure {
             snapshot.appendSections([.loadError])
             snapshot.appendItems([.loadError], toSection: .loadError)

@@ -58,7 +58,7 @@ enum VideoCells {
         traits: UITraitCollection,
         configuration: () -> any UIContentConfiguration
     ) -> CGFloat {
-        let cacheKey = "\(key)|\(width)|\(traits.preferredContentSizeCategory.rawValue)"
+        let cacheKey = "\(key)|\(Int(width))|\(traits.preferredContentSizeCategory.rawValue)"
         if let height = fittingHeights[cacheKey] {
             return height
         }
@@ -67,16 +67,12 @@ enum VideoCells {
         traits.performAsCurrent {
             let view = configuration().makeContentView()
             view.traitOverrides.preferredContentSizeCategory = traits.preferredContentSizeCategory
-            view.setNeedsUpdateProperties()
-            view.updatePropertiesIfNeeded()
             height = ceil(view.systemLayoutSizeFitting(
                 CGSize(width: width, height: UIView.layoutFittingCompressedSize.height),
                 withHorizontalFittingPriority: .required,
                 verticalFittingPriority: .fittingSizeLevel
             ).height)
         }
-        // Detail text is unbounded across browsing sessions; retain a bounded set.
-        if fittingHeights.count >= 128 { fittingHeights.removeAll(keepingCapacity: true) }
         fittingHeights[cacheKey] = height
         return height
     }

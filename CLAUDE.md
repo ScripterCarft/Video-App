@@ -5,6 +5,17 @@ structure; this file holds the workflow, the principles behind decisions,
 what is intentional, what was measured, and what is still open.
 `KNOWN_ISSUES.md` records the player-dismissal bug, resolved by the iOS 27 SDK.
 
+## Current UI decision (2026-09-26, supersedes hero notes below)
+
+The user rejected the hero and asked to rebuild it step by step later.
+DetailHeroView is removed. VideoDetailViewController, DetailArtworkView and
+VideoCells are restored exactly from 9662ee8: blue test stage, original Up Next,
+no title/Play/description hero. Do not reintroduce the hero without a new request.
+Mini playback remains. Its title is bold, author regular and full-contrast
+(label color, white in dark appearance); titlePadding is zero. Play/Pause and
+Close use title3/medium SF Symbols, with no extra gap between their minimum
+44 pt hit areas. This replaces the too-small body/small symbols.
+
 ## Workflow
 
 - **Branch:** all work happens on `cleanup`. Merge into `main` only when the

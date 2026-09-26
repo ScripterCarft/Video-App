@@ -2,31 +2,46 @@ import LinkPresentation
 import UIKit
 
 /// What the share sheet shares for a video: its YouTube link, with the
-/// video's title and the thumbnail already on screen as the sheet's header
-/// (LinkPresentation metadata), so the sheet shows them at once instead of
-/// fetching the page first.
+/// video's title known at once for the sheet's header (LinkPresentation
+/// metadata). The header's image is YouTube's own preview image, loaded from
+/// the page with `LPMetadataProvider` as the sheet would do by itself.
 final class VideoShareItem: NSObject, UIActivityItemSource, @unchecked Sendable {
     // Immutable after init; the share sheet may ask from any thread.
     private let url: URL
     private let metadata: LPLinkMetadata
 
-    init?(video: Video, image: UIImage?) {
+    init?(video: Video) {
         guard let url = video.youtubeURL else { return nil }
         self.url = url
         let metadata = LPLinkMetadata()
         metadata.originalURL = url
         metadata.url = url
         metadata.title = video.title
-        if let image {
-            metadata.imageProvider = NSItemProvider(object: image)
+
+        let image = NSItemProvider()
+        image.registerObject(ofClass: UIImage.self, visibility: .all) { completion in
+            nonisolated(unsafe) let completion = completion
+            let fetcher = LPMetadataProvider()
+            fetcher.startFetchingMetadata(for: url) { fetched, error in
+                _ = fetcher
+                guard let provider = fetched?.imageProvider else {
+                    completion(nil, error)
+                    return
+                }
+                provider.loadObject(ofClass: UIImage.self) { image, error in
+                    completion(image as? UIImage, error)
+                }
+            }
+            return nil
         }
+        metadata.imageProvider = image
         self.metadata = metadata
     }
 
     /// The standard share sheet for `video`, from the bottom.
     @MainActor
-    static func shareSheet(for video: Video, image: UIImage?) -> UIActivityViewController? {
-        guard let item = VideoShareItem(video: video, image: image) else { return nil }
+    static func shareSheet(for video: Video) -> UIActivityViewController? {
+        guard let item = VideoShareItem(video: video) else { return nil }
         return UIActivityViewController(activityItems: [item], applicationActivities: nil)
     }
 

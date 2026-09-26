@@ -216,9 +216,8 @@ final class VideoDetailViewController: UIViewController, UICollectionViewDelegat
             title: "Share",
             image: UIImage(systemName: "square.and.arrow.up"),
             primaryAction: UIAction { [weak self] _ in
-                // The standard share sheet from the bottom, with the title and
-                // the artwork on screen as its header.
-                guard let self, let controller = VideoShareItem.shareSheet(for: video, image: self.artwork.image) else { return }
+                // The standard share sheet from the bottom, the title known at once.
+                guard let self, let controller = VideoShareItem.shareSheet(for: video) else { return }
                 self.present(controller, animated: true)
             }
         )
@@ -523,9 +522,6 @@ private final class DetailCollectionView: UICollectionView {
 private final class DetailArtworkView: UIView {
     private let stage = UIView()
     private let imageView = UIImageView()
-
-    /// The artwork as shown, for the share sheet's header.
-    var image: UIImage? { imageView.image }
 
     override init(frame: CGRect) {
         super.init(frame: frame)

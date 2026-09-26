@@ -32,8 +32,10 @@ final class StoredVideoList {
 
     /// The observer's records without deleted ones. A record deleted and
     /// saved stays in the results until the observer refetches, a moment
-    /// later, and reading its attributes then crashes (measured on iOS 27);
-    /// SwiftData marks such a record without reading them.
+    /// later, and reading its attributes then crashes. Measured on iOS 27
+    /// (`deletedRecordMarkers`): before the save such a record reports
+    /// `isDeleted`, after it only a missing `modelContext`; neither reads
+    /// its attributes.
     private var currentRecords: [StoredVideo] {
         guard let observer else { return [] }
         return observer.results.filter { !$0.isDeleted && $0.modelContext != nil }

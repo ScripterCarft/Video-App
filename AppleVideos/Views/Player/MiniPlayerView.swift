@@ -113,6 +113,8 @@ final class MiniPlayerView: UIView {
             control.buttonSize = .medium
             control.preferredSymbolConfigurationForImage = UIImage.SymbolConfiguration(textStyle: .title3, scale: .medium)
             control.indicatorColorTransformer = UIConfigurationColorTransformer { _ in .label }
+            control.symbolContentTransition = UIAccessibility.isReduceMotionEnabled
+                ? nil : UISymbolContentTransition(.replace)
             control.image = UIImage(systemName: state.isPlaying ? "pause.fill" : "play.fill")
             control.showsActivityIndicator = state.isWaiting
             transport.configuration = control

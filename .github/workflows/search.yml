@@ -1,0 +1,32 @@
+name: Search Ordering Checks
+
+on:
+  push:
+    paths:
+      - 'AppleVideos/Services/Search/**'
+      - 'AppleVideos/Services/YouTubeService.swift'
+      - 'AppleVideos/Services/YouTubeWebConfiguration.swift'
+      - 'AppleVideos/Models/Video.swift'
+      - 'Tests/Search/**'
+      - '.github/workflows/search.yml'
+  pull_request:
+    paths:
+      - 'AppleVideos/Services/Search/**'
+      - 'AppleVideos/Services/YouTubeService.swift'
+      - 'AppleVideos/Services/YouTubeWebConfiguration.swift'
+      - 'AppleVideos/Models/Video.swift'
+      - 'Tests/Search/**'
+      - '.github/workflows/search.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  search:
+    runs-on: xcode-27
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check out-of-order search responses
+        run: bash Tests/Search/run.sh

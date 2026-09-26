@@ -411,6 +411,16 @@ what is intentional, what was measured, and what is still open.
 
 ## Open work
 
+Search ordering is protected in `Services/Search/SearchResults.swift`: search
+and pull-to-refresh share one owned task and an immutable query/request UUID.
+Only the current request can publish results, errors or loading-state cleanup.
+Clearing the query invalidates all work; refreshing an empty query does nothing.
+Refresh keeps visible results and bypasses the service cache. Repeated submits
+of an already-loading/loaded query are coalesced; failed initial searches can
+retry. UIKit configuration stays in `Views/Collection/SearchResults+ListState`.
+`Tests/Search/` compiles the production model and controls response ordering,
+including two refreshes of the same query, without network or simulator.
+
 **The rebuild (current, user-approved plan).** Goal: the app feels like one
 system, built the way Apple builds the TV and Podcasts apps; big rebuilds
 are fine. User's decision (2026-09-26): rebuild in modern UIKit, screen by

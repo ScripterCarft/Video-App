@@ -34,12 +34,14 @@ actor YouTubeService {
     private var cachedRelated: [String: [Video]] = [:]
 
     func search(_ query: String, bypassingCache: Bool = false) async throws -> [Video] {
+        try Task.checkCancellation()
         let normalized = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalized.isEmpty else { return [] }
         let cacheKey = normalized.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
         if !bypassingCache, let cached = cachedSearches[cacheKey] { return cached }
 
         let configuration = try await YouTubeWebConfiguration.shared.values()
+        try Task.checkCancellation()
         guard let endpoint = URL(string: "https://www.youtube.com/youtubei/v1/search?key=\(configuration.apiKey)&prettyPrint=false") else {
             throw SearchError.configurationUnavailable
         }
@@ -62,6 +64,7 @@ actor YouTubeService {
         ])
 
         let (data, response) = try await URLSession.shared.data(for: request)
+        try Task.checkCancellation()
         guard let http = response as? HTTPURLResponse, 200..<300 ~= http.statusCode else {
             await YouTubeWebConfiguration.shared.invalidate()
             throw SearchError.invalidResponse

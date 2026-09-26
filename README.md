@@ -39,6 +39,8 @@ The YouTube and Innertube representations stay inside the service and resolver l
 - `Services/Artwork/`: shared image requests, caching, preparation and Now Playing JPEG generation
 - `Services/Playback/`: the provider-neutral resolver contract, the YouTube resolver and `NativePlayback`
 - `Services/Downloads/`: offline downloads
+- `Services/Search/`: observable search state and request ownership; its UIKit list presentation stays in `Views/Collection/SearchResults+ListState.swift`
+- `Tests/Search/`: controlled out-of-order search/refresh checks (`bash Tests/Search/run.sh` on a Mac)
 - `Tests/Downloads/`: deterministic cancellation/restart checks against the production preparation coordinator (`bash Tests/Downloads/run.sh` on a Mac)
 - `Views/Home/`: the UIKit Home screen (`HomeViewController`) and its Featured and Spotlight cards
 - `Views/Detail/`: the UIKit video detail screen and its loading model

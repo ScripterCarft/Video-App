@@ -244,7 +244,7 @@ final class AppTabBarController: UITabBarController {
         (NativePlayback.topViewController() ?? self).present(alert, animated: true)
     }
 
-    /// Shows what the featured video's Play button reports: the embedded
+    /// Shows what any Play button reports: the embedded
     /// player when no native stream plays, or the alert when Use Mobile Data
     /// is off. Each is shown once and cleared when it closes.
     private func presentPlaybackOutcome() {

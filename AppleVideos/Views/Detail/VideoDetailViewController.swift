@@ -16,9 +16,8 @@ enum DetailStage {
 
 /// A video's detail screen as a UIKit screen, in two layers. Behind: the
 /// artwork stage as the collection view's background view, which UIKit
-/// keeps in place. In front: a clear spacer over the stage, then the Up
-/// Next shelf on a black page that starts at the stage's lower edge and
-/// slides over it. Every size is fixed; nothing is measured while scrolling.
+/// keeps in place. In front: a clear spacer, the measured hero and Up Next
+/// on black. Fixed sizes avoid collection-view self-sizing during scrolling.
 ///
 /// The bar has Download (with its progress ring) and Share. The screen reads
 /// the observable model and download state in `updateProperties()`, which
@@ -268,8 +267,8 @@ final class VideoDetailViewController: VideoCollectionViewController, RoutedScre
         let layout = UICollectionViewCompositionalLayout { [weak self] index, environment in
             switch self?.dataSource?.sectionIdentifier(for: index) {
             case .stage:
-                // The content starts below the bars; the spacer ends where the
-                // artwork does, so the black page begins at its lower edge.
+                // End just before the thumbnail bottom: the hero's short fade
+                // overlaps its edge, while all text sits on opaque gray.
                 let stage = DetailStage.height(
                     forWidth: environment.container.effectiveContentSize.width,
                     scale: environment.traitCollection.displayScale

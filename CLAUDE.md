@@ -171,7 +171,7 @@ what is intentional, what was measured, and what is still open.
 
 - `NativePlayback` presents `AVPlayerViewController` modally from the
   window's top view controller. No SwiftUI host view, no custom gestures,
-  no private AVKit subviews. `PlaybackStarter` + `playbackPresentation(_:)`
+  no private AVKit subviews. the shared `PlaybackStarter` + app-shell outcome presentation
   are the only way screens start playback. The embedded YouTube player
   (`EmbeddedPlayerScreen`) is the fallback when no native stream plays.
 - Audio session category is set once at launch (`AppDelegate`). The app is
@@ -292,8 +292,8 @@ what is intentional, what was measured, and what is still open.
   Remove All as a system menu) and
   `VideoDetailViewController`. Videos open through `VideoNavigator` with
   UIKit's zoom (`preferredTransition = .zoom`) from the card's artwork.
-  Home owns the `PlaybackStarter` for the featured
-  Play button and presents its outcome itself: the embedded fallback
+  Home and Detail use the shared `PlaybackStarter`; `AppTabBarController`
+  presents its outcomes: the embedded fallback
   (`EmbeddedPlayerScreen.controller`) and the Use Mobile Data alert;
   leaving Home (another tab or a detail screen) cancels a start that is
   still resolving, the player covering Home does not. Each screen's
@@ -350,9 +350,9 @@ what is intentional, what was measured, and what is still open.
   the screen leaves, not while the player covers it. The Home featured
   video also prefetches its stream.
 - **Detail scrolling** (user's design, like the TV app): the artwork is the
-  collection view's background view, on the light blue TEST stage for now;
-  a clear spacer (stage height minus the top inset; automatic insets, so the
-  bar's scroll edge effect appears only after scrolling) and Up Next on a
+  collection view's background view, on a dark gray stage;
+  a clear spacer ends 24 pt before the thumbnail bottom, followed by the
+  measured hero (see below) and Up Next on a
   black page whose section background reaches two screen heights below the
   shelf. Scrolling down moves the artwork up at half speed; overshoot at
   the top scales it from its top edge (one transform per scroll frame).
@@ -527,16 +527,16 @@ before building):
    a sheet; the info line (duration · views · date, then badges such as HD
    and CC). Until the details load, the description and info line are
    placeholders; then everything appears in one animation (UIKit:
-   `UIView.animate` with `.flushUpdates`; `VideoDetailModel` changes all
+   `UIView.animate`; `VideoDetailModel` changes all
    of it in one step).
-   Behind the text a dark gray gradient for legibility: a long even area
-   and a short, quick fade above about the Play button, not over the image
-   itself, ending seamlessly in the page's black at the artwork's edge; a
+   Behind the text a dark gray gradient for legibility: an opaque plateau
+   and a short, quick fade above the title, overlapping only the thumbnail
+   edge, ending seamlessly in the page's black below the metadata; a
    plain gradient, no blur or material. Build it as a content
    configuration in its own measured cell below the artwork (`UIButton.Configuration`,
    observable model read in `updateProperties()`); commit 3557827
-   (reverted because it came too early) is a starting point. The light
-   blue test stage goes back to the dark stage with it.
+   (reverted because it came too early) was a reference. The light
+   blue test stage has been removed.
 5. **Mini player** (implemented 2026-09-26, device testing pending): same
    `AVPlayer` and `AVPlayerViewController` across minimizing/expanding; see below.
    **Later:** `MPNowPlayingSession` (AVKit's

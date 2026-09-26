@@ -78,7 +78,7 @@ private final class DetailHeroView: UIView, UIContentView {
         buttons.alignment = .center
         buttons.addArrangedSubview(play)
         buttons.addArrangedSubview(save)
-        play.setContentCompressionResistancePriority(.required, for: .horizontal)
+        play.setContentCompressionResistancePriority(.init(751), for: .horizontal)
         play.addAction(UIAction { [weak self] _ in
             guard let self else { return }
             if value.playback.isPreparing { value.playback.cancel() }

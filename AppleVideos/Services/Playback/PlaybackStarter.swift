@@ -2,7 +2,8 @@ import Observation
 
 /// Starts playback for a screen: resolves the source, hands the player to
 /// `NativePlayback` and, when no native source exists, provides the embedded
-/// fallback to show. Owned as `@State` by the screen that has a Play button.
+/// fallback to show. Owned by the screen that has a Play button, which shows
+/// the fallback and the Use Mobile Data alert (see `HomeViewController`).
 @MainActor
 @Observable
 final class PlaybackStarter {

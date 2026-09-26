@@ -143,18 +143,10 @@ final class VideoDetailViewController: UIViewController, UICollectionViewDelegat
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        // White bar buttons on the dark screen, like the TV app. Only when
-        // this screen is on a UIKit stack itself, not inside a SwiftUI one.
-        if navigationController?.topViewController === self {
-            navigationController?.navigationBar.tintColor = .white
-        }
-        // Inside a SwiftUI screen, the bar follows the scroll view through
-        // the hosting screen.
-        var host: UIViewController = self
-        while let parent = host.parent, !(parent is UINavigationController) {
-            host = parent
-        }
-        host.setContentScrollView(collectionView, for: .top)
+        // White bar buttons on the dark screen, like the TV app.
+        navigationController?.navigationBar.tintColor = .white
+        // The bar's scroll edge effect follows the page.
+        setContentScrollView(collectionView, for: .top)
     }
 
     override func viewDidDisappear(_ animated: Bool) {

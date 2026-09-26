@@ -1,4 +1,4 @@
-import SwiftUI
+import Observation
 
 /// The detail screen's state and loading, in one observable object that its
 /// collection view cells read directly.
@@ -59,8 +59,8 @@ final class VideoDetailModel {
             }
     }
 
-    /// Loads what is still missing. Called from the screen's task, which
-    /// SwiftUI cancels when the screen goes away; a cancelled step is
+    /// Loads what is still missing. Called from the screen's load task, which
+    /// the screen cancels when it leaves for good; a cancelled step is
     /// retried the next time.
     func load(library: LibraryStore) async {
         if !detailsLoadFinished {
@@ -71,15 +71,14 @@ final class VideoDetailModel {
                 let refreshed = details == nil ? nil : try? await YouTubeService.shared.refreshedVideo(video)
                 guard !Task.isCancelled else { return }
 
-                // Everything that loaded appears at once, not piece by piece.
-                withAnimation(.easeOut(duration: 0.25)) {
-                    loadedDescription = details?.description
-                    loadedBadges = details.flatMap { $0.badges.isEmpty ? nil : $0.badges }
-                    refreshedVideo = refreshed
-                    detailsLoadFinished = true
-                }
+                // Everything that loaded changes in one step, not piece by
+                // piece; the screen reads it in one update.
+                loadedDescription = details?.description
+                loadedBadges = details.flatMap { $0.badges.isEmpty ? nil : $0.badges }
+                refreshedVideo = refreshed
+                detailsLoadFinished = true
                 if let refreshed {
-                    // Stored when the screen leaves; see the screen's onDisappear.
+                    // Stored when the screen leaves; see its viewDidDisappear.
                     library.rememberFresh(refreshed)
                 }
             } else {

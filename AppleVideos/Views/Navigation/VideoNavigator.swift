@@ -8,6 +8,22 @@ final class VideoNavigationController: UINavigationController {
     }
 }
 
+/// A video's detail screen: only the video's ID and the section it was
+/// tapped in, so routes stay small and can be restored after a relaunch.
+/// The detail screen reads the video from `VideoCatalog`.
+struct VideoRoute: Hashable, Codable {
+    let videoID: String
+    let section: String
+
+    /// A route to `video`; the catalog remembers the video for the destination.
+    @MainActor
+    init(video: Video, section: String) {
+        VideoCatalog.shared.remember(video)
+        videoID = video.id
+        self.section = section
+    }
+}
+
 /// A screen pushed on a tab's stack, `Codable` so the stack can be restored
 /// after a relaunch (`SceneRestoration`).
 enum AppRoute: Hashable, Codable {

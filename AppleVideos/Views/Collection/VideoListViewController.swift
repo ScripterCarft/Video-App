@@ -94,8 +94,6 @@ final class VideoListViewController: UIViewController, UICollectionViewDelegate,
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        // The app's tint again after the white of the detail screen.
-        navigationController?.navigationBar.tintColor = nil
         if let onAppear {
             Task { await onAppear() }
         }

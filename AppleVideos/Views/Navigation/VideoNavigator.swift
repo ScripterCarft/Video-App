@@ -1,10 +1,38 @@
 import UIKit
 
 /// A tab's navigation controller. The screen on top decides the status bar
-/// style, so the dark detail screen gets light status bar text.
-final class VideoNavigationController: UINavigationController {
+/// style, so the dark detail screen gets light status bar text, and the
+/// bar's buttons are white on the detail screen, in the app's tint
+/// elsewhere.
+final class VideoNavigationController: UINavigationController, UINavigationControllerDelegate {
     override var childForStatusBarStyle: UIViewController? {
         topViewController
+    }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        delegate = self
+    }
+
+    /// Sets the bar's tint for the screen about to show, and back for the
+    /// previous one if an interactive transition (a swipe back) is cancelled.
+    func navigationController(
+        _ navigationController: UINavigationController,
+        willShow viewController: UIViewController,
+        animated: Bool
+    ) {
+        applyTint(for: viewController)
+        transitionCoordinator?.notifyWhenInteractionChanges { [weak self] context in
+            MainActor.assumeIsolated {
+                guard context.isCancelled, let previous = context.viewController(forKey: .from) else { return }
+                self?.applyTint(for: previous)
+            }
+        }
+    }
+
+    private func applyTint(for viewController: UIViewController) {
+        // The detail screen is always dark, like the TV app's.
+        navigationBar.tintColor = viewController is VideoDetailViewController ? .white : nil
     }
 }
 

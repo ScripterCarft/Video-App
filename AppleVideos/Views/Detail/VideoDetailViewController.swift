@@ -143,9 +143,8 @@ final class VideoDetailViewController: UIViewController, UICollectionViewDelegat
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        // White bar buttons on the dark screen, like the TV app.
-        navigationController?.navigationBar.tintColor = .white
-        // The bar's scroll edge effect follows the page.
+        // The bar's scroll edge effect follows the page. (Its white buttons
+        // come from VideoNavigationController.)
         setContentScrollView(collectionView, for: .top)
     }
 

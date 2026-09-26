@@ -53,12 +53,6 @@ final class LibraryViewController: UIViewController, UICollectionViewDelegate {
         dataSource.apply(snapshot, animatingDifferences: false)
     }
 
-    override func viewWillAppear(_ animated: Bool) {
-        super.viewWillAppear(animated)
-        // The app's tint again after the white of the detail screen.
-        navigationController?.navigationBar.tintColor = nil
-    }
-
     /// Reads the counts; UIKit tracks the reads and calls this again when
     /// they change, and only rows whose count changed are reconfigured.
     override func updateProperties() {

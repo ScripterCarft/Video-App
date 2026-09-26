@@ -78,12 +78,6 @@ final class SearchViewController: UIViewController, UISearchBarDelegate, UISearc
         setContentScrollView(list.scrollView, for: .top)
     }
 
-    override func viewWillAppear(_ animated: Bool) {
-        super.viewWillAppear(animated)
-        // The app's tint again after the white of the detail screen.
-        navigationController?.navigationBar.tintColor = nil
-    }
-
     // MARK: - Searching
 
     func searchBarSearchButtonClicked(_ searchBar: UISearchBar) {

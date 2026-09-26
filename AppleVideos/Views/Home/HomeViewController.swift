@@ -81,12 +81,6 @@ final class HomeViewController: UIViewController, UICollectionViewDelegate {
         }
     }
 
-    override func viewWillAppear(_ animated: Bool) {
-        super.viewWillAppear(animated)
-        // The app's tint again after the white of the detail screen.
-        navigationController?.navigationBar.tintColor = nil
-    }
-
     /// Leaving Home, for another tab or a detail screen, cancels a start that
     /// is still resolving. The player covering Home does not.
     override func viewDidDisappear(_ animated: Bool) {

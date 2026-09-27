@@ -7,6 +7,15 @@ what is intentional, what was measured, and what is still open.
 
 ## Workflow
 
+- **Restored detail dismissal (2026-09-27):** User reports failures mainly
+  on restored pages. Verified call path: restoration calls show(animated: false),
+  then open without a source provider; the old conditional skipped preferredTransition
+  entirely. VideoNavigator now configures the native zoom for every detail route,
+  allowing a nil thumbnail from its optional source provider. No scroll/gesture
+  overrides or bounce changes. This corrects the missing configuration; verify
+  downward dismissal after relaunch, nested restored details and cancelled swipes
+  on device before calling the full symptom resolved.
+
 - **Detail hero and reading background (2026-09-27):** DetailHeroView places
   title, channel, the shared Play configuration, Save, two description lines,
   metadata and factual HD/CC badges at the bottom of DetailStageCell. Native

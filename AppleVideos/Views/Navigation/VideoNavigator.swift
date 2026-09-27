@@ -95,9 +95,9 @@ final class VideoNavigator {
         let controller = VideoDetailViewController(route: route, library: library) { [weak self] route, source in
             self?.open(route, zoomSource: source)
         }
-        if let zoomSource {
-            controller.preferredTransition = .zoom { _ in zoomSource() }
-        }
+        // Restoration has no tapped card, but must retain the same transition.
+        // The source provider may return nil when no thumbnail is available.
+        controller.preferredTransition = .zoom { _ in zoomSource?() }
         navigationController?.pushViewController(controller, animated: animated)
     }
 

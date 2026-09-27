@@ -5,22 +5,6 @@ structure; this file holds the workflow, the principles behind decisions,
 what is intentional, what was measured, and what is still open.
 `KNOWN_ISSUES.md` records the player-dismissal bug, resolved by the iOS 27 SDK.
 
-## Current playback decision (2026-09-26)
-
-The user removed the mini player entirely. Its last experimental state is
-preserved at 5f40d6a; see Docs/PlaybackLifecycle.md for findings, Apple references
-and the device acceptance matrix. There is no settings toggle or hidden mini UI.
-Full-screen dismissal closes playback unless PiP owns it. Lock/background policy
-uses AVPlayer's .pauses; no custom lock detection, delayed Play or decoder resets.
-PiP restoration retains the same controller and protects its in-flight transition.
-The reported gray PiP frame and CoreMedia -16840 are NOT proven fixed by cleanup.
-Windows cannot measure iPhone network/decoder behavior; avoid efficiency claims
-beyond the implementation and Apple's documented API behavior.
-
-The rejected detail hero stays removed. The blue test stage and original Up Next
-remain; do not reintroduce a hero without a new request. Historical mini/hero notes
-below are superseded by this decision.
-
 ## Workflow
 
 - **Branch:** all work happens on `cleanup`. Merge into `main` only when the
@@ -91,8 +75,8 @@ below are superseded by this decision.
 - **Efficient, not "reload everything".** Honor HTTP caching, Low Data Mode,
   shared downloads and one-time launch work.
 - **Nothing in the app re-renders under AVKit.** Playback state is written
-  to storage during playback and published to the UI when full screen
-  closes. Mini playback publishes saved progress while the library is visible.
+  to storage during playback and published to the UI when the player
+  closes.
 
 ## Intentional design (keep; do not "clean up")
 
@@ -187,7 +171,7 @@ below are superseded by this decision.
 
 - `NativePlayback` presents `AVPlayerViewController` modally from the
   window's top view controller. No SwiftUI host view, no custom gestures,
-  no private AVKit subviews. the shared `PlaybackStarter` + app-shell outcome presentation
+  no private AVKit subviews. `PlaybackStarter` + `playbackPresentation(_:)`
   are the only way screens start playback. The embedded YouTube player
   (`EmbeddedPlayerScreen`) is the fallback when no native stream plays.
 - Audio session category is set once at launch (`AppDelegate`). The app is
@@ -308,8 +292,8 @@ below are superseded by this decision.
   Remove All as a system menu) and
   `VideoDetailViewController`. Videos open through `VideoNavigator` with
   UIKit's zoom (`preferredTransition = .zoom`) from the card's artwork.
-  Home and Detail use the shared `PlaybackStarter`; `AppTabBarController`
-  presents its outcomes: the embedded fallback
+  Home owns the `PlaybackStarter` for the featured
+  Play button and presents its outcome itself: the embedded fallback
   (`EmbeddedPlayerScreen.controller`) and the Use Mobile Data alert;
   leaving Home (another tab or a detail screen) cancels a start that is
   still resolving, the player covering Home does not. Each screen's
@@ -366,9 +350,9 @@ below are superseded by this decision.
   the screen leaves, not while the player covers it. The Home featured
   video also prefetches its stream.
 - **Detail scrolling** (user's design, like the TV app): the artwork is the
-  collection view's background view, on a dark gray stage;
-  a clear spacer ends 24 pt before the thumbnail bottom, followed by the
-  measured hero (see below) and Up Next on a
+  collection view's background view, on the light blue TEST stage for now;
+  a clear spacer (stage height minus the top inset; automatic insets, so the
+  bar's scroll edge effect appears only after scrolling) and Up Next on a
   black page whose section background reaches two screen heights below the
   shelf. Scrolling down moves the artwork up at half speed; overshoot at
   the top scales it from its top edge (one transform per scroll frame).
@@ -450,7 +434,7 @@ below are superseded by this decision.
 
 ## Open work
 
-**Cellular playback confirmed working by the user (2026-09-26).** Previously reported
+**Active device investigation: cellular playback (2026-09-26).** User reports
   native Apple playback over plain 5G, no VPN or offline download, with Streaming
   Use Mobile Data off, also after reopening the app. Cause is not yet proven.
   Device diagnostic aed1872 reported toggle OFF, persisted 0, cellular true,
@@ -458,7 +442,8 @@ below are superseded by this decision.
   and would-block true. User confirmed the next Play was blocked. This proves
   the gate works in that build, not what caused the original report; initial
   path readiness does not explain this particular attempt. The diagnostic is
-  now removed; the user confirmed the normal build blocks mobile playback. Streaming waits for NWPathMonitor's first real
+  now removed. Verify that the first Play after a cold launch blocks without
+  the extra dialog/second tap. Streaming waits for NWPathMonitor's first real
   path (no timer); offline packages do not wait for network monitoring.
   Also found: an already-created native AVURLAsset retains its initial cellular
   permission; foreground/settings changes are not yet enforced on that asset.
@@ -531,7 +516,9 @@ before building):
    accessory opening a `VideoListViewController`. Possible later, only when
    the user asks: recent searches, the embedded web player as a UIKit
    controller.
-4. **The detail hero** (implemented 2026-09-26; see implementation notes below). Reference is
+4. **The detail hero** (build it only when the user says so). Until then
+   the UIKit detail screen has no Play button, title or description; only
+   Home's featured video can be played from a Play button. Reference is
    the Apple TV app's movie/show page on iPhone. Over the bottom of the
    artwork, attached to the scrolling page (it moves with the page, not
    with the artwork): the title (bold, centered, up to three lines) and the
@@ -543,19 +530,19 @@ before building):
    a sheet; the info line (duration · views · date, then badges such as HD
    and CC). Until the details load, the description and info line are
    placeholders; then everything appears in one animation (UIKit:
-   `UIView.animate`; `VideoDetailModel` changes all
+   `UIView.animate` with `.flushUpdates`; `VideoDetailModel` changes all
    of it in one step).
-   Behind the text a dark gray gradient for legibility: an opaque plateau
-   and a short, quick fade above the title, overlapping only the thumbnail
-   edge, ending seamlessly in the page's black below the metadata; a
+   Behind the text a dark gray gradient for legibility: a long even area
+   and a short, quick fade above about the Play button, not over the image
+   itself, ending seamlessly in the page's black at the artwork's edge; a
    plain gradient, no blur or material. Build it as a content
-   configuration in its own measured cell below the artwork (`UIButton.Configuration`,
+   configuration in the page's first cell (`UIButton.Configuration`,
    observable model read in `updateProperties()`); commit 3557827
-   (reverted because it came too early) was a reference. The light
-   blue test stage has been removed.
-5. **Mini player** (implemented 2026-09-26, device testing pending): same
-   `AVPlayer` and `AVPlayerViewController` across minimizing/expanding; see below.
-   **Later:** `MPNowPlayingSession` (AVKit's
+   (reverted because it came too early) is a starting point. The light
+   blue test stage goes back to the dark stage with it.
+5. **Later phases:** a mini player that is the same player as full screen
+   (one `AVPlayer`: closing full screen keeps playing in the mini player,
+   tapping it enlarges it); `MPNowPlayingSession` (AVKit's
    `externalMetadata` artist does not appear on the lock screen). Only
    when the user asks: iCloud sync via SwiftData, background refresh, App
    Intents, Spotlight, Handoff, widget.
@@ -594,74 +581,3 @@ Keep as is (already Apple's way): `AVPlayerViewController` full screen,
 - `KNOWN_ISSUES.md`: the interactive-dismissal backdrop issue is resolved
   (2026-09-26, confirmed on device): it came from linking against the iOS
   26.5 SDK; the first build with the iOS 27 SDK dismisses smoothly.
-
-## Detail hero implementation (2026-09-26)
-
-The user authorized the hero and then the mini player. The hero now lives in
-`Views/Detail/DetailHeroView.swift`; the full description is a native sheet
-with selectable `UITextView` text. The blue test stage is removed. The hero
-scrolls with the page, starting 24 pt before the thumbnail bottom, with a
-32 pt clear-to-opaque gray gradient, an opaque plateau behind the controls,
-and a 24 pt gray-to-black bottom edge. No blur, shadows or image masking.
-Title, channel, content-sized shared Play button, Saved toggle, description
-and metadata use UIKit. Accessibility text stacks the buttons vertically.
-Hero heights use bounded cached Auto Layout measurements and fixed collection
-layout sizes, never estimated dimensions. Placeholder lines remain until details
-finish loading. Device appearance, larger text and the zoom still need testing.
-Playback outcomes are now presented by the app shell using one shared starter,
-so fallback presentation survives leaving the screen that started playback.
-
-## Mini player implementation (2026-09-26)
-
-`NativePlayback` retains one session across full-screen dismissal. Only a
-completed, non-cancelled AVKit dismissal minimizes; cancelled gestures do not
-change playback or create another player. Expanding presents the same controller
-without resolving, seeking, starting playback or adding observers again. Explicit
-Play on the current video reuses the session; tapping its mini title preserves
-paused state. Close releases KVO/time/notification observers, pauses the player
-and detaches it from AVKit. Replacing it with a web fallback also stops it.
-PiP closing still ends playback; PiP restoration stays with AVKit.
-
-`Services/Playback/PlaybackDisplayState` publishes only video and transport
-changes. `Views/Player/MiniPlayerView` contains thumbnail/title and standard
-Play/Pause/Close buttons in UIKit's `UITabAccessory`, owned by the tab controller.
-UIKit owns the background, shape, transitions and insets. This is a compact
-transport bar with thumbnail, not another video renderer. No new timer, seek-on-
-expand, custom full-screen transition, backdrop or delayed Play was introduced.
-The native and web fallback still follow Streaming Options. Existing AVURLAsset
-settings-change limitations described above are unchanged.
-
-Device test: cancel dismissal repeatedly; dismiss while playing/paused/loading;
-expand repeatedly at the same position; change tabs; start another video; close
-the mini player; PiP close/restore; test mobile-data off and downloaded videos.
-CI compiles Debug simulator and Release device; it does not execute these UI tests.
-
-## Device feedback correction (2026-09-26)
-
-The user rejected the extra vertical hero block. The hero now occupies the bottom
-of the original 1.5-width stage: spacer + measured hero = original stage minus
-top inset, retaining the original Up Next position at standard text sizes. At
-accessibility sizes where the content alone exceeds the stage, it can grow to
-avoid clipping controls. The light-blue TEST stage is intentionally restored.
-The gray reading surface only fades at its upper edge; its lower edge meets
-black abruptly. MORE and its unused description-sheet controller were removed
-at the user's request. Metadata badges use compact bordered labels.
-The mini accessory now requests 64 pt intrinsic height, a larger thumbnail and
-title/channel. UIKit still determines its outer width and material. Controls
-explicitly use neutral tintColor as well as configuration colors, including the
-spinner; the red accent is no longer inherited. Button configurations are only
-changed when content/transport changes. Size and red-highlight fixes need device
-verification; the reported flash has not been reproduced on this Windows host.
-
-## Mini-player screenshot reference (2026-09-26)
-
-The user supplied a Podcasts screenshot and clarified the content arrangement:
-left square center-cropped artwork, title/author, small Play/Pause, then Close.
-`MiniPlayerView` uses the shared prepared thumbnail in a square aspect-fill view
-(the same center-crop geometry as `NowPlayingArtwork`, no extra JPEG rendering).
-The 64 pt intrinsic-height override has been removed: UIKit owns accessory sizing.
-Content uses a 32 pt square, 16 pt leading inset, semibold system footnote title
-and system caption1 author. Small body-scale SF Symbols retain 44 pt hit areas;
-Close is `xmark.circle`. These content metrics are app choices guided by the
-screenshot, not published internal Podcasts constants. UIKit still supplies the
-accessory's shape/material, width and placement. Device comparison is required.

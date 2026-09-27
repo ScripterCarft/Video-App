@@ -1,15 +1,13 @@
 import Foundation
 import Observation
 
-/// Starts playback for the app: resolves the source, hands the player to
+/// Starts playback for a screen: resolves the source, hands the player to
 /// `NativePlayback` and, when no native source exists, provides the embedded
-/// fallback to show. The app shell owns outcome presentation so it survives
-/// navigation away from the originating Play button.
+/// fallback to show. Owned by the screen that has a Play button, which shows
+/// the fallback and the Use Mobile Data alert (see `HomeViewController`).
 @MainActor
 @Observable
 final class PlaybackStarter {
-    static let shared = PlaybackStarter()
-
     struct Fallback {
         let video: Video
         let diagnostic: String
@@ -36,7 +34,6 @@ final class PlaybackStarter {
                 startTime: library.resumePosition(for: video),
                 onProgress: { position, duration in
                     library.recordProgress(for: video, position: position, duration: duration)
-                    if !NativePlayback.isShowingPlayer { library.publishProgress() }
                 },
                 onFinish: { [weak self] ending in
                     // The player is closed now, so the UI may show the new progress.

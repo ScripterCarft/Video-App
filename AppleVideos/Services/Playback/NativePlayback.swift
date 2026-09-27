@@ -56,7 +56,6 @@ final class NativePlayback: NSObject {
     private var isPresented = false
     private var metadataTask: Task<Void, Never>?
     private var isPictureInPictureActive = false
-    private var isRestoringPictureInPicture = false
     private var isFinished = false
     private var pendingFailure: String?
     private var isEndingFullScreen = false
@@ -203,11 +202,6 @@ final class NativePlayback: NSObject {
         player = AVPlayer(playerItem: item)
         super.init()
 
-        // This is a video app, not a background audio player. Let AVFoundation
-        // apply the pause policy, including screen locking; don't pause in
-        // sceneWillResignActive, which also runs when PiP is starting.
-        player.audiovisualBackgroundPlaybackPolicy = .pauses
-
         item.externalMetadata = playerMetadata(description: videoDescription)
         playerController.player = player
         playerController.delegate = self
@@ -252,8 +246,7 @@ final class NativePlayback: NSObject {
     /// seek to the saved position has finished, so the first frame shown is
     /// the saved position rather than the beginning.
     private func startPlaybackIfReady() {
-        guard isPresented, !isAwaitingResumeSeek, !isFinished, pendingFailure == nil,
-              UIApplication.shared.applicationState != .background else { return }
+        guard isPresented, !isAwaitingResumeSeek, !isFinished, pendingFailure == nil else { return }
         player.play()
     }
 
@@ -296,7 +289,7 @@ final class NativePlayback: NSObject {
     /// transition starts. UIKit's completion, not a timer, releases the fallback.
     private func dismissFailedPlayerIfPossible() {
         guard let diagnostic = pendingFailure, isPresented, !isFinished,
-              !isEndingFullScreen, !isRestoringPictureInPicture, !isDismissingFailedPlayer else { return }
+              !isEndingFullScreen, !isDismissingFailedPlayer else { return }
         guard playerController.presentingViewController != nil else {
             if !isPictureInPictureActive { finish(.failed(diagnostic: diagnostic)) }
             return
@@ -326,18 +319,10 @@ final class NativePlayback: NSObject {
             Task { await YouTubeInnertubePlaybackResolver.shared.invalidate(videoID: videoID) }
         }
         player.pause()
-        playerController.player = nil
-        player.replaceCurrentItem(with: nil)
         if Self.current === self {
             Self.current = nil
         }
         onFinish(ending)
-    }
-
-    /// Replacing native PiP with the web fallback ends the old session first.
-    static func stopForReplacement() {
-        guard let current else { return }
-        current.finish(.closed(reachedWatchThreshold: current.reachedWatchThreshold))
     }
 
     /// The key window's topmost presented view controller.
@@ -456,7 +441,7 @@ extension NativePlayback: @preconcurrency AVPlayerViewControllerDelegate {
             isEndingFullScreen = false
             // A programmatic failure dismissal finishes through dismiss's
             // completion; do not turn it into a normal close here.
-            guard !isDismissingFailedPlayer, !isFinished, Self.current === self else { return }
+            guard !isDismissingFailedPlayer else { return }
             if context.isCancelled {
                 dismissFailedPlayerIfPossible()
             } else if !isPictureInPictureActive {
@@ -472,19 +457,15 @@ extension NativePlayback: @preconcurrency AVPlayerViewControllerDelegate {
     func playerViewControllerWillStartPictureInPicture(
         _ playerViewController: AVPlayerViewController
     ) {
-        guard Self.current === self, !isFinished else { return }
         isPictureInPictureActive = true
     }
 
     func playerViewControllerDidStopPictureInPicture(
         _ playerViewController: AVPlayerViewController
     ) {
-        guard Self.current === self, !isFinished else { return }
         isPictureInPictureActive = false
         // Closing PiP without restoring the full-screen player ends playback.
-        // A restore presentation may still be in flight when PiP stops.
-        if !isRestoringPictureInPicture, !isEndingFullScreen,
-           playerViewController.presentingViewController == nil {
+        if playerViewController.presentingViewController == nil {
             if let pendingFailure {
                 finish(.failed(diagnostic: pendingFailure))
             } else {
@@ -497,38 +478,23 @@ extension NativePlayback: @preconcurrency AVPlayerViewControllerDelegate {
         _ playerViewController: AVPlayerViewController,
         failedToStartPictureInPictureWithError error: Error
     ) {
-        guard Self.current === self, !isFinished else { return }
         isPictureInPictureActive = false
-        // If AVKit already dismissed the full-screen controller, there is no
-        // remaining playback UI. Release the session instead of orphaning it.
-        if playerController.presentingViewController == nil, !isEndingFullScreen {
-            if let pendingFailure { finish(.failed(diagnostic: pendingFailure)) }
-            else { finish(.closed(reachedWatchThreshold: reachedWatchThreshold)) }
-        }
     }
 
     func playerViewController(
         _ playerViewController: AVPlayerViewController,
         restoreUserInterfaceForPictureInPictureStopWithCompletionHandler completionHandler: @escaping @Sendable (Bool) -> Void
     ) {
-        guard Self.current === self, !isFinished else {
-            completionHandler(false)
-            return
-        }
         if playerViewController.presentingViewController != nil {
-            completionHandler(!playerViewController.isBeingDismissed)
+            completionHandler(true)
             return
         }
-        guard !isRestoringPictureInPicture, let presenter = Self.topViewController(),
-              !presenter.isBeingDismissed, !presenter.isBeingPresented else {
+        guard !isFinished, let presenter = Self.topViewController() else {
             completionHandler(false)
             return
         }
-        isRestoringPictureInPicture = true
-        presenter.present(playerViewController, animated: true) { [self] in
-            isRestoringPictureInPicture = false
-            completionHandler(!isFinished && playerViewController.presentingViewController != nil)
-            dismissFailedPlayerIfPossible()
+        presenter.present(playerViewController, animated: true) {
+            completionHandler(true)
         }
     }
 }

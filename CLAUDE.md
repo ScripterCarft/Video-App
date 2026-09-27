@@ -7,15 +7,18 @@ what is intentional, what was measured, and what is still open.
 
 ## Workflow
 
-- **Detail reading background (2026-09-27):** Only a gray CAGradientLayer
-  was added to the bottom of the existing stage spacer (DetailStageCell).
-  Total height is min(width / 2, 200 pt), including the top-quarter fade;
-  the remaining three quarters are opaque gray (white 0.16). The bottom
-  meets the black page with a hard edge and scrolls with it, not with the
-  artwork parallax. Stage/Up Next geometry and the blue test artwork stay
-  unchanged. No blur, shadow, hero controls, or extra scroll updates.
-  The user confirmed removing the custom pan veto made dismissal much better;
-  retain UIKit's normal gesture arbitration.
+- **Detail hero and reading background (2026-09-27):** DetailHeroView places
+  title, channel, the shared Play configuration, Save, two description lines,
+  metadata and factual HD/CC badges at the bottom of DetailStageCell. Native
+  UILabel truncation; no custom inline More/fade (no suitable public API verified).
+  Explicit fitting heights are cached; normal Stage/Up Next geometry stays,
+  but accessibility text may extend the stage to keep controls reachable.
+  CAGradientLayer remains min(width / 2, 200 pt) high. Gray (white 0.16) fades
+  from zero alpha to 0.7 across its first 80%, then stays at 0.7. Its lower
+  edge meets the black page sharply, independent of artwork parallax.
+  No blur or shadow. The blue test artwork stays. Device visual verification
+  is required. The user confirmed removing the custom pan veto made dismissal
+  much better; retain UIKit's normal gesture arbitration.
 
 - **Current device experiment (2026-09-27):** Revert d51dc86 restores the
   exact 9662ee8 tree, before hero/mini playback. The user reports downward
@@ -539,30 +542,10 @@ before building):
    accessory opening a `VideoListViewController`. Possible later, only when
    the user asks: recent searches, the embedded web player as a UIKit
    controller.
-4. **The detail hero** (build it only when the user says so). Until then
-   the UIKit detail screen has no Play button, title or description; only
-   Home's featured video can be played from a Play button. Reference is
-   the Apple TV app's movie/show page on iPhone. Over the bottom of the
-   artwork, attached to the scrolling page (it moves with the page, not
-   with the artwork): the title (bold, centered, up to three lines) and the
-   channel below it; a solid white Play capsule (play symbol and "Play";
-   after watching, the play symbol with a short resume bar and the remaining
-   time, e.g. "40m"; while preparing, a spinner and "Cancel") beside a solid
-   dark gray + circle (checkmark when saved), both centered, not glass; two
-   lines of description with MORE below it opening the full description in
-   a sheet; the info line (duration · views · date, then badges such as HD
-   and CC). Until the details load, the description and info line are
-   placeholders; then everything appears in one animation (UIKit:
-   `UIView.animate` with `.flushUpdates`; `VideoDetailModel` changes all
-   of it in one step).
-   Behind the text a dark gray gradient for legibility: a long even area
-   and a short, quick fade above about the Play button, not over the image
-   itself, ending seamlessly in the page's black at the artwork's edge; a
-   plain gradient, no blur or material. Build it as a content
-   configuration in the page's first cell (`UIButton.Configuration`,
-   observable model read in `updateProperties()`); commit 3557827
-   (reverted because it came too early) is a starting point. The light
-   blue test stage goes back to the dark stage with it.
+4. **The detail hero** is implemented as described in the current workflow
+   note above. It reuses PlaybackStarter and the shared Play button, including
+   mobile-data blocking, cancellation and embedded fallback. Future description
+   expansion needs a separately agreed design; no custom inline More was added.
 5. **Later phases:** a mini player that is the same player as full screen
    (one `AVPlayer`: closing full screen keeps playing in the mini player,
    tapping it enlarges it); `MPNowPlayingSession` (AVKit's

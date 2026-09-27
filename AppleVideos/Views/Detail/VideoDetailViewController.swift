@@ -23,7 +23,7 @@ enum DetailStage {
 /// The bar has Download (with its progress ring) and Share. The screen reads
 /// the observable model and download state in `updateProperties()`, which
 /// UIKit tracks, so the shelf and the Download button update by themselves.
-/// The hero (title, Play, description) comes later.
+/// Hero controls occupy the bottom of the existing artwork spacer.
 final class VideoDetailViewController: VideoCollectionViewController, RoutedScreen {
     /// Opens a video from Up Next; the view to zoom from is looked up when
     /// the zoom needs it.
@@ -58,6 +58,10 @@ final class VideoDetailViewController: VideoCollectionViewController, RoutedScre
     private lazy var collectionView = UICollectionView(frame: .zero, collectionViewLayout: makeLayout())
     private let artwork = DetailArtworkView()
     private let downloadButton = DownloadBarButton()
+    private let playback = PlaybackStarter()
+    private weak var fallbackController: UIViewController?
+    private weak var mobileDataAlert: UIAlertController?
+    private var shownHeroSizingKey: String?
 
     init(route: VideoRoute, library: LibraryStore, onOpen: @escaping OpenAction) {
         self.route = route
@@ -164,6 +168,11 @@ final class VideoDetailViewController: VideoCollectionViewController, RoutedScre
         setContentScrollView(collectionView, for: .top)
     }
 
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        setNeedsUpdateProperties()
+    }
+
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
         // Store the refreshed metadata once the screen has left, so nothing on
@@ -175,6 +184,7 @@ final class VideoDetailViewController: VideoCollectionViewController, RoutedScre
         // Leaving for good stops what is still loading.
         if isMovingFromParent || navigationController == nil {
             loadTask?.cancel()
+            playback.cancel()
         }
     }
 
@@ -182,7 +192,18 @@ final class VideoDetailViewController: VideoCollectionViewController, RoutedScre
     /// again when they change.
     override func updateProperties() {
         super.updateProperties()
+        presentPlaybackOutcome()
         guard let model else { return }
+        let hero = DetailHeroConfiguration(model: model, library: library, playback: playback, traits: traitCollection)
+        let heroSizingKey = hero.sizingKey + traitCollection.preferredContentSizeCategory.rawValue
+        if shownHeroSizingKey != heroSizingKey {
+            shownHeroSizingKey = heroSizingKey
+            collectionView.collectionViewLayout.invalidateLayout()
+        }
+        if let indexPath = dataSource.indexPath(for: .stage),
+           let cell = collectionView.cellForItem(at: indexPath) as? DetailStageCell {
+            cell.configureHero(hero)
+        }
         if let refreshed = model.refreshedVideo {
             artwork.upgrade(to: refreshed)
         }
@@ -240,6 +261,42 @@ final class VideoDetailViewController: VideoCollectionViewController, RoutedScre
         navigationItem.rightBarButtonItems = [share, downloadButton.item]
     }
 
+    private func presentPlaybackOutcome() {
+        guard viewIfLoaded?.window != nil, presentedViewController == nil else { return }
+        if let fallback = playback.fallback, fallbackController == nil {
+            let controller = EmbeddedPlayerScreen.controller(
+                video: fallback.video,
+                diagnostic: fallback.diagnostic,
+                library: library
+            ) { [weak self] in
+                self?.playback.fallback = nil
+                self?.fallbackController?.presentingViewController?.dismiss(animated: true)
+            }
+            fallbackController = controller
+            present(controller, animated: true)
+            return
+        }
+
+        if playback.isShowingMobileDataAlert, mobileDataAlert == nil {
+            let alert = UIAlertController(
+                title: "Mobile Data Is Turned Off",
+                message: "Turn on Use Mobile Data in Settings to stream videos over mobile data.",
+                preferredStyle: .alert
+            )
+            alert.addAction(UIAlertAction(title: "Settings", style: .default) { [weak self] _ in
+                self?.playback.isShowingMobileDataAlert = false
+                if let url = URL(string: UIApplication.openSettingsURLString) {
+                    UIApplication.shared.open(url)
+                }
+            })
+            alert.addAction(UIAlertAction(title: "OK", style: .cancel) { [weak self] _ in
+                self?.playback.isShowingMobileDataAlert = false
+            })
+            mobileDataAlert = alert
+            present(alert, animated: true)
+        }
+    }
+
     // MARK: - Layout
 
     private func makeLayout() -> UICollectionViewCompositionalLayout {
@@ -253,7 +310,20 @@ final class VideoDetailViewController: VideoCollectionViewController, RoutedScre
                     scale: environment.traitCollection.displayScale
                 )
                 let topInset = self?.collectionView.adjustedContentInset.top ?? 0
-                return VideoDetailViewController.stageSection(height: max(1, stage - topInset))
+                return MainActor.assumeIsolated {
+                    var height = max(1, stage - topInset)
+                    if let self, let model = self.model {
+                        let configuration = DetailHeroConfiguration(model: model, library: self.library,
+                            playback: self.playback, traits: environment.traitCollection)
+                        let contentHeight = VideoCells.fittingHeight(key: "detail-hero|" + configuration.sizingKey,
+                            width: environment.container.effectiveContentSize.width,
+                            traits: environment.traitCollection) { configuration }
+                        // Keep the existing boundary unless large accessibility
+                        // text needs more space to keep every control reachable.
+                        height = max(height, contentHeight)
+                    }
+                    return VideoDetailViewController.stageSection(height: height)
+                }
             case .upNext:
                 let section: NSCollectionLayoutSection
                 if self?.shownRelatedLoading == true {
@@ -299,7 +369,11 @@ final class VideoDetailViewController: VideoCollectionViewController, RoutedScre
     // MARK: - Cells
 
     private func configureDataSource() {
-        let stageRegistration = UICollectionView.CellRegistration<DetailStageCell, Item> { _, _, _ in }
+        let stageRegistration = UICollectionView.CellRegistration<DetailStageCell, Item> { [weak self] cell, _, _ in
+            guard let self, let model = self.model else { return }
+            cell.configureHero(DetailHeroConfiguration(model: model, library: self.library,
+                playback: self.playback, traits: cell.traitCollection))
+        }
         let errorRegistration = UICollectionView.CellRegistration<DetailRetryCell, Item> { [weak self] cell, _, _ in
             cell.configure { [weak self] in self?.loadMissingDetails() }
         }

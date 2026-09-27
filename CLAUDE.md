@@ -7,6 +7,16 @@ what is intentional, what was measured, and what is still open.
 
 ## Workflow
 
+- **Detail reading background (2026-09-27):** Only a gray CAGradientLayer
+  was added to the bottom of the existing stage spacer (DetailStageCell).
+  Total height is min(width / 2, 200 pt), including the top-quarter fade;
+  the remaining three quarters are opaque gray (white 0.16). The bottom
+  meets the black page with a hard edge and scrolls with it, not with the
+  artwork parallax. Stage/Up Next geometry and the blue test artwork stay
+  unchanged. No blur, shadow, hero controls, or extra scroll updates.
+  The user confirmed removing the custom pan veto made dismissal much better;
+  retain UIKit's normal gesture arbitration.
+
 - **Current device experiment (2026-09-27):** Revert d51dc86 restores the
   exact 9662ee8 tree, before hero/mini playback. The user reports downward
   dismissal misses even directly on the thumbnail immediately after opening.

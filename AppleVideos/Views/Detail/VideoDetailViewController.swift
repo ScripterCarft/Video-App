@@ -299,7 +299,7 @@ final class VideoDetailViewController: VideoCollectionViewController, RoutedScre
     // MARK: - Cells
 
     private func configureDataSource() {
-        let stageRegistration = UICollectionView.CellRegistration<UICollectionViewCell, Item> { _, _, _ in }
+        let stageRegistration = UICollectionView.CellRegistration<DetailStageCell, Item> { _, _, _ in }
         let errorRegistration = UICollectionView.CellRegistration<DetailRetryCell, Item> { [weak self] cell, _, _ in
             cell.configure { [weak self] in self?.loadMissingDetails() }
         }

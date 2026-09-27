@@ -11,7 +11,12 @@ what is intentional, what was measured, and what is still open.
   on restored pages. Verified call path: restoration calls show(animated: false),
   then open without a source provider; the old conditional skipped preferredTransition
   entirely. VideoNavigator now configures the native zoom for every detail route,
-  allowing a nil thumbnail from its optional source provider. No scroll/gesture
+  with a source lookup by video ID on the preceding screen when the original
+  callback is absent or its card disappeared. Home checks Featured identity;
+  Search forwards to its list. Only existing visible cells are inspected. A
+  missing/offscreen video still returns nil, never an unrelated card. The user
+  reports aac794b alone did not resolve restored dismissal; do not claim the
+  identity lookup proves every gesture case fixed. No scroll/gesture
   overrides or bounce changes. This corrects the missing configuration; verify
   downward dismissal after relaunch, nested restored details and cancelled swipes
   on device before calling the full symptom resolved.
@@ -25,10 +30,10 @@ what is intentional, what was measured, and what is still open.
   CAGradientLayer remains min(width / 2, 200 pt) high. Gray (white 0.16) fades
   from zero alpha to 0.7 across its first 80%, then stays at 0.7. Its lower
   edge meets the black page sharply, independent of artwork parallax.
-  No background blur or shadow. Title uses UILabel shadowColor (black 35%)
-  and a 1 pt downward shadowOffset, without blur. Channel is 92% white;
+  No background blur or shadow. Title uses UILabel shadowColor (black 18%)
+  and a 0.5 pt downward shadowOffset, without blur. Channel is 92% white;
   title/channel spacing is 4 pt, channel/buttons 16 pt. Save uses the earlier
-  filled gray (white 0.24) circle and fine border from 3557827. Format badges
+  filled gray (white 0.38) circle and a 0.5 pt light-gray (white 0.72) border. Format badges
   share the metadata row, stacking at accessibility sizes. The blue test
   artwork stays. Device visual verification
   is required. The user confirmed removing the custom pan veto made dismissal

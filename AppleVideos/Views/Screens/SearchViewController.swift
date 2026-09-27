@@ -5,7 +5,11 @@ import UIKit
 /// the field is active and empty, the search controller's results
 /// controller shows suggestions as a plain list. Before a search, and after
 /// the field is cleared, the list shows what to search for.
-final class SearchViewController: UIViewController, UISearchBarDelegate, UISearchResultsUpdating {
+final class SearchViewController: UIViewController, VideoZoomSourceProviding, UISearchBarDelegate, UISearchResultsUpdating {
+    func zoomSourceView(forVideoID videoID: String) -> UIView? {
+        list.zoomSourceView(forVideoID: videoID)
+    }
+
     private static let suggestions = [
         "Kurzgesagt",
         "Veritasium",

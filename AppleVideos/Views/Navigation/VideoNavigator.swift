@@ -74,6 +74,12 @@ protocol RoutedScreen: UIViewController {
     var appRoute: AppRoute? { get }
 }
 
+/// Resolves current artwork by identity, including after state restoration.
+@MainActor
+protocol VideoZoomSourceProviding: AnyObject {
+    func zoomSourceView(forVideoID videoID: String) -> UIView?
+}
+
 /// Opens screens on a tab's UIKit navigation controller. Videos open with
 /// Apple's zoom transition (`preferredTransition = .zoom`): the detail screen
 /// grows out of the tapped card's artwork and shrinks back into it, and
@@ -95,9 +101,13 @@ final class VideoNavigator {
         let controller = VideoDetailViewController(route: route, library: library) { [weak self] route, source in
             self?.open(route, zoomSource: source)
         }
-        // Restoration has no tapped card, but must retain the same transition.
-        // The source provider may return nil when no thumbnail is available.
-        controller.preferredTransition = .zoom { _ in zoomSource?() }
+        let previousController = navigationController?.topViewController
+        // Re-resolve by video ID if restoration has no tapped-card closure or
+        // the original shelf changed. Never substitute an unrelated thumbnail.
+        controller.preferredTransition = .zoom { [weak previousController] _ in
+            zoomSource?() ?? (previousController as? VideoZoomSourceProviding)?
+                .zoomSourceView(forVideoID: route.videoID)
+        }
         navigationController?.pushViewController(controller, animated: animated)
     }
 

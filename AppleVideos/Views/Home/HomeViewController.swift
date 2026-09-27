@@ -287,10 +287,10 @@ final class HomeViewController: VideoCollectionViewController {
         guard let item = dataSource.itemIdentifier(for: indexPath) else { return }
         switch item {
         case .featured:
-            navigator.open(VideoRoute(video: featured), zoomSource: zoomSource(for: item))
+            navigator.open(VideoRoute(video: featured), zoomSource: zoomSource(for: item, videoID: featured.id))
         case let .video(shelf, id):
             guard let video = video(in: shelf, id: id) else { return }
-            navigator.open(VideoRoute(video: video), zoomSource: zoomSource(for: item))
+            navigator.open(VideoRoute(video: video), zoomSource: zoomSource(for: item, videoID: video.id))
         case .spotlight:
             break
         }
@@ -298,14 +298,24 @@ final class HomeViewController: VideoCollectionViewController {
 
     /// The card's artwork (or the whole featured card), looked up when the
     /// zoom needs it, since cells are reused.
-    private func zoomSource(for item: Item) -> @MainActor () -> UIView? {
+    private func zoomSource(for item: Item, videoID: String) -> @MainActor () -> UIView? {
         { [weak self] in
             guard let self,
+                  item != .featured || self.featured.id == videoID,
                   let indexPath = self.dataSource.indexPath(for: item),
                   let cell = self.collectionView.cellForItem(at: indexPath)
             else { return nil }
             return VideoCells.zoomSource(of: cell)
         }
+    }
+
+    override func zoomSourceView(forVideoID videoID: String) -> UIView? {
+        if isViewLoaded, featured.id == videoID,
+           let indexPath = dataSource.indexPath(for: .featured),
+           let cell = collectionView.cellForItem(at: indexPath) {
+            return VideoCells.zoomSource(of: cell)
+        }
+        return super.zoomSourceView(forVideoID: videoID)
     }
 
     /// The shelves' cards have the context menu; the featured and Spotlight

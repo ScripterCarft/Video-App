@@ -4,7 +4,7 @@ import UIKit
 /// menu for every card (`VideoContextMenus`), with the card's artwork as
 /// the highlight and dismissal preview. Subclasses set themselves as the
 /// collection view's delegate and return the video at an index path.
-class VideoCollectionViewController: UIViewController, UICollectionViewDelegate, UICollectionViewDataSourcePrefetching {
+class VideoCollectionViewController: UIViewController, VideoZoomSourceProviding, UICollectionViewDelegate, UICollectionViewDataSourcePrefetching {
     let library: LibraryStore
     let downloads = DownloadManager.shared
     private(set) lazy var menus = VideoContextMenus(library: library, downloads: downloads, presenter: self)
@@ -26,6 +26,19 @@ class VideoCollectionViewController: UIViewController, UICollectionViewDelegate,
     /// no menu.
     func video(at indexPath: IndexPath) -> Video? {
         nil
+    }
+
+    /// Only inspect existing visible cells: no scrolling, new requests or
+    /// synchronous layout work inside the transition's source lookup.
+    func zoomSourceView(forVideoID videoID: String) -> UIView? {
+        guard let collectionView = artworkCollectionView else { return nil }
+        for indexPath in collectionView.indexPathsForVisibleItems.sorted() {
+            if video(at: indexPath)?.id == videoID,
+               let cell = collectionView.cellForItem(at: indexPath) {
+                return VideoCells.zoomSource(of: cell)
+            }
+        }
+        return nil
     }
 
     // MARK: - Artwork prefetching

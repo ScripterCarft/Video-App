@@ -61,8 +61,8 @@ final class DetailHeroView: UIView, UIContentView {
         titleLabel.numberOfLines = 2
         titleLabel.textAlignment = .center
         titleLabel.accessibilityTraits.insert(.header)
-        titleLabel.shadowColor = UIColor.black.withAlphaComponent(0.35)
-        titleLabel.shadowOffset = CGSize(width: 0, height: 1)
+        titleLabel.shadowColor = UIColor.black.withAlphaComponent(0.18)
+        titleLabel.shadowOffset = CGSize(width: 0, height: 0.5)
         channelLabel.numberOfLines = 1
         channelLabel.textAlignment = .center
         descriptionLabel.numberOfLines = 2
@@ -188,8 +188,8 @@ final class DetailHeroView: UIView, UIContentView {
         play.configuration = .play(progress: progress, isPreparing: value.playback.isPreparing, traits: traits)
         play.accessibilityLabel = value.playback.isPreparing ? "Cancel" : (progress == nil ? "Play" : "Resume")
         var style = UIButton.Configuration.filled()
-        style.baseBackgroundColor = UIColor(white: 0.24, alpha: 1)
-        style.background.strokeColor = UIColor.white.withAlphaComponent(0.16)
+        style.baseBackgroundColor = UIColor(white: 0.38, alpha: 1)
+        style.background.strokeColor = UIColor(white: 0.72, alpha: 1)
         style.background.strokeWidth = 0.5
         style.baseForegroundColor = .white
         style.cornerStyle = .capsule

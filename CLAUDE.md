@@ -40,11 +40,13 @@ what is intentional, what was measured, and what is still open.
   edge meets the black page sharply, independent of artwork parallax.
   No background blur or shadow. Title uses UILabel shadowColor (black 18%)
   and a 0.5 pt downward shadowOffset, without blur. Channel is 92% white;
-  title/channel spacing is 4 pt, channel/buttons 16 pt. Save uses the earlier
-  colors from 7c6acaf: gray (white 0.24), white symbol, white 16% border.
-  Only colors were restored; shape, size and 0.5 pt border width stay. Format badges
-  share the metadata row, stacking at accessibility sizes. The blue test
-  artwork stays. Device visual verification
+  title/channel spacing is 4 pt, channel/buttons 16 pt. User rejected the
+  7c6acaf Save colors as too dark: Save now uses gray white 0.48, a white
+  symbol and light-gray white 0.70 border. Shape, size and 0.5 pt border width
+  stay. Format badges share the metadata row, stacking at accessibility sizes.
+  The blue test artwork stage is replaced by neutral charcoal (white 0.09).
+  Existing gradient, thumbnail geometry and Up Next position stay unchanged;
+  no additional effects, image processing or network requests. Device visual verification
   is required. The user confirmed removing the custom pan veto made dismissal
   much better; retain UIKit's normal gesture arbitration.
 

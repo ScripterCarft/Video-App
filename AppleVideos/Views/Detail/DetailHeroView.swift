@@ -188,8 +188,8 @@ final class DetailHeroView: UIView, UIContentView {
         play.configuration = .play(progress: progress, isPreparing: value.playback.isPreparing, traits: traits)
         play.accessibilityLabel = value.playback.isPreparing ? "Cancel" : (progress == nil ? "Play" : "Resume")
         var style = UIButton.Configuration.filled()
-        style.baseBackgroundColor = UIColor(white: 0.24, alpha: 1)
-        style.background.strokeColor = UIColor.white.withAlphaComponent(0.16)
+        style.baseBackgroundColor = UIColor(white: 0.48, alpha: 1)
+        style.background.strokeColor = UIColor(white: 0.70, alpha: 1)
         style.background.strokeWidth = 0.5
         style.baseForegroundColor = .white
         style.cornerStyle = .capsule

@@ -41,7 +41,7 @@ what is intentional, what was measured, and what is still open.
   No background blur or shadow. Title uses UILabel shadowColor (black 18%)
   and a 0.5 pt downward shadowOffset, without blur. Channel is 92% white;
   title/channel spacing is 4 pt, channel/buttons 16 pt. User rejected the
-  7c6acaf Save colors as too dark: Save now uses gray white 0.40, a white
+  7c6acaf Save colors as too dark: Save now uses gray white 0.34, a white
   symbol and light-gray white 0.70 border. Shape, size and 0.5 pt border width
   stay. Format badges share the metadata row, stacking at accessibility sizes.
   The blue test artwork stage is replaced by neutral charcoal (white 0.09).

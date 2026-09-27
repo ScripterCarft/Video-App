@@ -41,6 +41,7 @@ final class DetailHeroView: UIView, UIContentView {
     private let badges = UIStackView()
     private var shownBadges: [String] = []
     private let metadata = UILabel()
+    private let metadataRow = UIStackView()
     private let placeholders = DetailPlaceholderLines()
     private let details = UIStackView()
     private var showedDetails = false
@@ -60,16 +61,18 @@ final class DetailHeroView: UIView, UIContentView {
         titleLabel.numberOfLines = 2
         titleLabel.textAlignment = .center
         titleLabel.accessibilityTraits.insert(.header)
+        titleLabel.shadowColor = UIColor.black.withAlphaComponent(0.35)
+        titleLabel.shadowOffset = CGSize(width: 0, height: 1)
         channelLabel.numberOfLines = 1
         channelLabel.textAlignment = .center
         descriptionLabel.numberOfLines = 2
         descriptionLabel.lineBreakMode = .byTruncatingTail
-        metadata.numberOfLines = 1
+        metadata.numberOfLines = 0
         [titleLabel, channelLabel, descriptionLabel, metadata].forEach {
             $0.textColor = .white
             $0.adjustsFontForContentSizeCategory = true
         }
-        channelLabel.textColor = .secondaryLabel
+        channelLabel.textColor = UIColor.white.withAlphaComponent(0.92)
         metadata.textColor = .secondaryLabel
 
         save.tintColor = .white
@@ -97,11 +100,19 @@ final class DetailHeroView: UIView, UIContentView {
         badges.axis = .horizontal
         badges.spacing = 5
         badges.alignment = .center
-        [descriptionLabel, metadata, badges].forEach(details.addArrangedSubview)
+        metadataRow.spacing = 8
+        metadataRow.alignment = .center
+        metadataRow.addArrangedSubview(metadata)
+        metadataRow.addArrangedSubview(badges)
+        metadata.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        badges.setContentHuggingPriority(.required, for: .horizontal)
+        [descriptionLabel, metadataRow].forEach(details.addArrangedSubview)
         let content = UIStackView(arrangedSubviews: [titleLabel, channelLabel, buttons, placeholders, details])
         content.axis = .vertical
         content.alignment = .fill
         content.spacing = 8
+        content.setCustomSpacing(4, after: titleLabel)
+        content.setCustomSpacing(16, after: channelLabel)
         // A wrapper centers the content-sized buttons without fixing Play's width.
         let row = UIView()
         content.removeArrangedSubview(buttons)
@@ -142,7 +153,6 @@ final class DetailHeroView: UIView, UIContentView {
                 label.text = text
                 badges.addArrangedSubview(label)
             }
-            badges.addArrangedSubview(UIView())
         }
         for case let label as DetailMetadataBadge in badges.arrangedSubviews {
             label.font = .preferredFont(forTextStyle: .caption2, compatibleWith: value.traits)
@@ -167,6 +177,9 @@ final class DetailHeroView: UIView, UIContentView {
         metadata.text = model.textMetadata.joined(separator: " · ")
         updateBadges(model.visibleBadges)
         metadata.isHidden = metadata.text?.isEmpty != false
+        metadataRow.isHidden = metadata.isHidden && badges.isHidden
+        metadataRow.axis = traits.preferredContentSizeCategory.isAccessibilityCategory ? .vertical : .horizontal
+        metadataRow.alignment = metadataRow.axis == .vertical ? .leading : .center
         placeholders.isHidden = model.detailsLoadFinished
         details.isHidden = !model.detailsLoadFinished
         showedDetails = model.detailsLoadFinished
@@ -174,7 +187,10 @@ final class DetailHeroView: UIView, UIContentView {
         let progress = value.library.progress(for: model.shown)
         play.configuration = .play(progress: progress, isPreparing: value.playback.isPreparing, traits: traits)
         play.accessibilityLabel = value.playback.isPreparing ? "Cancel" : (progress == nil ? "Play" : "Resume")
-        var style = UIButton.Configuration.tinted()
+        var style = UIButton.Configuration.filled()
+        style.baseBackgroundColor = UIColor(white: 0.24, alpha: 1)
+        style.background.strokeColor = UIColor.white.withAlphaComponent(0.16)
+        style.background.strokeWidth = 0.5
         style.baseForegroundColor = .white
         style.cornerStyle = .capsule
         style.contentInsets = NSDirectionalEdgeInsets(top: 14, leading: 14, bottom: 14, trailing: 14)

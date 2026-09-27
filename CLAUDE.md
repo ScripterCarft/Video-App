@@ -16,7 +16,12 @@ what is intentional, what was measured, and what is still open.
   CAGradientLayer remains min(width / 2, 200 pt) high. Gray (white 0.16) fades
   from zero alpha to 0.7 across its first 80%, then stays at 0.7. Its lower
   edge meets the black page sharply, independent of artwork parallax.
-  No blur or shadow. The blue test artwork stays. Device visual verification
+  No background blur or shadow. Title uses UILabel shadowColor (black 35%)
+  and a 1 pt downward shadowOffset, without blur. Channel is 92% white;
+  title/channel spacing is 4 pt, channel/buttons 16 pt. Save uses the earlier
+  filled gray (white 0.24) circle and fine border from 3557827. Format badges
+  share the metadata row, stacking at accessibility sizes. The blue test
+  artwork stays. Device visual verification
   is required. The user confirmed removing the custom pan veto made dismissal
   much better; retain UIKit's normal gesture arbitration.
 

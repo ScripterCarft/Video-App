@@ -55,7 +55,7 @@ final class VideoDetailViewController: VideoCollectionViewController, RoutedScre
     private var shownRelatedLoading = false
     private var shownLoadFailure = false
     private var dataSource: UICollectionViewDiffableDataSource<Section, Item>!
-    private lazy var collectionView = DetailCollectionView(frame: .zero, collectionViewLayout: makeLayout())
+    private lazy var collectionView = UICollectionView(frame: .zero, collectionViewLayout: makeLayout())
     private let artwork = DetailArtworkView()
     private let downloadButton = DownloadBarButton()
 
@@ -390,24 +390,6 @@ final class VideoDetailViewController: VideoCollectionViewController, RoutedScre
     override func video(at indexPath: IndexPath) -> Video? {
         guard case let .video(id)? = dataSource.itemIdentifier(for: indexPath) else { return nil }
         return shownRelated.first { $0.id == id }
-    }
-}
-
-/// The detail screen's collection view. At the top, a downward drag does not
-/// scroll: the scroll view's pan does not begin, so the zoom transition's
-/// swipe takes the touch and dismisses the screen, like the TV app. Scrolling
-/// up from the top, and the bounce when the page arrives at the top with
-/// momentum, work as usual.
-private final class DetailCollectionView: UICollectionView {
-    override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
-        if gestureRecognizer === panGestureRecognizer {
-            let atTop = contentOffset.y <= -adjustedContentInset.top + 0.5
-            let velocity = panGestureRecognizer.velocity(in: self)
-            if atTop, velocity.y > 0, velocity.y > abs(velocity.x) {
-                return false
-            }
-        }
-        return super.gestureRecognizerShouldBegin(gestureRecognizer)
     }
 }
 

@@ -7,6 +7,19 @@ what is intentional, what was measured, and what is still open.
 
 ## Workflow
 
+- **Current device experiment (2026-09-27):** Revert d51dc86 restores the
+  exact 9662ee8 tree, before hero/mini playback. The user reports downward
+  dismissal misses even directly on the thumbnail immediately after opening.
+  A separate TEST removes only DetailCollectionView's downward-pan veto from
+  dab5ac8. Returning false refuses scrolling but does not request dismissal;
+  the comment claiming guaranteed handoff was unsupported. UIKit now arbitrates
+  a standard UICollectionView with the existing native zoom transition.
+  No thresholds, timers, recognizer delegate replacement or custom dismissal.
+  This is NOT a device-verified fix. Compare repeated direct downward drags,
+  slow/diagonal drags, cancelled dismissals and return-to-top scrolling. The
+  top bounce may return; if dismissal still misses, this is evidence against
+  the veto being the sole cause. Revert the TEST rather than layering guesses.
+
 - **Branch:** all work happens on `cleanup`. Merge into `main` only when the
   user explicitly says "merge". Before merging, ask whether to squash
   (`cleanup` contains many experiment and revert commits) or keep the
@@ -356,8 +369,8 @@ what is intentional, what was measured, and what is still open.
   black page whose section background reaches two screen heights below the
   shelf. Scrolling down moves the artwork up at half speed; overshoot at
   the top scales it from its top edge (one transform per scroll frame).
-  At the top a downward drag does not scroll (`DetailCollectionView`), so
-  the zoom's swipe dismisses the screen. Download is a plain bar button
+  The current TEST uses UIKit's normal scroll/transition gesture arbitration
+  (see the device experiment above). Download is a plain bar button
   item whose image is the progress ring; Share presents the share sheet
   from the bottom with the video's title and YouTube's own image.
 - Detail screen: white bar tint and light status bar (the tab bar

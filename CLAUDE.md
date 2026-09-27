@@ -7,6 +7,14 @@ what is intentional, what was measured, and what is still open.
 
 ## Workflow
 
+- **Swipe investigation still open (2026-09-27):** User reports failure after
+  30643d4, possibly on Featured. Featured is a constant Video.curated[0],
+  not replaced by refreshed library metadata; do not repeat the unproven
+  changed-Featured explanation. Fresh opening versus restoration and drag
+  starting point are pending device evidence. Apple forum thread 792753
+  describes a similar nonanimated-restoration issue, not a proven diagnosis
+  or a verified public fix for this app. No further gesture workaround added.
+
 - **Restored detail dismissal (2026-09-27):** User reports failures mainly
   on restored pages. Verified call path: restoration calls show(animated: false),
   then open without a source provider; the old conditional skipped preferredTransition
@@ -33,7 +41,8 @@ what is intentional, what was measured, and what is still open.
   No background blur or shadow. Title uses UILabel shadowColor (black 18%)
   and a 0.5 pt downward shadowOffset, without blur. Channel is 92% white;
   title/channel spacing is 4 pt, channel/buttons 16 pt. Save uses the earlier
-  filled gray (white 0.38) circle and a 0.5 pt light-gray (white 0.72) border. Format badges
+  colors from 7c6acaf: gray (white 0.24), white symbol, white 16% border.
+  Only colors were restored; shape, size and 0.5 pt border width stay. Format badges
   share the metadata row, stacking at accessibility sizes. The blue test
   artwork stays. Device visual verification
   is required. The user confirmed removing the custom pan veto made dismissal
